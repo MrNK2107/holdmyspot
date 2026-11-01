@@ -72,3 +72,36 @@ describe('PAYMENT.AUTHORIZATION.VOIDED from outside HoldMySpot', () => {
     expect(view(e, alex.id).money).toBe('held');
   });
 });
+
+describe("free slots in the studio's time zone", () => {
+  const local = (ms: number, timeZone: string) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', weekday: 'short', hour: 'numeric', minute: 'numeric' }).formatToParts(ms).map((x) => [x.type, x.value]));
+    return { hour: Number(p.hour), minute: Number(p.minute), weekday: p.weekday };
+  };
+
+  it('offers 10:00-18:00 local, on the hour, never Sunday local (Los Angeles)', async () => {
+    const tz = 'America/Los_Angeles';
+    const e = (await new Workspaces({ timeZone: tz }).create('s1')).engine;
+    const slots = e.freeSlots('gel', 12);
+    expect(slots.length).toBeGreaterThan(0);
+    for (const s of slots) {
+      const l = local(s, tz);
+      expect(l.minute).toBe(0);
+      expect(l.hour).toBeGreaterThanOrEqual(10);
+      expect(l.hour).toBeLessThanOrEqual(18);
+      expect(l.weekday).not.toBe('Sun');
+      expect(s).toBeGreaterThan(e.now());
+    }
+    // slot labels read as studio hours, not 2-10 am
+    expect(e.suggestSlots([...e.bookings.values()][0], 1)[0]).toMatch(/(10|12|2|4|6):00 (AM|PM)/);
+  });
+
+  it('the UTC default is unchanged', async () => {
+    const e = (await new Workspaces().create('s2')).engine;
+    for (const s of e.freeSlots('gel', 12)) {
+      const d = new Date(s);
+      expect([10, 12, 14, 16, 18]).toContain(d.getUTCHours());
+      expect(d.getUTCDay()).not.toBe(0);
+    }
+  });
+});

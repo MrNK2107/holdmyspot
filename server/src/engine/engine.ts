@@ -72,7 +72,11 @@ function zoneOffset(ms: number, timeZone: string): number {
 /** 23:59 on the local day (in timeZone) of the instant ms, as epoch ms. DST-safe. */
 export function endOfLocalDay(ms: number, timeZone: string): number {
   const local = new Date(ms + zoneOffset(ms, timeZone));
-  const wall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 23, 59);
+  return fromLocalWall(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 23, 59), timeZone);
+}
+
+/** A local wall-clock time (written as if it were UTC) in timeZone, as epoch ms. DST-safe. */
+function fromLocalWall(wall: number, timeZone: string): number {
   return wall - zoneOffset(wall - zoneOffset(wall, timeZone), timeZone);
 }
 
@@ -1072,7 +1076,7 @@ export class Engine {
     await this.reply(b, 'excused', { slots: free.length ? `Reply 1, 2 or 3: ${list}` : '' });
   }
 
-  /** Free slots of the same service in the next 7 days, on the hour, 10:00-18:00 UTC. */
+  /** Free slots of the same service in the next 7 days, on the hour, 10:00-18:00 in the studio's time zone. */
   suggestSlots(b: Booking, n = 3): string[] {
     return this.freeSlots(b.serviceId, n).map((start) => this.slotLabel({ ...b, start }));
   }
@@ -1081,16 +1085,18 @@ export class Engine {
     const svc = this.services.get(serviceId);
     if (!svc) throw new Error(`unknown service ${serviceId}`);
     const out: number[] = [];
-    const base = new Date(this.now());
-    base.setUTCHours(0, 0, 0, 0);
+    // today's local midnight, as a wall-clock time (studio hours and Sundays are local, not UTC)
+    const today = new Date(this.now() + zoneOffset(this.now(), this.timeZone));
+    const base = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
     for (let d = 1; d <= 7 && out.length < n; d++) {
+      if (new Date(base + d * DAY).getUTCDay() === 0) continue; // closed on Sunday
       for (let h = 10; h <= 18 && out.length < n; h += 2) {
-        const start = base.getTime() + d * DAY + h * HOUR;
+        const start = fromLocalWall(base + d * DAY + h * HOUR, this.timeZone);
         const end = start + svc.durationMin * MINUTE;
         const clash = [...this.bookings.values()].some(
           (x) => !['CANCELLED_EARLY', 'EXCUSED', 'REFILLED'].includes(x.state) && x.start < end && start < x.end,
         );
-        if (!clash && new Date(start).getUTCDay() !== 0) out.push(start);
+        if (!clash) out.push(start);
       }
     }
     return out;
