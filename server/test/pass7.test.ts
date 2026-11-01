@@ -105,3 +105,34 @@ describe("free slots in the studio's time zone", () => {
     }
   });
 });
+
+describe('a text that names two visits', () => {
+  it('gets a clarifying question; no visit is settled and no money moves', async () => {
+    const w = await new Workspaces().create('c1');
+    const e = w.engine;
+    const riley = () => [...e.bookings.values()].filter((b) => b.clientId === 'riley');
+    const before = riley().map((b) => [b.id, b.state, b.cancelledAt, b.authorizationId]);
+    const cards = e.openApprovals().length;
+    const delivered = w.mock!.delivered.length;
+    const msgs = e.messages.length;
+    await e.receiveMessage('riley', 'I need to cancel Wednesday and Saturday, sorry');
+    expect(riley().map((b) => [b.id, b.state, b.cancelledAt, b.authorizationId])).toEqual(before);
+    expect(e.openApprovals().length).toBe(cards);
+    expect(w.mock!.delivered.length).toBe(delivered);
+    const reply = e.messages.slice(msgs).find((m) => m.from !== 'client' && m.clientId === 'riley');
+    expect(reply?.text).toMatch(/which visit/i);
+    expect(reply?.text).toMatch(/Wed/);
+    expect(reply?.text).toMatch(/Sat/);
+    expect(e.offers.length).toBe(0);
+  });
+
+  it('a weekday two visits share still means the nearer one; one named visit is unchanged', async () => {
+    const e = (await new Workspaces().create('c2')).engine;
+    expect(e.ambiguousVisits('riley', 'cancel my nail art on Saturday')).toBeUndefined();
+    expect(e.ambiguousVisits('riley', 'running 10 min late')).toBeUndefined();
+    await e.createBooking({ clientId: 'riley', serviceId: 'gel', start: at(11, 15) });
+    expect(e.ambiguousVisits('riley', "I can't make it on Wednesday")).toBeUndefined();
+    expect(e.ambiguousVisits('riley', 'cancel Wed and Sat')?.length).toBe(2);
+    expect(e.ambiguousVisits('riley', 'cancel the 4th and the 11th')?.length).toBe(2);
+  });
+});

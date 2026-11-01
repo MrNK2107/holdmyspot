@@ -623,10 +623,27 @@ export class Engine {
    * its own week. Nothing named: the next visit, as before. Code, not the model, picks it.
    */
   bookingForText(clientId: string, text: string): Booking | undefined {
+    const m = this.matchVisits(clientId, text);
+    return m.best[0] ?? m.active[0];
+  }
+
+  /**
+   * Two or more visits the text names by different days, dates or services ("cancel Wed and Sat"): the
+   * nearest visit per distinct match, for a clarifying question. A weekday two visits share is not ambiguous.
+   */
+  ambiguousVisits(clientId: string, text: string): Booking[] | undefined {
+    const { best, sig } = this.matchVisits(clientId, text);
+    const seen = new Map<string, Booking>();
+    for (const b of best) if (!seen.has(sig(b))) seen.set(sig(b), b);
+    return seen.size >= 2 ? [...seen.values()] : undefined;
+  }
+
+  /** Upcoming visits, and those that match the text best (nearest first; empty when the text names none). */
+  private matchVisits(clientId: string, text: string): { active: Booking[]; best: Booking[]; sig: (b: Booking) => string } {
     const active = [...this.bookings.values()]
       .filter((b) => b.clientId === clientId && ['BOOKED', 'VAULTED', 'HELD', 'HOLD_FAILED'].includes(b.state) && b.end > this.now())
       .sort((a, b) => a.start - b.start);
-    if (active.length < 2) return active[0];
+    if (active.length < 2) return { active, best: [], sig: () => '' };
     const t = ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
     const said = (w: string) => t.includes(` ${w} `);
     const DAYS = [['sunday', 'sun'], ['monday', 'mon'], ['tuesday', 'tue', 'tues'], ['wednesday', 'wed'], ['thursday', 'thu', 'thur', 'thurs'], ['friday', 'fri'], ['saturday', 'sat']];
@@ -655,9 +672,11 @@ export class Engine {
       return dates.some((x) => x.day === d.getUTCDate() && (x.month === undefined || x.month === d.getUTCMonth()));
     };
     const score = (b: Booking) => (onDate(b.start) ? 2 : 0) + (named.has(dayOf(b.start)) ? 1 : 0) + (serviceWords(b.serviceId).some(said) ? 1 : 0);
-    const best = Math.max(...active.map(score));
+    // what the text matched on: two visits with the same signature (a weekday they share) are one ambiguous cue, not two
+    const sig = (b: Booking) => [onDate(b.start) ? `date:${local(b.start).getUTCDate()}` : '', named.has(dayOf(b.start)) ? `day:${dayOf(b.start)}` : '', serviceWords(b.serviceId).some(said) ? `svc:${b.serviceId}` : ''].join('|');
+    const top = Math.max(...active.map(score));
     // several equally good matches (a weekday two visits share): the nearest of them, never a visit the text did not name
-    return best > 0 ? active.find((b) => score(b) === best) : active[0];
+    return { active, best: top > 0 ? active.filter((b) => score(b) === top) : [], sig };
   }
 
   async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
@@ -698,6 +717,16 @@ export class Engine {
       return { rebooked: nb.id };
     }
 
+    const several = this.ambiguousVisits(clientId, text);
+    if (several) {
+      // "cancel Wed and Sat": settling either one on a guess could late-fee the wrong visit. Ask; nothing changes.
+      const run = this.startRun(clientId, text);
+      const list = several.map((x) => `${this.slotLabel(x)} (${this.services.get(x.serviceId)?.name ?? x.serviceId})`).join(' or ');
+      run.steps.push({ n: 1, kind: 'code', name: 'route: text names several visits', result: `asked which visit: ${list}; no booking changed, no money moved` });
+      run.gate = { kind: 'none', summary: 'clarifying question sent; no money involved' };
+      this.say(clientId, `Hi ${c.name.split(' ')[0]}, which visit do you mean: ${list}? Please text again about one visit at a time.`);
+      return {};
+    }
     const b = this.bookingForText(clientId, text);
     const run = this.startRun(clientId, text, b?.id);
     let label: MessageLabel | undefined;
