@@ -114,8 +114,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   app.get('/api/health', async () => ({ ok: true, workspaces: workspaces.ids().length }));
 
-  app.post('/api/workspaces', async () => {
-    const w = await workspaces.create();
+  app.post('/api/workspaces', async (_req, reply) => {
+    let w: Workspace;
+    try {
+      w = await workspaces.create();
+    } catch (err) {
+      return reply.code(503).send({ ok: false, error: (err as Error).message });
+    }
     return { id: w.engine.id, ownerToken: w.ownerToken };
   });
 
@@ -261,8 +266,12 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   app.post<{ Params: { ws: string } }>('/api/ws/:ws/reset', async (req, reply) => {
     // only an existing workspace: otherwise any caller could mint workspaces with ids of its choosing
     if (!(await ws(req.params.ws, reply))) return;
-    const w = await workspaces.reset(req.params.ws);
-    return { ok: true, state: w.engine.snapshot() };
+    try {
+      const w = await workspaces.reset(req.params.ws);
+      return { ok: true, state: w.engine.snapshot() };
+    } catch (err) {
+      return reply.code(409).send({ ok: false, error: (err as Error).message });
+    }
   });
 
   // Guided demo (video script): beats drive the same engine calls as the endpoints above.

@@ -58,10 +58,19 @@ export class Workspaces {
   // visitor workspace ids carry 48 random bits so one visitor cannot guess and drive another's workspace
   async create(id = `ws${++this.seq}-${randomBytes(6).toString('hex')}`, ownerToken = randomBytes(24).toString('base64url')): Promise<Workspace> {
     while (this.map.size >= this.maxWorkspaces) {
-      const oldest = [...this.map.keys()].find((k) => k !== 'demo');
-      if (!oldest) break;
-      this.map.delete(oldest);
-      this.tails.delete(oldest);
+      const candidates = [...this.map.keys()].filter((k) => k !== 'demo');
+      if (!candidates.length) break;
+      let evicted = false;
+      // oldest first; a workspace keeps its place while PayPal will not release its holds
+      for (const k of candidates) {
+        if (!(await this.releaseHolds(k, 'workspace evicted')).length) {
+          this.map.delete(k);
+          this.tails.delete(k);
+          evicted = true;
+          break;
+        }
+      }
+      if (!evicted) throw new Error('demo capacity reached and PayPal would not release holds of the oldest demos; try again in a minute');
     }
     const clock = new DemoClock(DEMO_START);
     let mock: MockPayPalGateway | undefined;
@@ -127,7 +136,17 @@ export class Workspaces {
     return this.map.get(id);
   }
 
+  /** Voids the workspace's live holds at PayPal (through its own queue); returns the ones that stay live. */
+  private async releaseHolds(id: string, why: string) {
+    const w = this.map.get(id);
+    if (!w) return [];
+    return this.run(id, () => w.engine.releaseAllHolds(why));
+  }
+
+  /** Throws (and keeps the workspace) when PayPal would not release a live hold: a reset must not orphan real holds. */
   async reset(id: string): Promise<Workspace> {
+    const failed = await this.releaseHolds(id, 'workspace reset');
+    if (failed.length) throw Object.assign(new Error(`reset refused: PayPal did not release ${failed.length} hold(s); try again`), { statusCode: 409 });
     const token = this.map.get(id)?.ownerToken;
     this.map.delete(id);
     return this.create(id, token);

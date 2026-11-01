@@ -91,3 +91,50 @@ describe('the booking link is not the owner capability', () => {
     expect((await app.inject({ method: 'POST', url: '/api/ws/demo/demo/next' })).statusCode).toBe(200);
   });
 });
+
+describe('evicting or resetting a workspace releases its live holds first', () => {
+  const liveAuths = (w: Awaited<ReturnType<Workspaces['create']>>) =>
+    [...w.engine.bookings.values()].filter((b) => b.authorizationId && !b.captureId && w.mock!.authorizationStatus(b.authorizationId) === 'CREATED').map((b) => b.authorizationId!);
+
+  it('eviction voids every live authorization at PayPal (simulator)', async () => {
+    const reg = new Workspaces();
+    reg.maxWorkspaces = 2;
+    await reg.create('demo');
+    const a = await reg.create();
+    const held = liveAuths(a);
+    expect(held.length).toBeGreaterThan(0);
+    await reg.create();
+    expect(reg.get(a.engine.id)).toBeUndefined();
+    for (const id of held) expect(a.mock!.authorizationStatus(id)).toBe('VOIDED');
+  });
+
+  it('a workspace whose holds PayPal will not release is not evicted', async () => {
+    const reg = new Workspaces();
+    reg.maxWorkspaces = 2;
+    await reg.create('demo');
+    const a = await reg.create();
+    a.mock!.void = async () => {
+      throw new Error('PayPal unavailable');
+    };
+    await expect(reg.create()).rejects.toThrow(/release/);
+    expect(reg.get(a.engine.id)).toBe(a);
+  });
+
+  it('reset voids the live holds, and refuses (409) when PayPal will not release them', async () => {
+    const reg = new Workspaces();
+    await reg.create('demo');
+    const app = await buildApp({ workspaces: reg });
+    const first = reg.get('demo')!;
+    const held = liveAuths(first);
+    expect(held.length).toBeGreaterThan(0);
+    expect((await app.inject({ method: 'POST', url: '/api/ws/demo/reset' })).statusCode).toBe(200);
+    for (const id of held) expect(first.mock!.authorizationStatus(id)).toBe('VOIDED');
+    const second = reg.get('demo')!;
+    second.mock!.void = async () => {
+      throw new Error('PayPal unavailable');
+    };
+    const r = await app.inject({ method: 'POST', url: '/api/ws/demo/reset' });
+    expect(r.statusCode).toBe(409);
+    expect(reg.get('demo')).toBe(second);
+  });
+});

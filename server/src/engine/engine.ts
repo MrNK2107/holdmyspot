@@ -1086,18 +1086,48 @@ export class Engine {
 
   private async voidHold(b: Booking, why: string): Promise<void> {
     if (!b.authorizationId || b.holdVoided) return; // PayPal already voided it
+    await this.voidAuth(b, b.authorizationId, why);
+  }
+
+  private async voidAuth(b: Booking, authorizationId: string, why: string): Promise<void> {
     try {
-      this.ownVoids.add(b.authorizationId);
-      await this.gateway.void(b.authorizationId, this.intentKey(b, 'void', b.authorizationId));
-      this.audit.add('paypal', `void authorization ${b.authorizationId}: ${why}`, { bookingId: b.id });
+      this.ownVoids.add(authorizationId);
+      await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId));
+      this.audit.add('paypal', `void authorization ${authorizationId}: ${why}`, { bookingId: b.id });
     } catch (err) {
       if (err instanceof PaymentsError && ['AUTHORIZATION_EXPIRED', 'PREVIOUSLY_VOIDED'].includes(err.issue)) {
-        this.audit.add('paypal', `authorization ${b.authorizationId} already released (${err.issue})`, { bookingId: b.id });
+        this.audit.add('paypal', `authorization ${authorizationId} already released (${err.issue})`, { bookingId: b.id });
         return;
       }
       this.audit.add('paypal', `void failed: ${(err as Error).message}`, { bookingId: b.id });
       throw err;
     }
+  }
+
+  /**
+   * Before the workspace is evicted or reset: void every authorization that may still be live at PayPal
+   * (uncaptured holds, and holds an earlier void could not release). Already voided or expired ones count
+   * as released. Returns the ones PayPal would not release; the caller then keeps the workspace.
+   */
+  async releaseAllHolds(why: string): Promise<Array<{ bookingId: string; authorizationId: string; error: string }>> {
+    const targets: Array<[Booking, string]> = [];
+    for (const b of this.bookings.values()) if (b.authorizationId && !b.holdVoided && !b.captureId) targets.push([b, b.authorizationId]);
+    for (const u of this.unreleasedAuths) {
+      const b = this.bookings.get(u.bookingId);
+      if (b) targets.push([b, u.authorizationId]);
+    }
+    const failed: Array<{ bookingId: string; authorizationId: string; error: string }> = [];
+    const seen = new Set<string>();
+    for (const [b, id] of targets) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      try {
+        await this.voidAuth(b, id, why);
+      } catch (err) {
+        failed.push({ bookingId: b.id, authorizationId: id, error: (err as Error).message });
+      }
+    }
+    return failed;
   }
 
   /**
