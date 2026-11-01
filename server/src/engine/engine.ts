@@ -2,7 +2,7 @@ import { AuditLog } from '../audit.js';
 import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
 import { FrontDesk } from '../ai/frontdesk.js';
 import { type ApprovedPolicy, type Decision, captureViolations, decide } from '../domain/policy.js';
-import { assertTransition, moneyState } from '../domain/stateMachine.js';
+import { assertTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
 import { slotMatches } from '../domain/waitlist.js';
 import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
@@ -90,6 +90,8 @@ export class Engine {
   private rebookOffers = new Map<string, { serviceId: string; slots: number[] }>();
   /** setupTokenId -> bookingId for Vault v3 approvals */
   private pendingSetups = new Map<string, string>();
+  /** bookingId -> every authorization id seen for it (guards against late/duplicate events) */
+  private knownAuths = new Map<string, Set<string>>();
   private holdAttempts = new Map<string, number>();
   private baseUrl: string;
 
@@ -135,7 +137,15 @@ export class Engine {
     const from = b.state;
     b.state = to;
     this.audit.add('engine', `${from} → ${to}: ${why}`, { bookingId: b.id });
+    if (isTerminal(to)) this.dropPendingApprovals(b);
     this.emit('state');
+  }
+
+  /** A finished booking must never be revived by a late PayPal approval. */
+  private dropPendingApprovals(b: Booking): void {
+    for (const [k, v] of this.pendingOrders) if (v === b.id) this.pendingOrders.delete(k);
+    for (const [k, v] of this.pendingSetups) if (v === b.id) this.pendingSetups.delete(k);
+    b.approvalLink = undefined;
   }
 
   booking(id: string): Booking {
@@ -154,10 +164,16 @@ export class Engine {
     return `${this.id}:${b.id}`;
   }
 
+  /** New-intent key (each hold attempt is a distinct intent, e.g. a retry after a decline). */
   private requestId(b: Booking, op: string): string {
     const n = (this.holdAttempts.get(`${b.id}:${op}`) ?? 0) + 1;
     this.holdAttempts.set(`${b.id}:${op}`, n);
     return `${this.id}-${b.id}-${op}-${n}`;
+  }
+
+  /** Key derived from the business intent, so a retried capture/void/reauth/refund can never act twice. */
+  private intentKey(b: Booking, op: string, target: string): string {
+    return `${this.id}-${b.id}-${op}-${target}`;
   }
 
   private slotLabel(b: Booking): string {
@@ -234,7 +250,7 @@ export class Engine {
     if (c.vaultId) this.setState(b, 'VAULTED', 'wallet already saved with PayPal');
 
     const lead = b.start - this.now();
-    if (lead <= HOLD_LEAD || this.holdStrategy === 'reauth') {
+    if (lead <= HOLD_LEAD || this.holdStrategy === 'reauth' || input.refillOf) {
       await this.placeHold(b);
     } else if (!c.vaultId) {
       await this.startVaultSetup(b);
@@ -348,7 +364,16 @@ export class Engine {
 
   /** Idempotent: called from the synchronous API result and from the PAYMENT.AUTHORIZATION.CREATED webhook. */
   private async onAuthorized(b: Booking, authorizationId: string, orderId?: string): Promise<void> {
-    if (b.authorizationId === authorizationId) return;
+    const known = this.knownAuths.get(b.id) ?? new Set<string>();
+    this.knownAuths.set(b.id, known);
+    if (known.has(authorizationId)) return; // duplicate, or an older auth arriving late
+    known.add(authorizationId);
+    if (isTerminal(b.state) && b.state !== 'CHARGED') {
+      // e.g. an approval that arrives after the booking was cancelled: release it right away
+      await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId)).catch(() => undefined);
+      this.audit.add('paypal', `void late authorization ${authorizationId}: booking is ${b.state}`, { bookingId: b.id });
+      return;
+    }
     b.authorizationId = authorizationId;
     b.authorizedAt = this.now();
     if (orderId) b.orderId = orderId;
@@ -364,9 +389,12 @@ export class Engine {
     if (b.state === 'HELD' && b.authorizationId) {
       if (this.now() - (b.authorizedAt ?? 0) < 3 * DAY) return; // still inside the honor period
       const c = this.client(b.clientId);
-      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.requestId(b, 'reauth'), !!c.sandboxDecline);
+      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.intentKey(b, 'reauth', b.authorizationId), !!c.sandboxDecline);
       this.audit.add('paypal', `reauthorize at T-72h → ${r.status}`, { bookingId: b.id, data: r });
-      if (r.status === 'AUTHORIZED' && r.authorizationId) await this.onAuthorized(b, r.authorizationId);
+      if (r.status === 'AUTHORIZED' && r.authorizationId) {
+        b.reauthorized = true;
+        await this.onAuthorized(b, r.authorizationId);
+      }
       else await this.onHoldDeclined(b, r.issue ?? 'DECLINED');
       return;
     }
@@ -437,6 +465,12 @@ export class Engine {
   async requestSettlement(b: Booking, label: MessageLabel): Promise<Decision> {
     const d = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'cancel', label, priorExcusals: this.priorExcusals(b.clientId) });
     this.audit.add('engine', `decide → ${d.outcome}: ${d.why}`, { bookingId: b.id, data: d });
+    if (!b.authorizationId && d.outcome !== 'CLARIFY' && d.outcome !== 'NO_ACTION') {
+      // No hold was ever placed (wallet not approved yet): nothing to settle, just free the slot.
+      this.setState(b, 'CANCELLED_EARLY', `cancelled with no hold in place (${d.outcome} by policy)`);
+      await this.reply(b, 'cancelled_early');
+      return d;
+    }
     switch (d.outcome) {
       case 'CLARIFY':
         await this.reply(b, 'clarify');
@@ -452,6 +486,7 @@ export class Engine {
       case 'EXCUSE':
         if (this.mode === 'ask') {
           this.addApproval({ kind: 'review', bookingId: b.id, prompt: `${this.client(b.clientId).name}: "${label.evidenceSpan}". Policy says excuse (no charge).`, suggested: 'excuse', options: ['excuse', 'refill_then_charge'] });
+          await this.reply(b, 'received');
         } else {
           await this.excuse(b, d.why);
         }
@@ -482,17 +517,26 @@ export class Engine {
   private async voidHold(b: Booking, why: string): Promise<void> {
     if (!b.authorizationId) return;
     try {
-      await this.gateway.void(b.authorizationId, this.requestId(b, 'void'));
+      await this.gateway.void(b.authorizationId, this.intentKey(b, 'void', b.authorizationId));
       this.audit.add('paypal', `void authorization ${b.authorizationId}: ${why}`, { bookingId: b.id });
     } catch (err) {
+      if (err instanceof PaymentsError && ['AUTHORIZATION_EXPIRED', 'PREVIOUSLY_VOIDED'].includes(err.issue)) {
+        this.audit.add('paypal', `authorization ${b.authorizationId} already released (${err.issue})`, { bookingId: b.id });
+        return;
+      }
       this.audit.add('paypal', `void failed: ${(err as Error).message}`, { bookingId: b.id });
       throw err;
     }
   }
 
-  private async excuse(b: Booking, why: string): Promise<void> {
+  private async excuse(b: Booking, why: string, opts: { waiver?: boolean } = {}): Promise<void> {
     await this.voidHold(b, why);
     this.setState(b, 'EXCUSED', why);
+    if (opts.waiver) {
+      // the owner chose not to charge: not a policy excusal, so it does not use up the allowance
+      this.say(b.clientId, `Hi ${this.client(b.clientId).name.split(' ')[0]}, ${this.ownerName} waived the fee. Your hold is released.`);
+      return;
+    }
     this.excusals.push({ clientId: b.clientId, at: this.now() });
     const free = this.freeSlots(b.serviceId, 3);
     this.rebookOffers.set(b.clientId, { serviceId: b.serviceId, slots: free });
@@ -599,7 +643,7 @@ export class Engine {
     o.failed.push(nb.clientId);
     o.claim = undefined;
     this.say(nb.clientId, `Sorry, PayPal couldn't place the hold, so we offered the spot to the next person.`);
-    const next = o.ranked.find((id) => !o.offeredTo.includes(id));
+    const next = o.ranked.find((id) => !o.offeredTo.includes(id) && !o.failed.includes(id));
     o.offeredTo = o.offeredTo.filter((id) => id !== nb.clientId);
     if (next) {
       o.offeredTo.push(next);
@@ -614,7 +658,16 @@ export class Engine {
   private async refillCutoff(bookingId: string): Promise<void> {
     const b = this.booking(bookingId);
     if (b.state !== 'PENDING_REFILL') return;
-    for (const o of this.offers.filter((x) => x.slotBookingId === b.id && x.status === 'open')) o.status = 'closed';
+    for (const o of this.offers.filter((x) => x.slotBookingId === b.id && (x.status === 'open' || x.status === 'claiming'))) {
+      if (o.status === 'claiming' && o.claim?.bookingId) {
+        const nb = this.booking(o.claim.bookingId);
+        if (['BOOKED', 'VAULTED', 'HOLD_FAILED'].includes(nb.state)) {
+          this.setState(nb, 'CANCELLED_EARLY', 'refill claim not confirmed before the slot cutoff');
+          this.say(nb.clientId, 'Sorry, we could not confirm your hold in time, so that spot is closed. You are still on the waitlist.');
+        }
+      }
+      o.status = 'closed';
+    }
     const fee = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'no_show', priorExcusals: 0 });
     const feeCents = fee.outcome === 'PENDING_REFILL' || fee.outcome === 'OWNER_REVIEW' ? fee.feeCents : b.holdCents;
     const lateFee = Math.min(this.policy.rules.lateCancelFeeCents, b.holdCents);
@@ -659,9 +712,22 @@ export class Engine {
     if (!a) throw new Error(`unknown approval ${id}`);
     if (a.resolved) throw new Error(`approval ${id} already resolved (${a.resolved})`);
     if (!(a.options as string[]).includes(choice)) throw new Error(`invalid choice ${choice}`);
-    a.resolved = choice;
     const b = this.booking(a.bookingId);
     this.audit.add('owner', `${this.ownerName} tapped "${choice}" on: ${a.prompt}`, { bookingId: b.id });
+    try {
+      await this.applyApproval(a, b, choice);
+    } catch (err) {
+      // keep the card open so the owner can retry or choose differently
+      this.audit.add('engine', `"${choice}" failed, card kept open: ${(err as Error).message}`, { bookingId: b.id });
+      this.emit('approval');
+      throw err;
+    }
+    a.resolved = choice;
+    this.emit('approval');
+    return b;
+  }
+
+  private async applyApproval(a: Approval, b: Booking, choice: string): Promise<void> {
     if (a.kind === 'attendance') {
       if (choice === 'arrived') {
         await this.voidHold(b, 'client arrived');
@@ -677,10 +743,8 @@ export class Engine {
       }
     } else if (a.kind === 'capture') {
       if (choice === 'charge') await this.capture(b, a.feeCents);
-      else await this.excuse(b, 'owner waived the fee');
+      else await this.excuse(b, 'owner waived the fee', { waiver: true });
     }
-    this.emit('approval');
-    return b;
   }
 
   /** Every capture path ends here, after an owner tap. */
@@ -691,14 +755,16 @@ export class Engine {
       this.audit.add('engine', `capture blocked: ${violations.join('; ')}`, { bookingId: b.id });
       throw new PaymentsError('ENGINE_INVARIANT', violations.join('; '));
     }
-    if (this.now() - (b.authorizedAt ?? 0) > 3 * DAY) {
-      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.requestId(b, 'reauth'));
+    if (this.now() - (b.authorizedAt ?? 0) > 3 * DAY && !b.reauthorized) {
+      // PayPal allows one reauthorization per authorization; after that we capture as-is (best effort)
+      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.intentKey(b, 'reauth', b.authorizationId));
       this.audit.add('paypal', `honor period over: reauthorize first → ${r.status}`, { bookingId: b.id, data: r });
       if (r.status !== 'AUTHORIZED' || !r.authorizationId) throw new PaymentsError(r.issue ?? 'REAUTHORIZE_FAILED', 'could not refresh the hold before capture');
+      b.reauthorized = true;
       await this.onAuthorized(b, r.authorizationId);
     }
     const r = await this.gateway.capture({
-      requestId: this.requestId(b, 'capture'),
+      requestId: this.intentKey(b, 'capture', b.authorizationId),
       authorizationId: b.authorizationId,
       amountCents: feeCents,
       finalCapture: true,
@@ -707,6 +773,7 @@ export class Engine {
     this.audit.add('paypal', `capture $${(feeCents / 100).toFixed(2)} (final_capture) → ${r.status}`, { bookingId: b.id, data: r });
     if (r.status !== 'COMPLETED') throw new PaymentsError(r.issue);
     b.captureId = r.captureId;
+    b.capturedCents = r.amountCents;
     this.setState(b, 'CHARGED', `fee captured (${r.captureId})`);
     await this.reply(b, b.cancelledAt ? 'charged' : 'charged_no_show', { fee: `$${(feeCents / 100).toFixed(0)}` });
   }
@@ -716,7 +783,7 @@ export class Engine {
     const b = this.booking(bookingId);
     if (b.state !== 'CHARGED' || !b.captureId) throw new Error('nothing to refund');
     if (b.refundId) throw new Error('already refunded');
-    const r = await this.gateway.refund(b.captureId, b.holdCents, this.requestId(b, 'refund'));
+    const r = await this.gateway.refund(b.captureId, b.capturedCents ?? b.holdCents, this.intentKey(b, 'refund', b.captureId));
     b.refundId = r.refundId;
     this.audit.add('paypal', `refund ${r.refundId} ($${(r.amountCents / 100).toFixed(2)})`, { bookingId: b.id, data: r });
     this.say(b.clientId, `${this.ownerName} refunded your fee. No hard feelings!`);

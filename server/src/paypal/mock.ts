@@ -43,6 +43,7 @@ export class MockPayPalGateway implements PaymentsGateway {
   private seq = 0;
   private orders = new Map<string, Order>();
   private auths = new Map<string, Auth>();
+  private reauthorizedRoots = new Set<string>();
   private captures = new Map<string, { id: string; authId: string; amountCents: number; refundedCents: number }>();
   private idem = new Map<string, unknown>();
   private listeners = new Set<(e: WebhookEvent) => void | Promise<void>>();
@@ -215,6 +216,8 @@ export class MockPayPalGateway implements PaymentsGateway {
   void(authorizationId: string, requestId: string): Promise<{ status: 'VOIDED' }> {
     return this.once('void', requestId, async () => {
       const a = this.liveAuth(authorizationId);
+      if (a.status === 'EXPIRED') throw new PaymentsError('AUTHORIZATION_EXPIRED');
+      if (a.status === 'VOIDED') throw new PaymentsError('PREVIOUSLY_VOIDED');
       if (a.status !== 'CREATED') throw new PaymentsError('CANNOT_VOID', `authorization is ${a.status}`);
       a.status = 'VOIDED';
       await this.emit('PAYMENT.AUTHORIZATION.VOIDED', { id: a.id, custom_id: a.customId, status: 'VOIDED' });
@@ -228,6 +231,8 @@ export class MockPayPalGateway implements PaymentsGateway {
       if (a.status !== 'CREATED') throw new PaymentsError('CANNOT_REAUTHORIZE', `authorization is ${a.status}`);
       if (this.now() < a.honorPeriodEndsAt) throw new PaymentsError('REAUTHORIZE_TOO_EARLY', 'reauthorize is allowed from day 4');
       if (amountCents > a.amountCents) throw new PaymentsError('AMOUNT_EXCEEDS_AUTHORIZED');
+      const root = this.auths.get(a.parentId ?? a.id)!;
+      if (a.parentId || this.reauthorizedRoots.has(root.id)) throw new PaymentsError('REAUTHORIZATION_LIMIT', 'an authorization can be reauthorized once');
       if (simulateDecline) return { status: 'DECLINED', issue: 'INSTRUMENT_DECLINED' } as const;
       const t = this.now();
       const next: Auth = {
@@ -243,6 +248,8 @@ export class MockPayPalGateway implements PaymentsGateway {
         parentId: a.parentId ?? a.id,
       };
       this.auths.set(next.id, next);
+      this.reauthorizedRoots.add(root.id);
+      a.status = 'VOIDED'; // superseded by the reauthorization; captures must use the new id
       await this.emit('PAYMENT.AUTHORIZATION.CREATED', {
         id: next.id,
         custom_id: next.customId,

@@ -83,7 +83,13 @@ describe('MockPayPalGateway', () => {
     expect(r.status).toBe('AUTHORIZED');
     expect(r.authorizationId).not.toBe(a.authorizationId);
     expect(r.honorPeriodEndsAt).toBe(t + 3 * DAY);
-    const d = await gw.reauthorize(a.authorizationId, 2000, 'ra3', true);
+    // only once per authorization: the original is superseded, the reauth cannot be reauthorized again
+    await expect(gw.reauthorize(a.authorizationId, 2000, 'ra3')).rejects.toThrow();
+    t += 4 * DAY;
+    await expect(gw.reauthorize(r.authorizationId!, 2000, 'ra4')).rejects.toThrow('REAUTHORIZATION_LIMIT');
+    const b = await mitHold(2000, 'r-other');
+    t += 4 * DAY;
+    const d = await gw.reauthorize(b.authorizationId, 2000, 'ra5', true);
     expect(d).toMatchObject({ status: 'DECLINED', issue: 'INSTRUMENT_DECLINED' });
   });
 

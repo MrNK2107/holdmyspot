@@ -181,6 +181,8 @@ function draftReply(name: string, situation: string, f: Record<string, string>):
   switch (situation) {
     case 'excused':
       return `So sorry, ${first}. No charge, your hold is released. Want to rebook? ${f.slots ?? 'Any time next week works.'}`;
+    case 'received':
+      return `Thanks for letting me know, ${first}. I've passed it to ${f.owner ?? 'the owner'}; you'll hear back shortly. Nothing is charged meanwhile.`;
     case 'rebooked':
       return `Done! You're booked for ${f.appointment}. Same deal as before: a hold, not a charge.`;
     case 'approve_hold':

@@ -44,6 +44,9 @@ export interface Booking {
   authorizedAt?: number;
   captureId?: string;
   refundId?: string;
+  capturedCents?: number;
+  /** PayPal allows one reauthorization per authorization */
+  reauthorized?: boolean;
   refilledByBookingId?: string;
   refillOfBookingId?: string;
   approvalLink?: string;
