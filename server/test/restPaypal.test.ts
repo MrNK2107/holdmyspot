@@ -238,3 +238,15 @@ describe('PayPalRestGateway: capture outcomes (review 2026-11-02)', () => {
     expect(await g.capture({ requestId: 'c', authorizationId: 'A1', amountCents: 2000, finalCapture: true })).toMatchObject({ status: 'DECLINED' });
   });
 });
+
+describe('PayPalRestGateway: refund outcomes (review 2026-11-02)', () => {
+  it('a refund PayPal reports as FAILED or CANCELLED is an error, not a completed refund', async () => {
+    const { g } = gw([
+      TOKEN,
+      { method: 'POST', path: '/v2/payments/captures/C1/refund', status: 201, body: { id: 'R1', status: 'FAILED', amount: { value: '20.00' } } },
+      { method: 'POST', path: '/v2/payments/captures/C2/refund', status: 201, body: { id: 'R2', status: 'CANCELLED', amount: { value: '20.00' } } },
+    ]);
+    await expect(g.refund('C1', 2000, 'rf1')).rejects.toThrow('REFUND_FAILED');
+    await expect(g.refund('C2', 2000, 'rf2')).rejects.toThrow('REFUND_FAILED');
+  });
+});

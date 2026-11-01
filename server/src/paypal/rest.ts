@@ -251,6 +251,8 @@ export class PayPalRestGateway implements PaymentsGateway {
       amount: { currency_code: 'USD', value: centsToValue(amountCents) },
     });
     if (r.status >= 300) PayPalRestGateway.fail(r.status, r.json);
+    // no money went back: the engine must not record a refund (PENDING is a real refund that settles later)
+    if (r.json.status === 'FAILED' || r.json.status === 'CANCELLED') throw new PaymentsError('REFUND_FAILED', `refund ${r.json.id} is ${r.json.status}`);
     return { status: 'COMPLETED', refundId: r.json.id, amountCents: valueToCents(r.json.amount?.value ?? centsToValue(amountCents)) };
   }
 }
