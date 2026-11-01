@@ -327,3 +327,18 @@ describe('model calls are bounded in time', () => {
     expect(opts).toMatchObject({ timeout: 50 });
   });
 });
+
+describe('REST capture response without an amount', () => {
+  it('a COMPLETED capture whose body omits amount (minimal representation) is still recorded, at the requested amount', async () => {
+    const tokenRes = { status: 200, json: async () => ({}), text: async () => JSON.stringify({ access_token: 'T', expires_in: 32400 }) };
+    const g = new PayPalRestGateway({
+      clientId: 'id',
+      clientSecret: 's',
+      returnUrl: 'r',
+      cancelUrl: 'c',
+      now: () => 0,
+      fetch: async (url) => (url.endsWith('/v1/oauth2/token') ? tokenRes : { status: 201, json: async () => ({}), text: async () => JSON.stringify({ id: 'CAP9', status: 'COMPLETED', links: [] }) }),
+    });
+    expect(await g.capture({ requestId: 'r1', authorizationId: 'A1', amountCents: 1500, finalCapture: true })).toEqual({ status: 'COMPLETED', captureId: 'CAP9', amountCents: 1500 });
+  });
+});

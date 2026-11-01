@@ -223,7 +223,8 @@ export class PayPalRestGateway implements PaymentsGateway {
     if (r.json.status === 'DECLINED') return { status: 'DECLINED', issue: 'CAPTURE_DECLINED' };
     // FAILED means no money moved; PENDING (e.g. under review) is a real capture that settles later
     if (r.json.status === 'FAILED') return { status: 'DECLINED', issue: 'CAPTURE_FAILED' };
-    return { status: 'COMPLETED', captureId: r.json.id, amountCents: valueToCents(r.json.amount.value) };
+    // money has moved: never throw on a missing field here (the engine would show no charge and offer the card again)
+    return { status: 'COMPLETED', captureId: r.json.id, amountCents: r.json.amount?.value ? valueToCents(r.json.amount.value) : req.amountCents };
   }
 
   async void(authorizationId: string, requestId: string): Promise<{ status: 'VOIDED' }> {
