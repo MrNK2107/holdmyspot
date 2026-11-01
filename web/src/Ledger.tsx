@@ -187,9 +187,9 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
 
   const cols = useMemo<(ColDef<Row> | ColGroupDef<Row>)[]>(
     () => [
-      { field: 'client', headerName: 'Client', minWidth: 122, flex: 1, pinned: 'left' },
-      { field: 'start', headerName: 'When', minWidth: 172, flex: 1, sort: 'asc', valueFormatter: (p) => (p.value ? `${fmtDay(p.value)} ${fmtTime(p.value)}` : ''), filter: false },
-      { field: 'service', headerName: 'Service', width: 122 },
+      { field: 'client', headerName: 'Client', width: 140, pinned: 'left' },
+      { field: 'start', headerName: 'When', width: 160, sort: 'asc', valueFormatter: (p) => (p.value ? `${fmtDay(p.value)} ${fmtTime(p.value)}` : ''), filter: false },
+      { field: 'service', headerName: 'Service', width: 124 },
       {
         headerName: 'Money',
         children: [
@@ -207,14 +207,14 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
           { field: 'keptCents', headerName: 'Kept (net)', headerTooltip: 'Charged minus refunded: what the owner actually keeps', minWidth: 112, flex: 1, type: 'rightAligned', valueFormatter: (p) => (p.data?.id === 'total' ? usd(p.value ?? 0) : money(p)), filter: 'agNumberColumnFilter' },
         ],
       },
-      { field: 'state', headerName: 'Booking state', width: 160 },
-      { field: 'refill', headerName: 'Refill', width: 180, tooltipField: 'refill' },
+      { field: 'state', headerName: 'Booking state', width: 168 },
+      { field: 'refill', headerName: 'Refill', width: 162, tooltipField: 'refill' },
       {
         headerName: 'PayPal objects behind it',
         children: [
-          { field: 'authorizationId', headerName: 'Authorization', minWidth: 140, flex: 1, cellClass: 'mono' },
-          { field: 'captureId', headerName: 'Capture', minWidth: 148, flex: 1, cellClass: 'mono' },
-          { field: 'refundId', headerName: 'Refund', minWidth: 148, flex: 1, cellClass: 'mono' },
+          { field: 'authorizationId', headerName: 'Authorization', minWidth: 172, flex: 1, cellClass: 'mono' },
+          { field: 'captureId', headerName: 'Capture', minWidth: 172, flex: 1, cellClass: 'mono' },
+          { field: 'refundId', headerName: 'Refund', minWidth: 172, flex: 1, cellClass: 'mono' },
         ],
       },
       { field: 'policy', headerName: 'Policy', minWidth: 112, flex: 1, cellClass: 'mono' },
@@ -258,7 +258,7 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
             </div>
             <label className="ledger-search">
               <span className="sr-only">Search the ledger</span>
-              <input type="search" placeholder="Search: client, charged, PayPal id…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+              <input type="search" placeholder="Search: client, state, id…" value={filter} onChange={(e) => setFilter(e.target.value)} />
             </label>
             <button onClick={() => gridRef.current?.exportDataAsCsv({ fileName: `holdmyspot-${view}.csv` })}>Export CSV</button>
           </div>
