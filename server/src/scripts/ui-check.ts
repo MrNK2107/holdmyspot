@@ -69,7 +69,8 @@ try {
   // ---- desktop console + guided demo ----
   const desk = await browser.newPage({ viewport: { width: 1680, height: 1000 } });
   desk.on('pageerror', (e) => failures.push(`page error: ${e.message} ${(e.stack ?? '').split('\n').slice(0, 4).join(' <- ')}`));
-  desk.on('console', (m) => m.type() === 'error' && report.push(`console: ${m.text()}`));
+  // a console error on the desktop console fails the check (e.g. an AG Grid module missing for a column option)
+  desk.on('console', (m) => m.type() === 'error' && failures.push(`desktop console error: ${m.text().slice(0, 200)}`));
   const ws1 = await newWs();
   await desk.goto(`${base}/?ws=${ws1}&demo=1${owner(ws1)}`);
   await desk.getByRole('button', { name: /^Start:/ }).waitFor();

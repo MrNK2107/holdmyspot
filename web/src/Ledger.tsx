@@ -11,6 +11,7 @@ import {
   QuickFilterModule,
   RowStyleModule,
   TextFilterModule,
+  TooltipModule,
   themeQuartz,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
@@ -21,6 +22,7 @@ import { MONEY_TEXT, bookingStateLabel, ledgerAmounts } from './money';
 ModuleRegistry.registerModules([
   ClientSideRowModelModule,
   TextFilterModule,
+  TooltipModule,
   NumberFilterModule,
   QuickFilterModule,
   CsvExportModule,
