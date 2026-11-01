@@ -165,6 +165,7 @@ export function App() {
       {tab === 'console' ? (
         <main className="console">
           <section className="schedule">
+            <MoneyStrip s={s} />
             <WeekGrid s={s} selected={selected} onSelect={setSelected} />
             <Legend />
           </section>
@@ -243,6 +244,39 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
             })}
         </div>
       ))}
+    </div>
+  );
+}
+
+function MoneyStrip({ s }: { s: Snapshot }) {
+  const sum = (f: (b: Snapshot['bookings'][number]) => boolean) => s.bookings.filter(f).reduce((a, b) => a + b.holdCents, 0);
+  const held = sum((b) => b.money === 'held' || b.money === 'pending-refill');
+  const charged = sum((b) => b.money === 'captured');
+  const refilled = s.bookings.filter((b) => b.state === 'REFILLED').length;
+  const excused = s.bookings.filter((b) => b.state === 'EXCUSED').length;
+  const failed = s.bookings.filter((b) => b.money === 'failed').length;
+  return (
+    <div className="strip">
+      <div>
+        <span className="strip-n">{usd(held)}</span>
+        <span className="strip-l">on hold</span>
+      </div>
+      <div>
+        <span className="strip-n">{refilled}</span>
+        <span className="strip-l">late cancels refilled · $0 lost</span>
+      </div>
+      <div>
+        <span className="strip-n">{excused}</span>
+        <span className="strip-l">excused, no charge</span>
+      </div>
+      <div>
+        <span className="strip-n">{usd(charged)}</span>
+        <span className="strip-l">charged (owner approved)</span>
+      </div>
+      <div className={failed ? 'warn' : ''}>
+        <span className="strip-n">{failed}</span>
+        <span className="strip-l">holds to fix</span>
+      </div>
     </div>
   );
 }
