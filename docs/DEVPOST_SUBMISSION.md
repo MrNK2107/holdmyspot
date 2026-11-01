@@ -6,9 +6,22 @@ _Draft, not submitted. Fill the [TODO] items before submitting. Everything marke
 **Tagline:** Fair, without the fight. An AI front desk that holds no-show fees with PayPal and refills the slot before anyone is charged.
 **Links:** GitHub [TODO public repo URL] · Demo [TODO hosted URL, or "run locally: `npm install && npm run demo`"] · Video [TODO YouTube URL]
 
+## Gallery (upload in this order)
+
+Framed 1920x1080 images in `docs/gallery/` (regenerate with `npm run gallery`); the thumbnail is `docs/gallery/thumbnail.png` (3:2, 1200x800). Suggested captions:
+
+1. `01-week.png`: Priya's week. Every booking carries a $20 PayPal hold: authorized, never charged unless she taps.
+2. `02-policy.png`: Her policy, in her words. The AI compiles it into rules and asks about the gaps; code enforces it.
+3. `03-refill.png`: Late cancel, refilled. Eli's hold declined, Chris's authorized: Maya's hold voided, $0 fee.
+4. `04-agent-denied.png`: A text cannot move money. A prompt injection reaches for `create_refund`: denied, not in the agent's toolset.
+5. `05-owner-approval.png`: Only her tap charges. Alex no-showed; the engine proposes the $20 capture and Priya decides.
+6. `06-ledger.png`: Every cent, reconciled. AG Grid ledger with the PayPal authorization, capture and refund ids.
+
+All images show the PayPal simulator and the offline AI provider (labelled in the top bar). [TODO re-shoot on the live sandbox if keys arrive.]
+
 ## Inspiration
 
-Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's income to every no-show, and most of them never enforce their own cancellation policy. Charging a regular feels unfair, and when they do try, the card on file declines after the fact. When fees are enforced, it is often rigid: a client charged after their child got sick. We wanted the owner to get guaranteed funds *and* judgment: hold the fee before the visit, read the client's reason the way a person would, and try to refill the slot first so most late cancellations end with nobody losing.
+Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's income to every no-show. At nail studios about 1 booking in 25 is a no-show and 1 in 9 is cancelled, on a $73 median ticket (Zenoti, 2026 Beauty & Wellness Benchmark Report, summarised at https://www.zenoti.com/thecheckin/no-show-revenue-calculator). Enforcing their own cancellation policy is awkward: charging a regular feels unfair, and when they do try, the card on file declines after the fact. When fees are enforced, it is often rigid: a client charged after their child got sick. We wanted the owner to get guaranteed funds *and* judgment: hold the fee before the visit, read the client's reason the way a person would, and try to refill the slot first so most late cancellations end with nobody losing.
 
 ## What it does
 
@@ -30,7 +43,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **AI front desk** behind a provider interface: Claude through the Anthropic API with structured outputs, plus a deterministic offline provider for tests and keyless demos. The agent loop (`server/src/ai/agent.ts`) gets its tools from the engine per message as plain functions; a test fails the build if any AI module imports the payments or engine code, and agent tests check that a model asking only for money tools moves no money.
 - **Ledger:** AG Grid Community (`ag-grid-react`), lazy-loaded so the console stays light.
 - **Hosting:** a Render Blueprint (`render.yaml`, one free web service, keyless by default; a test checks it against the real scripts and health route).
-- **Testing:** 141 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
+- **Testing:** 144 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
 - **Guided demo:** `npm run demo` starts a seeded studio with a scripted clock; 13 beats show the whole week in under three minutes.
 
 ## PayPal APIs used

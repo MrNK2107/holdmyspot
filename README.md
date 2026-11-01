@@ -2,9 +2,24 @@
 
 **Fair, without the fight.** An AI front desk for solo appointment pros (nail techs, barbers, tutors) who book by text or Instagram DM. It turns a plain-English cancellation policy into rules, holds the fee with PayPal before each visit, reads "can't make it" messages, and tries to refill the slot from the waitlist before anyone is charged.
 
-> Status: work in progress for the PayPal "Build What's Next with PayPal and AI" hackathon. Runs end to end on a deterministic PayPal sandbox simulator; the real PayPal sandbox adapter is written and tested against recorded HTTP, pending sandbox keys.
+**The problem.** At nail studios about 1 booking in 25 is a no-show and 1 in 9 is cancelled ([Zenoti 2026 benchmark](https://www.zenoti.com/thecheckin/no-show-revenue-calculator); $73 median ticket). A solo owner either eats the empty chair or charges a regular whose kid was sick. Both feel bad.
 
-![Owner console](docs/screenshots/console-hero2-refilled.png)
+**What HoldMySpot does.** A $20 PayPal **authorization** (not a charge) sits behind every visit. When a client texts "can't make it", an AI agent reads the reason and *proposes*; a deterministic policy engine decides; the slot goes to the waitlist first; and money only moves when the owner taps. The agent has no payment tool at all.
+
+![Late cancel refilled: Maya pays $0, Chris's hold authorizes](docs/gallery/03-refill.png)
+
+**Look at these three things** (about 3 minutes, no keys: `npm install && npm run demo`, then open `/?demo=1`):
+
+1. **Refill first, fee last** (beats 7-9): a late cancel is offered to the waitlist; the slot fills only when the claimer's own PayPal hold authorizes, so the canceller pays $0.
+2. **A text cannot move money** (beat 10, *Agent trace* tab): a prompt injection makes the model reach for `create_refund`; it is denied because that tool does not exist in its toolset (offline, this attempt is a scripted red-team replay; the denial path is the same for a live model).
+3. **Every cent reconciled** (*Ledger* tab, AG Grid): each booking's PayPal authorization, capture and refund ids, every API call, and the exact Orders v2 / Payments v2 / Vault v3 request behind each step.
+
+> **Honest status:** payments run on a deterministic PayPal sandbox **simulator** (labelled in the UI). The real PayPal REST adapter is written and tested against recorded HTTP and its requests are previewed in the ledger; it has not yet run against the live sandbox (keys pending). The AI runs on a deterministic offline provider unless an Anthropic key is set. Built for the PayPal "Build What's Next with PayPal and AI" hackathon.
+
+| | |
+|---|---|
+| ![Agent trace](docs/gallery/04-agent-denied.png) | ![Owner approval](docs/gallery/05-owner-approval.png) |
+| ![Policy compiler](docs/gallery/02-policy.png) | ![AG Grid ledger](docs/gallery/06-ledger.png) |
 
 ## Run it in 5 minutes
 
@@ -14,6 +29,7 @@ npm run demo             # builds the web app, starts http://127.0.0.1:18080 (no
 npm test                 # server tests, incl. end-to-end tests over a real HTTP server
 npm run ui-check         # headless browser: plays the guided demo, axe accessibility checks, refreshes docs/screenshots
 npm run eval             # message reader / injection / waitlist evals
+npm run gallery          # headless browser: regenerates the framed Devpost images in docs/gallery
 ```
 
 Open `http://127.0.0.1:18080/?demo=1` for the **guided demo**: 13 beats, about 3 minutes, one press of → per beat (or `&autoplay=12`). The video script is in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md). `/book?ws=demo` is the client booking page. Or walk it yourself with the time-travel buttons:
