@@ -122,3 +122,26 @@ Goal: maximise judged score without keys (gallery, judge re-read fixes, cold-ope
 2. Upload `docs/gallery/*` to Devpost in the listed order with the captions in DEVPOST_SUBMISSION.md; thumbnail `docs/gallery/thumbnail.png`.
 3. Pending user decisions: PITCH.md, the create_refund replay, Render deploy, model name confirmation.
 4. Optional polish from the judge list not done: Agent Toolkit / MCP framing for the Agentic Commerce prize (needs real toolkit integration to be honest); the ledger's right-hand PayPal-id columns scroll off at 1680 px (by design: horizontal scroll).
+
+## 2026-11-02 pass 5 (01:06- IST, same branch, local only)
+
+Goal: the judge's remaining weak point, Agentic Commerce without the PayPal Agent Toolkit / MCP.
+
+### Done
+- **Research** -> `docs/AGENT_TOOLKIT.md` (cited): `@paypal/agent-toolkit` 1.11.0 (repo LICENSE Apache-2.0; npm package.json says ISC, noted), 47 tools in the installed build, read vs money-moving table, `@paypal/mcp` 1.8.1 (`--tools=` values), remote MCP URLs. Finding: the toolkit's `handleToolCall()` dispatches any method name regardless of `configuration.actions` (the filter only affects `getTools()`); the MCP server class does enforce (unregistered tool -> "not found"). Devpost page refused fetches; prize text taken from the PayPal blog ($5k honorable mention), flagged for the user to check.
+- **Design (option C):** owner's agent gets five toolkit READ tools (`paypal.list_transactions/get_order/get_refund/list_disputes/get_dispute`); money stays behind the code gate. Client-text agent gets none (least privilege).
+- **Implementation** `server/src/paypal/toolkit.ts` (`PayPalToolkitReader`): allow-list config, dispatch gate (refuses non-allow-listed names, cleans args), HTTP gate (axios adapter on the toolkit's own axios instance: GET + OAuth token POST only, only inside an AsyncLocalStorage HoldMySpot call; everything else 403 + logged). Simulator backend answers the toolkit's real requests from `MockPayPalGateway.readView()` (new, read-only copy; refunds now stored with ids). Sandbox backend wired via `toolkitCredentials` (untested, no keys). Toolkit loaded lazily (~110 MB RSS; eager loading pushed `npm test` over the 2 GB cap).
+- **Flag** `PAYPAL_AGENT_TOOLKIT`: unset = function calling (default), `mcp` = PayPal's MCP server class (`@paypal/agent-toolkit/mcp`) over the MCP SDK in-memory transport (`@modelcontextprotocol/sdk` 1.32.2 added as a direct dep), `off`.
+- **Agent**: `AgentTool.source` / `TraceStep.source`; offline planner confirms the capture via `paypal.list_transactions` before `propose_refund` (beat 13) and cross-checks the weekly summary. Agent trace tab lists the toolkit tools and, struck through, the toolkit money tools (`not on allow-list`).
+- **Tests** `server/test/toolkit.test.ts` (14): advertised == allow-list; all 42 other toolkit tools refused with zero HTTP; raw `handleToolCall('create_refund'/'pay_order')` blocked at the HTTP gate; stray axios call -> 403; PayPal-shaped reads; trace shows source + GET; **a scripted model asking for every toolkit money tool (prefixed and bare) gets all denied, 0 money ops, 0 toolkit HTTP**; client texts never offered toolkit tools; flag off; MCP tools/list == allow-list, MCP rejects money tools, MCP read works, owner agent in mcp mode. `assistant.test.ts` step lists updated. ui-check asserts the toolkit tools in the agent tab and on beat 13.
+- **Docs**: README (agent section, look-at-these point 2, config, honest list, tools), DEVPOST draft (PayPal APIs table row, How we used AI, What's next, Built with, 158 tests), `.env.example`. Gallery re-shot (04 shows the toolkit tools). PITCH.md and the create_refund replay untouched.
+
+### Verified
+- `npm test` -> 158 passing (19 files), peak 1.48 GB (was 1.05; toolkit + MCP SDK in the toolkit test worker). `npm run ui-check` passes (axe 0 violations, 14 screens), peak 1.05 GB. `npm run build` passes, 0.86 GB. `npm run gallery` 0.76 GB. `npm run eval`: injection money effects 0, 16 denied calls.
+- Note: one early probe (scratch script, before the HTTP gate existed in that process) sent one GET with a fake token to api.sandbox.paypal.com (401). No secrets involved; the gate now blocks any toolkit request outside a HoldMySpot call.
+
+### Next
+1. With sandbox keys: run the owner questions with `PAYMENTS=sandbox` (and once with `PAYPAL_AGENT_TOOLKIT=mcp`); Transaction Search can lag hours, so a fresh capture may be missing from `list_transactions`.
+2. Check the Devpost "Best Use of Agentic Commerce" wording; optionally add one DEMO_SCRIPT line for beat 13 ("checks PayPal through the Agent Toolkit").
+3. `npm audit` shows advisories in toolkit deps (`@langchain/core`, `@ai-sdk/provider-utils`) that our entry points do not load; revisit when the toolkit updates.
+4. Simulator ids fail the toolkit's MCP schema regexes for get_order/get_refund (documented); padding simulator ids would fix it but touches many tests/screenshots.
