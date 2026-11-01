@@ -43,7 +43,35 @@ export const DEFAULT_RULES: PolicyRules = {
   minConfidence: 0.75,
 };
 
+const RULE_KEYS = ['holdCents', 'freeCancelHours', 'lateCancelFeeCents', 'noShowFeeCents', 'excusedReasons', 'excusalLimit', 'protectedReasons', 'refillWaives', 'minConfidence'];
+const KNOWN_REASONS = new Set<string>([
+  'illness_self', 'illness_dependent', 'medical_emergency', 'bereavement', 'emergency_other', 'work', 'transport', 'forgot', 'no_reason', 'none',
+] satisfies CancelReason[]);
+
+/** Shape checks for rules that arrive over HTTP or from a model (types are not enforced at runtime). */
+function shapeErrors(r: unknown): string[] {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return ['rules must be an object'];
+  const o = r as Record<string, unknown>;
+  const errs: string[] = [];
+  const extra = Object.keys(o).filter((k) => !RULE_KEYS.includes(k));
+  if (extra.length) errs.push(`unknown rule field(s): ${extra.join(', ')}`);
+  for (const k of ['holdCents', 'freeCancelHours', 'lateCancelFeeCents', 'noShowFeeCents', 'minConfidence']) {
+    if (typeof o[k] !== 'number' || !Number.isFinite(o[k])) errs.push(`${k} must be a number`);
+  }
+  if (typeof o.refillWaives !== 'boolean') errs.push('refillWaives must be true or false');
+  for (const k of ['excusedReasons', 'protectedReasons']) {
+    const v = o[k];
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string' && KNOWN_REASONS.has(x))) errs.push(`${k} must be a list of known reasons`);
+  }
+  const lim = o.excusalLimit as { count?: unknown; months?: unknown } | undefined;
+  if (!lim || typeof lim !== 'object' || !Number.isInteger(lim.count) || (lim.count as number) < 0 || !Number.isInteger(lim.months) || (lim.months as number) < 1 || (lim.months as number) > 24)
+    errs.push('excusalLimit must be { count >= 0, months 1..24 }');
+  return errs;
+}
+
 export function validateRules(r: PolicyRules): string[] {
+  const shape = shapeErrors(r);
+  if (shape.length) return shape;
   const errs: string[] = [];
   const int = (n: number) => Number.isInteger(n) && n >= 0;
   if (!int(r.holdCents) || r.holdCents === 0) errs.push('holdCents must be a positive integer');

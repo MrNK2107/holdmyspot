@@ -40,3 +40,28 @@ describe('compile_policy spans are whitelisted', () => {
     expect(r.spans).toEqual([{ field: 'holdCents', text: '$20' }]);
   });
 });
+
+describe('POST /policy/approve validates the whole rule shape', () => {
+  const bad: Array<[string, Record<string, unknown>]> = [
+    ['missing excusalLimit', { excusalLimit: undefined }],
+    ['negative excusal count', { excusalLimit: { count: -1, months: 6 } }],
+    ['string hours', { freeCancelHours: '24' }],
+    ['string confidence', { minConfidence: '0.5' }],
+    ['non-boolean refillWaives', { refillWaives: 'no' }],
+    ['unknown reason', { excusedReasons: ['illness_self', 'vibes'] }],
+    ['reasons not a list', { protectedReasons: 'bereavement' }],
+    ['extra key', { holdCentsOverride: 1 }],
+  ];
+  for (const [name, patch] of bad) {
+    it(`rejects ${name} and keeps the live policy`, async () => {
+      const ws = new Workspaces();
+      await ws.create('demo');
+      const app = await buildApp({ workspaces: ws });
+      const before = ws.get('demo')!.engine.policy.version;
+      const rules = { ...structuredClone(DEFAULT_RULES), ...patch };
+      const r = await app.inject({ method: 'POST', url: '/api/ws/demo/policy/approve', payload: { rules, prose: 'x' } });
+      expect(r.statusCode).toBe(400);
+      expect(ws.get('demo')!.engine.policy.version).toBe(before);
+    });
+  }
+});
