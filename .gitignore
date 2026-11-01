@@ -12,3 +12,4 @@ coverage/
 *.db
 .vite/
 screenshots/tmp/
+ui-check-fail-*.png

@@ -76,7 +76,7 @@ try {
       .getByText(`Beat ${i} of 13`)
       .waitFor({ timeout: 8000 })
       .catch(async (e) => {
-        await desk.screenshot({ path: resolve(shots, `../ui-check-fail-beat${i}.png`) });
+        await desk.screenshot({ path: resolve(root, `ui-check-fail-beat${i}.png`) });
         throw new Error(`beat ${i} did not show (${failures.join('; ')}): ${e}`);
       });
     await desk.waitForTimeout(150);
