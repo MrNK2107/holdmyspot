@@ -153,6 +153,8 @@ export class Engine {
   private pendingSetups = new Map<string, string>();
   /** bookingId -> every authorization id seen for it (guards against late/duplicate events) */
   private knownAuths = new Map<string, Set<string>>();
+  /** authorizations this engine asked PayPal to void: their VOIDED webhooks are not an outside void */
+  private ownVoids = new Set<string>();
   private holdAttempts = new Map<string, number>();
   /** authorizations being (or already) reauthorized: their successor replaces them without a void */
   private reauthParents = new Set<string>();
@@ -460,6 +462,7 @@ export class Engine {
     if (isTerminal(b.state) || (b.state === 'PENDING_REFILL' && !b.authorizationId)) {
       // e.g. an approval that arrives after the booking was cancelled: release it right away
       try {
+        this.ownVoids.add(authorizationId);
         await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId));
         this.audit.add('paypal', `void late authorization ${authorizationId}: booking is ${b.state}`, { bookingId: b.id });
       } catch (err) {
@@ -473,12 +476,14 @@ export class Engine {
     const prev = b.authorizationId;
     b.authorizationId = authorizationId;
     b.authorizedAt = this.now();
+    b.holdVoided = undefined; // a fresh hold replaces one PayPal voided
     // PayPal authorizations are valid 29 days; a reauthorization keeps its parent's expiry
     if (!(prev && this.reauthParents.has(prev) && b.holdExpiresAt)) b.holdExpiresAt = this.now() + AUTH_VALIDITY;
     if (prev && prev !== authorizationId && !this.reauthParents.has(prev)) {
       // a fresh hold (e.g. the re-approval after a declined reauthorization) replaces one that is still
       // live at PayPal: release it, or the client would carry two holds and only one could ever be settled
       try {
+        this.ownVoids.add(prev);
         await this.gateway.void(prev, this.intentKey(b, 'void', prev));
         this.audit.add('paypal', `void replaced authorization ${prev} (now held by ${authorizationId})`, { bookingId: b.id });
       } catch (err) {
@@ -538,7 +543,22 @@ export class Engine {
     if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
     else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
     else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
+    else if (e.event_type === 'PAYMENT.AUTHORIZATION.VOIDED') this.onHoldVoided(b, e.resource.id);
     return 'processed';
+  }
+
+  /**
+   * PayPal voided the booking's current hold without HoldMySpot asking (e.g. the payer or PayPal released it).
+   * Nothing can be collected on it any more: show it, close an open charge card, and never offer a new one.
+   */
+  private onHoldVoided(b: Booking, authorizationId: string): void {
+    if (this.ownVoids.has(authorizationId) || b.authorizationId !== authorizationId || b.captureId || b.holdVoided || isTerminal(b.state)) return;
+    b.holdVoided = `PayPal voided hold ${authorizationId} outside HoldMySpot: nothing can be collected on it`;
+    this.audit.add('engine', `money: ${b.holdVoided}`, { bookingId: b.id });
+    const cards = this.openApprovals().filter((a) => a.bookingId === b.id && a.kind === 'capture');
+    for (const a of cards) a.resolved = 'stale';
+    if (cards.length && canTransition(b.state, 'EXCUSED')) this.setState(b, 'EXCUSED', 'the hold was voided at PayPal before the fee was charged; nothing collected');
+    this.emit('state');
   }
 
   /** A capture that later is denied (a PENDING capture under review) or reversed (e.g. a dispute): the fee is not collected. */
@@ -1008,8 +1028,9 @@ export class Engine {
   }
 
   private async voidHold(b: Booking, why: string): Promise<void> {
-    if (!b.authorizationId) return;
+    if (!b.authorizationId || b.holdVoided) return; // PayPal already voided it
     try {
+      this.ownVoids.add(b.authorizationId);
       await this.gateway.void(b.authorizationId, this.intentKey(b, 'void', b.authorizationId));
       this.audit.add('paypal', `void authorization ${b.authorizationId}: ${why}`, { bookingId: b.id });
     } catch (err) {
@@ -1187,6 +1208,11 @@ export class Engine {
       }
       o.status = 'closed';
     }
+    if (b.authorizationId && b.holdVoided) {
+      // PayPal voided the hold: there is nothing to charge, so no fee card
+      this.setState(b, 'EXCUSED', 'not refilled; the hold was voided at PayPal, so nothing can be collected');
+      return;
+    }
     if (!b.authorizationId) {
       // Late cancel with no hold in place: nothing to capture, so the fee is waived automatically.
       this.setState(b, 'EXCUSED', 'not refilled; no hold was in place, so the fee is waived');
@@ -1305,6 +1331,11 @@ export class Engine {
   /** Every capture path ends here, after an owner tap. */
   private async capture(b: Booking, feeCents: number): Promise<void> {
     if (!b.authorizationId) throw new Error('no authorization to capture');
+    if (b.holdVoided) {
+      this.audit.add('engine', `capture not attempted: ${b.holdVoided}`, { bookingId: b.id });
+      this.setState(b, 'EXCUSED', 'the hold was voided at PayPal before the fee was charged; nothing collected');
+      throw new StaleCardError(`${b.holdVoided}; nothing was sent to PayPal`);
+    }
     if (b.holdExpiresAt !== undefined && this.now() >= b.holdExpiresAt) {
       // every reauthorize/capture would fail from here on: settle it now instead of a card that fails on each tap
       const when = new Date(b.holdExpiresAt).toISOString().slice(0, 10);
@@ -1366,6 +1397,8 @@ export class Engine {
       // a booking that never had an authorization has no money at stake, whatever its state
       money: b.paymentIssue
         ? 'reversed'
+        : b.holdVoided && !b.captureId && !isTerminal(b.state)
+        ? 'voided'
         : b.refundId
         ? 'refunded'
         : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state)

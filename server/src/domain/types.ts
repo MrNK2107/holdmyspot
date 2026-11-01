@@ -55,6 +55,8 @@ export interface Booking {
   cancelledAt?: number;
   /** PayPal took back a captured fee (capture denied or reversed): it is no longer collected */
   paymentIssue?: string;
+  /** PayPal voided the current hold outside HoldMySpot (PAYMENT.AUTHORIZATION.VOIDED): nothing can be collected on it */
+  holdVoided?: string;
   lastLabel?: MessageLabel;
 }
 
