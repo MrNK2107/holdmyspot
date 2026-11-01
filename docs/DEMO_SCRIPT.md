@@ -19,7 +19,7 @@ Honesty line (keep it on screen or say it): *"Payments in this recording run on 
 
 | Time | Beat (press →) | On screen | Say (voice-over) |
 |---|---|---|---|
-| 0:00–0:15 | *(cold open, before pressing anything)* | Console, Monday 9 AM: the demo bar's who/problem card; the week grid, each visit with a money chip (**held $20** for this week, **wallet saved** for later ones); "Needs you: All quiet" | "Solo appointment pros lose a day's income to every no-show, and most never charge their own cancellation fee, because it feels unfair. HoldMySpot is an AI front desk that makes it fair, without the fight." |
+| 0:00–0:15 | *(cold open, before pressing anything)* | Console, Monday 9 AM: the demo bar's who/problem card; the week grid, each visit with a money chip (**held $20** for this week, **wallet saved** for later ones); "Needs you: All quiet" | "At nail studios, about one booking in twenty-five is a no-show and one in nine is cancelled.¹ Each no-show is an empty chair, and charging a regular whose kid is sick feels unfair. HoldMySpot is an AI front desk that makes it fair, without the fight." |
 | 0:15–0:27 | 1 · Priya's week | Money strip: **$… held, not charged** | "Priya runs a one-chair nail studio. Every booking carries a $20 PayPal hold: authorized, never charged unless she taps." |
 | 0:27–0:42 | 2 · Her policy, in her words | Policy tab: prose on the left with the compiled spans highlighted, compiled rules on the right, and the AI's question "Does a sick child count as an emergency?" (the guided demo compiles on open) | "She pastes the policy she already texts clients. The AI turns it into rules and asks about the gaps. She approves. Code, not the model, enforces it." |
 | 0:42–0:55 | 3 · Tue 2 PM: Jordan's hold declines | Clock jumps to Tue 2 PM; Jordan's Friday event turns red, **hold failed**; his phone shows a re-approval link | "72 hours before Jordan's visit we place the hold on his saved PayPal wallet. It declines, so he hears about it three days early, not at the door." |
@@ -34,6 +34,8 @@ Honesty line (keep it on screen or say it): *"Payments in this recording run on 
 | 2:27–2:37 | 12 · She taps Charge | Alex's chip turns red, **charged $20**; the panel shows the capture ID | "Nobody to refill, so Priya taps Charge, and the engine captures $20 from the authorization." |
 | 2:37–2:47 | 13 · Changed her mind: refund | The beat asks the front desk "Alex apologised, please refund her no-show fee": the agent card shows `find_booking` → `propose_refund` → **money gate** → **Priya tapped "refund"** → PayPal refund; Alex's chip turns **refunded $20**. If time allows, click the **Ledger** tab (AG Grid: authorization, capture and refund ids, totals row) | "Alex apologises. Priya just asks her front desk. The agent finds the capture and prepares the refund, but only her tap sends it. Every booking, PayPal id and API call is in the ledger." |
 | 2:45–2:52 | *(close)* | Strip + logo | "HoldMySpot. Fair, without the fight." |
+
+¹ Zenoti, *2026 Beauty & Wellness Benchmark Report*, as summarised on Zenoti's "No-show revenue calculator" page (The Check-In, 13 May 2026): nail studios 4% no-show rate (up from 1%), cancellation rate 11% (down from 16%), $73 median ticket. https://www.zenoti.com/thecheckin/no-show-revenue-calculator . Vendor data from its own platform; say "about" and show the source on screen as a lower-third.
 
 Total: about 2:54. If a take runs long, shorten beat 2 (the rules are already on screen) and the close.
 

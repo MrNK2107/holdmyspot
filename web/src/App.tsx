@@ -370,8 +370,8 @@ function DemoBar({
           <p className="demo-say">{current.say}</p>
         ) : (
           <p className="demo-say">
-            <strong>Who:</strong> one-chair studios that book by text and DM. <strong>Problem:</strong> a no-show is an empty chair and a lost day’s income, yet most owners never charge the fee
-            they wrote, because charging a regular with a sick kid feels unfair. <strong>HoldMySpot:</strong> an AI front desk that holds the fee with PayPal, reads the reason, refills the slot
+            <strong>Who:</strong> one-chair studios that book by text and DM. <strong>Problem:</strong> at nail studios about 1 in 25 bookings is a no-show and 1 in 9 is cancelled (Zenoti 2026
+            benchmark), each an empty chair, yet owners hesitate to charge the fee they wrote, because charging a regular with a sick kid feels unfair. <strong>HoldMySpot:</strong> an AI front desk that holds the fee with PayPal, reads the reason, refills the slot
             first, and charges only when the owner taps. Each step plays one scene on the PayPal simulator.
           </p>
         )}
