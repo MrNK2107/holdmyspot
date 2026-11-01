@@ -423,3 +423,17 @@ describe('message history is bounded', () => {
     expect(e.messages.some((m) => m.text.endsWith(`#${MAX_MESSAGES + 49}`))).toBe(true);
   });
 });
+
+describe('webhook route errors', () => {
+  it('a handler error answers 500 without the internal message (PayPal retries; details stay in the server log)', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    ws.routeWebhook = async () => {
+      throw new Error('internal detail: bk_7 state HELD');
+    };
+    const app = await buildApp({ workspaces: ws, webhookVerifier: async () => true });
+    const r = await app.inject({ method: 'POST', url: '/api/paypal/webhook', headers: { 'content-type': 'application/json' }, payload: JSON.stringify({ id: 'WH-1', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'X' } }) });
+    expect(r.statusCode).toBe(500);
+    expect(r.body).not.toContain('internal detail');
+  });
+});

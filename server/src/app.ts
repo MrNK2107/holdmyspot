@@ -290,7 +290,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       const raw = (req as unknown as { rawBody?: string }).rawBody;
       const ok = await opts.webhookVerifier(req.headers as Record<string, string | undefined>, req.body, raw).catch(() => false);
       if (!ok) return reply.code(401).send({ error: 'invalid webhook signature' });
-      return { result: await workspaces.routeWebhook(req.body) };
+      try {
+        return { result: await workspaces.routeWebhook(req.body) };
+      } catch (err) {
+        // 5xx makes PayPal redeliver; the reason stays in the server log, not the response
+        req.log.error({ err }, 'webhook handler failed');
+        return reply.code(500).send({ error: 'webhook handler failed' });
+      }
     });
   });
 
