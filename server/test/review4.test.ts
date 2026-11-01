@@ -263,3 +263,22 @@ describe('workspace creation and reset are rate limited (each seeds through the 
     expect(resets).toEqual([200, 200, 429]);
   });
 });
+
+describe('error responses do not leak internals', () => {
+  for (const [url, payload] of [
+    ['/api/ws/demo/book', undefined],
+    ['/api/ws/demo/book', { name: 123, serviceId: 'gel', start: 1 }],
+    ['/api/ws/demo/messages', undefined],
+    ['/api/ws/demo/bookings', undefined],
+    ['/api/ws/demo/approvals/x', undefined],
+  ] as const) {
+    it(`${url} with ${JSON.stringify(payload)} gets a plain 400`, async () => {
+      const ws = new Workspaces();
+      await ws.create('demo');
+      const app = await buildApp({ workspaces: ws });
+      const r = await app.inject({ method: 'POST', url, ...(payload ? { payload } : {}) });
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).not.toMatch(/Cannot read|undefined|is not a function|TypeError/);
+    });
+  }
+});

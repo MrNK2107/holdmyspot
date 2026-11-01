@@ -60,7 +60,10 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       const result = await workspaces.run(id, () => fn(w.engine, w));
       return { ok: true, result, state: w.engine.snapshot() };
     } catch (err) {
-      return reply.code(400).send({ ok: false, error: (err as Error).message, state: w.engine.snapshot() });
+      // our own refusals are plain Errors/PaymentsErrors; a JS runtime error (bad body shape) says nothing useful and leaks code
+      const internal = err instanceof TypeError || err instanceof RangeError || err instanceof SyntaxError || err instanceof ReferenceError;
+      if (internal) app.log.warn({ err }, 'request failed');
+      return reply.code(400).send({ ok: false, error: internal ? 'invalid request' : (err as Error).message, state: w.engine.snapshot() });
     }
   };
 
