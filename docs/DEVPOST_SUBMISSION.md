@@ -43,7 +43,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **AI front desk** behind a provider interface: Claude through the Anthropic API with structured outputs, plus a deterministic offline provider for tests and keyless demos. The agent loop (`server/src/ai/agent.ts`) gets its tools from the engine per message as plain functions; a test fails the build if any AI module imports the payments or engine code, and agent tests check that a model asking only for money tools moves no money.
 - **Ledger:** AG Grid Community (`ag-grid-react`), lazy-loaded so the console stays light.
 - **Hosting:** a Render Blueprint (`render.yaml`, one free web service, keyless by default; a test checks it against the real scripts and health route).
-- **Testing:** 164 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
+- **Testing:** 208 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
 - **Guided demo:** `npm run demo` starts a seeded studio with a scripted clock; 13 beats show the whole week in under three minutes.
 
 ## PayPal APIs used
@@ -79,6 +79,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **Late events.** Webhooks and buyer approvals can arrive after a booking was cancelled. The engine voids any authorization that shows up for a finished booking and ignores stale or duplicate events.
 - **A late cancel with no hold yet** (wallet never approved) used to just free the slot. It now follows the same refill-first path, and if nobody claims it the fee is waived automatically, because there is nothing to capture.
 - **Money review.** An independent review of the money engine found 11 bugs (refunds above the captured amount, double reauthorization, retry keys per attempt instead of per intent, …); each is fixed with a regression test.
+- **Adversarial money review.** A second, adversarial pass read the engine as an attacker and as an unlucky owner would, and found 26 more money-state bugs: an owner card left open after the booking moved on could void a hold; a fee could be computed from a policy the client never agreed to; a webhook could interleave with an owner tap; a capture PayPal later reversed still showed as collected; a charge after the 29-day authorization expiry failed on every tap; one workspace's owner questions could read another's sandbox transactions. Every one was reproduced with a failing test first, then fixed, so each is now a regression test. We count that as a strength: the money paths are the part most worth attacking, and they have been.
 
 ## Accomplishments we're proud of
 

@@ -17,6 +17,7 @@ HoldMySpot holds and captures real money (PayPal authorizations on a client's wa
 - **Anyone on the internet** hitting the HTTP API: forged PayPal webhooks, replayed webhooks, guessing another visitor's workspace.
 - **A manipulated or simply wrong model**: calling tools it should not have, inventing amounts or ids.
 - **The supply chain**: vulnerable npm packages (see the audit section below).
+- **Concurrency and PayPal itself** (not an attacker, but the main source of money bugs we found): a webhook arriving in the middle of an owner tap, an owner card left open while the booking moved on, PayPal reversing a capture, failing a refund, voiding a hold or letting it expire.
 
 ## 1. Prompt injection
 
@@ -41,12 +42,20 @@ Every PayPal call that moves money is made by the engine (`server/src/engine/eng
 - **Idempotency**: each money intent has one `PayPal-Request-Id` per booking + operation + target, so a retry never double-charges.
 - **PayPal Agent Toolkit**: three gates (allow-list config, a dispatch gate that refuses names outside the five read tools, and an HTTP gate on the toolkit's own axios instance that lets through only GET + the OAuth token request, only inside a HoldMySpot call). The raw toolkit would dispatch `create_refund` despite its config; the HTTP gate refuses the POST. In MCP mode, PayPal's MCP server class only registers the five read tools.
 
-Tests: `server/test/regressions.test.ts` (11 money-engine review findings), `server/test/flows.test.ts` (double refund refused), `server/test/toolkit.test.ts`, `server/test/e2e.test.ts`.
+- **One thing at a time per workspace.** Owner taps, `/paypal/return`, real and simulated webhooks and timer steps all queue on one per-workspace lock (`Workspaces.run`), so a webhook can never interleave with a tap that is waiting on PayPal.
+- **Stale cards move nothing.** Before any PayPal call, a card is checked against the booking's current state; a card the booking has outgrown is closed as stale.
+- **The booked policy, not today's.** Fees and caps come from the policy version (and hash) the client agreed to, and the capture invariant caps the amount at the fee for its kind (no-show or late cancel), not only at the hold.
+- **Which visit.** For a client with several visits, code picks the visit a text names (date, weekday, service, in `STUDIO_TIMEZONE`); a text naming two different visits gets a clarifying question and changes nothing.
+- **PayPal changes its mind.** `PAYMENT.CAPTURE.DENIED` / `REVERSED` mark the fee as not collected (no refund possible, open refund cards closed); `PAYMENT.REFUND.FAILED` stops showing the fee as refunded and raises a retry card with a new `PayPal-Request-Id`; a `PAYMENT.AUTHORIZATION.VOIDED` that HoldMySpot did not ask for marks the hold voided, closes an open charge card and never offers a new one.
+- **Expiry.** Each hold carries its 29-day expiry (a reauthorization keeps its parent's); a charge after it is settled up front with the reason, without a PayPal call. A hold that could not be released (void failed) is shown to the owner instead of claimed as released.
+- **Real-PayPal ids never repeat.** In sandbox mode request ids and `custom_id` carry a random per-engine run tag, so a restart cannot make PayPal replay the previous life's orders or captures.
+
+Tests: `server/test/regressions.test.ts` (11 findings of the first money review), `server/test/review2.test.ts` and `server/test/review3.test.ts` (26 findings of the adversarial review, each with a regression test), `server/test/pass7.test.ts` (outside void, studio-zone slots, two-visit texts), `server/test/flows.test.ts` (double refund refused), `server/test/toolkit.test.ts`, `server/test/e2e.test.ts`.
 
 ## 3. Webhook verification
 
 - `POST /api/paypal/webhook` **refuses every event (403) unless `PAYPAL_WEBHOOK_ID` is configured**, because an unverified `PAYMENT.AUTHORIZATION.CREATED` could fake a hold. With it, each event is checked with PayPal's `POST /v1/notifications/verify-webhook-signature` (`PayPalRestGateway.verifyWebhook` in `server/src/paypal/rest.ts`); anything but `SUCCESS` gets 401.
-- Events are **deduplicated** by event id and routed by `custom_id` (`<workspace>:<booking>`); an event for another workspace is ignored. Stale events (for a booking that already moved on) do not revive it.
+- Events are **deduplicated** by event id and routed by `custom_id` (`<workspace>:<booking>[:<run tag>]`); an event for another workspace, or an earlier run of this one, is ignored. Refund events carry no `custom_id`, so they go only to the workspace that created that refund. Stale events (for a booking that already moved on) do not revive it.
 - The webhook route keeps the **raw request body** (a JSON parser scoped to that route only) and embeds it byte for byte as `webhook_event` in the verification call, because PayPal verifies the exact bytes it signed and re-serialising parsed JSON can change them (`20.0` → `20`, spacing, key order). A body that is not JSON is a 400. Not yet run against live PayPal (no keys).
 
 Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, the verifier receives the exact raw bytes, 400 on non-JSON, duplicate event, unknown workspace), `server/test/restPaypal.test.ts` (raw event embedded verbatim), `server/test/security.test.ts` (workspace ids, message cap), `server/test/regressions.test.ts` (replayed and stale webhooks).
@@ -61,6 +70,7 @@ Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, 
 ## 5. HTTP surface
 
 - **Workspaces**: each visitor gets their own in-memory workspace. Visitor workspace ids now carry 48 random bits (`ws3-1f2e…`), so one visitor cannot guess and drive another's. The shared `demo` workspace is public by design. At most 100 workspaces (oldest evicted).
+- **Scoped toolkit reads.** With real PayPal credentials all workspaces share one sandbox account, so each workspace gets a scoped view of the one toolkit client: `get_order` / `get_refund` / a transaction lookup are refused before any request unless the id is that workspace's, `list_transactions` rows and disputes are filtered to its own objects, and each view has its own HTTP log. One visitor's owner questions cannot read another visitor's payments.
 - **No owner login.** Anyone with a workspace URL acts as its owner. Fine for a sandbox demo; a real deployment needs owner authentication before anything else.
 - The simulator approval page and the guided demo are refused outside simulator mode. Ids interpolated into the simulator page are stripped to `[A-Za-z0-9_-]`; error text on `/paypal/return` is stripped of `<>&`.
 - Fastify's default body limit (1 MiB) applies. No rate limiting yet (Render's edge only).
