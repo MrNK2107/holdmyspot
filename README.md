@@ -12,7 +12,7 @@
 
 1. **Refill first, fee last** (beats 7-9): a late cancel is offered to the waitlist; the slot fills only when the claimer's own PayPal hold authorizes, so the canceller pays $0.
 2. **A text cannot move money** (beat 10, *Agent trace* tab): a prompt injection makes the model reach for `create_refund`; it is denied because that tool does not exist in its toolset (offline, this attempt is a scripted red-team replay; the denial path is the same for a live model).
-3. **Every cent reconciled** (*Ledger* tab, AG Grid): each booking's PayPal authorization, capture and refund ids, every API call, and the exact Orders v2 / Payments v2 / Vault v3 request behind each step.
+3. **Every cent traced** (*Ledger* tab, AG Grid): each booking's PayPal authorization, capture and refund ids, every API call, and the exact Orders v2 / Payments v2 / Vault v3 request behind each step.
 
 > **Honest status:** payments run on a deterministic PayPal sandbox **simulator** (labelled in the UI). The real PayPal REST adapter is written and tested against recorded HTTP and its requests are previewed in the ledger; it has not yet run against the live sandbox (keys pending). The AI runs on a deterministic offline provider unless an Anthropic key is set. Built for the PayPal "Build What's Next with PayPal and AI" hackathon.
 

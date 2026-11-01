@@ -197,7 +197,7 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
               </p>
             )}
             <Gate run={current} />
-            <p className="muted small">Provider: {current.provider}. Every step is also in the audit log.</p>
+            <p className="muted small">Provider: {current.provider === 'fake' ? 'offline (deterministic stand-in for Claude)' : current.provider}. Every step is also in the audit log.</p>
           </section>
         )}
       </div>

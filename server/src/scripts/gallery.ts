@@ -104,11 +104,7 @@ try {
   // 4. Agent trace: the injected create_refund call is denied.
   await next(10);
   await open(`&tab=agent&sel=${(await ids()).taylor}`, '.trace-detail');
-  await page.locator('.trace-detail').scrollIntoViewIfNeeded();
-  await take({ file: '04-agent-denied.png', n: '04', title: 'A text cannot move money', sub: 'Prompt injection reaches for create_refund: denied, not in the agent toolset' }, async () => {
-    await page.evaluate(() => document.querySelector('.trace-detail')?.scrollIntoView({ block: 'start' }));
-    await page.evaluate(() => window.scrollBy(0, -12));
-  });
+  await take({ file: '04-agent-denied.png', n: '04', title: 'A text cannot move money', sub: 'Prompt injection reaches for create_refund: denied, not in the agent toolset' });
 
   // 5. Owner approval: the no-show charge waits for her tap.
   await next(11);
@@ -118,7 +114,7 @@ try {
   // 6. AG Grid ledger after charge + refund.
   await next(13);
   await open('&tab=ledger', '.ag-row');
-  await take({ file: '06-ledger.png', n: '06', title: 'Every cent, reconciled', sub: 'AG Grid ledger: holds, captures, refunds and the PayPal ids behind them' });
+  await take({ file: '06-ledger.png', n: '06', title: 'Every cent, traced', sub: 'AG Grid ledger: holds, captures, refunds and the PayPal ids behind them' });
 
   for (const s of shots) await frame(browser, resolve(raw, s.file), s.file, s.n, s.title, s.sub);
 

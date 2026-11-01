@@ -61,11 +61,19 @@ interface Row {
   heldCents: number;
   chargedCents: number;
   refundedCents: number;
+  keptCents: number;
   authorizationId: string;
   captureId: string;
   refundId: string;
   policy: string;
   refill: string;
+}
+
+/** Booking state in words; the money outcome wins where the raw state would contradict it. */
+function bookingStateLabel(b: BookingView): string {
+  if (b.refundId) return 'refunded';
+  if (b.refillOfBookingId && b.state === 'CANCELLED_EARLY' && !b.authorizationId) return 'claim closed (no hold)';
+  return b.state.replace(/_/g, ' ').toLowerCase();
 }
 
 function toRow(b: BookingView, s: Snapshot): Row {
@@ -76,11 +84,12 @@ function toRow(b: BookingView, s: Snapshot): Row {
     start: b.start,
     client: b.clientName,
     service: b.serviceName,
-    state: b.state.replace(/_/g, ' ').toLowerCase(),
+    state: bookingStateLabel(b),
     money: b.money,
     heldCents: b.money === 'held' || b.money === 'pending-refill' ? b.holdCents : 0,
     chargedCents: charged,
     refundedCents: b.refundId ? charged : 0,
+    keptCents: b.refundId ? 0 : charged,
     authorizationId: b.authorizationId ?? '',
     captureId: b.captureId ?? '',
     refundId: b.refundId ?? '',
@@ -165,6 +174,7 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
         heldCents: rows.reduce((a, r) => a + r.heldCents, 0),
         chargedCents: rows.reduce((a, r) => a + r.chargedCents, 0),
         refundedCents: rows.reduce((a, r) => a + r.refundedCents, 0),
+        keptCents: rows.reduce((a, r) => a + r.keptCents, 0),
         authorizationId: '',
         captureId: '',
         refundId: '',
@@ -192,12 +202,13 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
             getQuickFilterText: (p) => MONEY_TEXT[p.value] ?? p.value,
           },
           { field: 'heldCents', headerName: 'Held', minWidth: 80, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
-          { field: 'chargedCents', headerName: 'Charged', minWidth: 96, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter', cellClassRules: { 'cell-charged': (p) => !!p.value } },
-          { field: 'refundedCents', headerName: 'Refunded', minWidth: 104, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
+          { field: 'chargedCents', headerName: 'Charged', minWidth: 108, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter', cellClassRules: { 'cell-charged': (p) => !!p.value } },
+          { field: 'refundedCents', headerName: 'Refunded', minWidth: 112, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
+          { field: 'keptCents', headerName: 'Kept (net)', headerTooltip: 'Charged minus refunded: what the owner actually keeps', minWidth: 112, flex: 1, type: 'rightAligned', valueFormatter: (p) => (p.data?.id === 'total' ? usd(p.value ?? 0) : money(p)), filter: 'agNumberColumnFilter' },
         ],
       },
-      { field: 'state', headerName: 'Booking state', width: 132 },
-      { field: 'refill', headerName: 'Refill', width: 150 },
+      { field: 'state', headerName: 'Booking state', width: 160 },
+      { field: 'refill', headerName: 'Refill', width: 180, tooltipField: 'refill' },
       {
         headerName: 'PayPal objects behind it',
         children: [

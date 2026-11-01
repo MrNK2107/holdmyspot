@@ -17,6 +17,7 @@ describe('console money chip while the no-show fee waits for the owner', () => {
     expect(cap).toBeDefined();
     expect(alex.state).toBe('PENDING_REFILL');
     expect(chip()).toBe('held');
+    expect(cap!.prompt).toMatch(/^Alex Morgan didn't show \(Thu, Nov 5 11:00 AM\)\. Nobody to refill/);
     await e.resolveApproval(cap!.id, 'charge');
     expect(chip()).toBe('captured');
   });

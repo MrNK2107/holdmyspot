@@ -967,7 +967,9 @@ export class Engine {
     this.addApproval({
       kind: 'capture',
       bookingId: b.id,
-      prompt: `${this.client(b.clientId).name}'s spot wasn't refilled. Charge the fee from the hold?`,
+      prompt: b.cancelledAt
+        ? `${this.client(b.clientId).name} cancelled late (${this.slotLabel(b)}) and nobody took the spot. Charge the fee from their PayPal hold?`
+        : `${this.client(b.clientId).name} didn't show (${this.slotLabel(b)}). Nobody to refill the spot. Charge the fee from their PayPal hold?`,
       feeCents: b.cancelledAt ? lateFee : feeCents,
       options: ['charge', 'waive'],
     });

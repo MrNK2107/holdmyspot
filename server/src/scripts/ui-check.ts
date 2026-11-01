@@ -122,7 +122,7 @@ try {
   await desk.getByRole('button', { name: /^Ledger/ }).click();
   await desk.locator('.ag-row').first().waitFor({ timeout: 10000 });
   const ledgerText = (await desk.locator('.ledger-grid').textContent()) ?? '';
-  check(/refunded/.test(ledgerText) && /charged/.test(ledgerText) && /AUTH/.test(ledgerText), 'ledger grid lists money states and PayPal ids');
+  check(/refunded/.test(ledgerText) && /CAPTURE-/.test(ledgerText) && /AUTH/.test(ledgerText),'ledger grid lists money states and PayPal ids');
   check(/Total/.test(ledgerText), 'ledger grid has a totals row');
   await axe(desk, 'ledger (AG Grid)');
   await shot(desk, 'ledger.png');

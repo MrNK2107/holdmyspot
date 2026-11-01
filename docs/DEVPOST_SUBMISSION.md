@@ -15,7 +15,7 @@ Framed 1920x1080 images in `docs/gallery/` (regenerate with `npm run gallery`); 
 3. `03-refill.png`: Late cancel, refilled. Eli's hold declined, Chris's authorized: Maya's hold voided, $0 fee.
 4. `04-agent-denied.png`: A text cannot move money. A prompt injection reaches for `create_refund`: denied, not in the agent's toolset.
 5. `05-owner-approval.png`: Only her tap charges. Alex no-showed; the engine proposes the $20 capture and Priya decides.
-6. `06-ledger.png`: Every cent, reconciled. AG Grid ledger with the PayPal authorization, capture and refund ids.
+6. `06-ledger.png`: Every cent, traced. AG Grid ledger with the PayPal authorization, capture and refund ids.
 
 All images show the PayPal simulator and the offline AI provider (labelled in the top bar). [TODO re-shoot on the live sandbox if keys arrive.]
 

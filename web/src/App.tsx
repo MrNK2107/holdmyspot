@@ -160,7 +160,7 @@ export function App() {
           </span>
           <div>
             <h1 className="brand-name">HoldMySpot</h1>
-            <div className="brand-sub">{s.business} · front desk</div>
+            <div className="brand-sub">Studio: {s.business} (demo)</div>
           </div>
         </div>
         <nav className="tabs" aria-label="Views">
@@ -797,7 +797,7 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
           </button>
         </div>
         {spans.length > 0 && <p className="prose-preview" dangerouslySetInnerHTML={{ __html: highlighted }} />}
-        <h3>What clients see now (v{s.policy.version})</h3>
+        <h3>Live now (v{s.policy.version}): what clients see{merged ? "; your draft is not live yet" : ""}</h3>
         <p className="summary">{s.policy.summary}</p>
       </section>
       <section className="card">
@@ -813,7 +813,7 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
                 <tr><td>Free cancellation</td><td>{merged.freeCancelHours}+ hours ahead</td></tr>
                 <tr><td>Late cancel fee</td><td>{usd(merged.lateCancelFeeCents)}</td></tr>
                 <tr><td>No-show fee</td><td>{usd(merged.noShowFeeCents)}</td></tr>
-                <tr><td>Excused</td><td>{merged.excusedReasons.join(', ') || 'none'} ({merged.excusalLimit.count}× / {merged.excusalLimit.months} mo)</td></tr>
+                <tr><td>Excused</td><td>{merged.excusedReasons.length ? `${merged.excusedReasons.join(', ')} (${merged.excusalLimit.count}× / ${merged.excusalLimit.months} mo)` : 'not set yet: answer the question below'}</td></tr>
                 <tr><td>Always owner-reviewed</td><td>{merged.protectedReasons.join(', ')}</td></tr>
                 <tr><td>Refill waives fee</td><td>{merged.refillWaives ? 'yes' : 'no'}</td></tr>
               </tbody>

@@ -427,6 +427,14 @@ textarea {
   border-top: 1px solid var(--line);
   padding: 10px 0 4px;
 }
+.approval > button.linkish {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.approval > button.linkish:hover {
+  text-decoration: underline;
+}
 .approval.k-capture .fee {
   color: var(--danger);
   font-weight: 600;
