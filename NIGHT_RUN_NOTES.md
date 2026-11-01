@@ -208,3 +208,24 @@ Independent read of `server/src` (engine, policy/decide, gateway/mock/rest/ids, 
 ### Verified
 - `npm test` 184 passing (21 files), peak 1.42 GB / 2 GB. `npm run build` passes, 0.83 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB. `npm run eval` clean. Screenshot churn from ui-check reverted (content identical).
 - History note: early commits of this pass were written with CRLF by a Windows text-mode write; rewritten to LF on this local branch before anything else built on them (backup ref `refs/original/...` left by filter-branch).
+
+## 2026-11-02 review follow-up (03:00-03:15 IST, same branch, local only)
+
+Each suspected issue from "Review 2026-11-02" confirmed with a failing test first (`server/test/review3.test.ts`, 17 tests), then a minimal fix, one commit each, `npm run build` after every commit. All seven were real bugs; none turned out not to be. PITCH.md and the create_refund replay untouched.
+
+### Confirmed and fixed
+1. **Webhooks outside the lock** (`app.ts`): the per-workspace lock moved into `Workspaces.run`; HTTP actions, `/paypal/return`, real webhooks (`routeWebhook`) and the simulator's webhooks all queue on it. Test: a webhook sent during an owner tap that is waiting on PayPal now runs only after the tap finishes.
+2. **Visit matched by weekday/service only**: with Mon + Wed 4 + Wed 11 visits, "can't make it Wednesday" settled *Monday's* visit (tie -> fallback to the next visit). Now a tie goes to the nearest *named* visit, and a date ("the 11th", "Nov 11", "11 November") scores higher than a weekday/service (`bookingForText`). Dates use UTC like the rest of the matching.
+3. **`captureViolations` capped at the hold only**: new `kind` ('no_show' | 'late_cancel') caps the amount at that fee; `capture()` passes it. Test: a fee card altered to the full hold is blocked.
+4. **Shared sandbox toolkit reader read every workspace**: `PayPalToolkitReader.forWorkspace(scope)` gives each workspace a view of the one shared client (own HTTP log; `get_order`/`get_refund`/`list_transactions(transaction_id)` refused before any request unless the id is the workspace's; `list_transactions` rows filtered to its custom_ids/ids; disputes filtered by seller transaction id). `Engine.ownsCustomId()` / `paypalIds()`. Simulator workspaces stay unscoped (their simulator is per-workspace). Test: two workspaces on one simulated account.
+5. **Only AUTHORIZATION.CREATED handled**: `PAYMENT.CAPTURE.DENIED` / `PAYMENT.CAPTURE.REVERSED` for the booking's capture set `paymentIssue`, money chip `reversed` ("charge reversed"), not counted as charged, no refund possible, open refund cards closed. `PAYMENT.REFUND.FAILED` (matched by refund id; refund resources carry no custom_id, so `routeWebhook` finds the workspace that created the object) clears `refundId` and raises a retry card; the retry uses a new PayPal-Request-Id (`-retryN`), or PayPal would replay the failure. UI: `reversed` in api.ts/App.tsx/styles.css (left out of the legend strip, explained in the legend list).
+6. **End-of-day review at 23:59 UTC**: new `STUDIO_TIMEZONE` (IANA, validated in `config.ts`, default UTC so the demo is unchanged) -> `Engine.timeZone`; end-of-day uses `endOfLocalDay()` (Intl, DST-safe) and slot labels use the zone. Test: a 15:00 Los Angeles visit stays HELD at 16:30 local, review at local midnight. README + .env.example updated.
+7. **Charge after the 29-day expiry failed on every tap**: bookings carry `holdExpiresAt` (set when a hold is authorized; a reauthorization keeps its parent's). `capture()` checks it first: no PayPal call, booking -> EXCUSED ("the hold expired before the fee was charged; nothing collected"), card closed as stale with the reason.
+
+### Verified
+- `npm test` **199 passing** (22 files), peak 1.59 GB / 2 GB. `npm run build` passes after every commit, peak 0.86 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.06-1.12 GB / 2 GB. `npm run eval` injection money effects 0, 0.38 GB. ui-check screenshot churn (font antialiasing, random ids) reverted.
+
+### Still open / not verified
+- `PAYMENT.REFUND.FAILED` and the refund resource shape are written from the docs, not seen live (no keys). `PAYMENT.AUTHORIZATION.VOIDED` from outside (e.g. PayPal voiding a hold) is still only logged; a later capture fails closed.
+- `freeSlots` (10:00-18:00) and the weekday/date matching still use UTC day boundaries; with a non-UTC `STUDIO_TIMEZONE` they should move to the zone too.
+- A text naming two visits ("cancel Wed and Sat") picks the nearer one; a CLARIFY would be safer (changes seeded flows).
