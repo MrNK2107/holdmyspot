@@ -9,6 +9,9 @@ import { slotMatches } from '../domain/waitlist.js';
 import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
 import { type PayPalToolkitReader, TOOLKIT_MONEY_TOOLS, TOOLKIT_PACKAGE, TOOLKIT_PREFIX, TOOLKIT_VERSION } from '../paypal/toolkit.js';
 
+/** Client texts longer than this are cut before they reach the model or the audit log (an SMS thread, not a document). */
+export const MAX_MESSAGE_CHARS = 1000;
+
 export type OwnerMode = 'ask' | 'autopilot';
 
 export type Approval =
@@ -467,6 +470,7 @@ export class Engine {
 
   async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
     const c = this.client(clientId);
+    text = String(text ?? '').slice(0, MAX_MESSAGE_CHARS); // bounded model input and audit log
     this.messages.push({ id: this.nextId('msg'), at: this.now(), clientId, from: 'client', text });
     this.audit.add('message', `← ${c.name}: ${text}`);
     this.emit('message');

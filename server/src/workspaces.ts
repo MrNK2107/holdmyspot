@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { FakeLlmProvider } from './ai/fake.js';
 import { FrontDesk } from './ai/frontdesk.js';
 import type { LlmProvider } from './ai/provider.js';
@@ -44,7 +45,8 @@ export class Workspaces {
   /** Hosted demo safety: keep at most this many workspaces, evicting the oldest visitor workspace. */
   maxWorkspaces = 100;
 
-  async create(id = `ws${++this.seq}`): Promise<Workspace> {
+  // visitor workspace ids carry 48 random bits so one visitor cannot guess and drive another's workspace
+  async create(id = `ws${++this.seq}-${randomBytes(6).toString('hex')}`): Promise<Workspace> {
     while (this.map.size >= this.maxWorkspaces) {
       const oldest = [...this.map.keys()].find((k) => k !== 'demo');
       if (!oldest) break;
