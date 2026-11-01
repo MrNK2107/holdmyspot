@@ -38,3 +38,19 @@ describe('review 2026-11-02 follow-up', () => {
     await app.close();
   });
 });
+
+describe('which visit a text is about (several upcoming visits)', () => {
+  it('a weekday that two visits share means the nearer one, never an unnamed visit; a date picks its own week', async () => {
+    const w = await new Workspaces().create('t3');
+    const e = w.engine;
+    // Riley: Mon 2 Nov gel 15:00, Wed 4 Nov pedicure, Sat 7 Nov nail art (seed) + Wed 11 Nov gel
+    const wed11 = await e.createBooking({ clientId: 'riley', serviceId: 'gel', start: at(11, 15) });
+    const wed4 = [...e.bookings.values()].find((b) => b.clientId === 'riley' && b.start === at(4, 11))!;
+    expect(e.bookingForText('riley', "I can't make it on Wednesday, sorry")?.id).toBe(wed4.id);
+    expect(e.bookingForText('riley', 'please cancel my appointment on the 11th')?.id).toBe(wed11.id);
+    expect(e.bookingForText('riley', 'need to cancel Nov 11')?.id).toBe(wed11.id);
+    expect(e.bookingForText('riley', 'cancel Wednesday 11th please')?.id).toBe(wed11.id);
+    // nothing named: the next visit, as before
+    expect(e.bookingForText('riley', 'running 10 min late')?.start).toBe(at(2, 15));
+  });
+});

@@ -523,9 +523,10 @@ export class Engine {
   }
 
   /**
-   * The visit a client text is about. With several upcoming visits, a text that names a day or a service
-   * matching exactly one of them is about that one ("cancel my nail art on Saturday" must not cancel, or
-   * late-fee, Wednesday's pedicure). Otherwise the next visit, as before. Code, not the model, picks it.
+   * The visit a client text is about. With several upcoming visits, a text that names a date, a day or a
+   * service is about the visit that matches best ("cancel my nail art on Saturday" must not cancel, or
+   * late-fee, Wednesday's pedicure); a weekday two visits share means the nearer one, a date ("the 11th")
+   * its own week. Nothing named: the next visit, as before. Code, not the model, picks it.
    */
   bookingForText(clientId: string, text: string): Booking | undefined {
     const active = [...this.bookings.values()]
@@ -546,10 +547,21 @@ export class Engine {
       const s = this.services.get(id);
       return [id, ...(s?.name.toLowerCase().split(/[^a-z0-9]+/) ?? [])].filter((w) => w.length >= 3 && !GENERIC.has(w));
     };
-    const score = (b: Booking) => (named.has(dayOf(b.start)) ? 1 : 0) + (serviceWords(b.serviceId).some(said) ? 1 : 0);
+    // a date ("the 11th", "Nov 11", "11 November") tells two same-weekday visits apart
+    const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const mon = `(${MONTHS.join('|')})[a-z]*`;
+    const dates: Array<{ day: number; month?: number }> = [];
+    for (const m of t.matchAll(/(?<= )(\d{1,2})(?:st|nd|rd|th)(?= )/g)) dates.push({ day: Number(m[1]) });
+    for (const m of t.matchAll(new RegExp(`(?<= )${mon} (\\d{1,2})(?:st|nd|rd|th)?(?= )`, 'g'))) dates.push({ day: Number(m[2]), month: MONTHS.indexOf(m[1]) });
+    for (const m of t.matchAll(new RegExp(`(?<= )(\\d{1,2})(?:st|nd|rd|th)? (?:of )?${mon}(?= )`, 'g'))) dates.push({ day: Number(m[1]), month: MONTHS.indexOf(m[2]) });
+    const onDate = (ms: number) => {
+      const d = new Date(ms);
+      return dates.some((x) => x.day === d.getUTCDate() && (x.month === undefined || x.month === d.getUTCMonth()));
+    };
+    const score = (b: Booking) => (onDate(b.start) ? 2 : 0) + (named.has(dayOf(b.start)) ? 1 : 0) + (serviceWords(b.serviceId).some(said) ? 1 : 0);
     const best = Math.max(...active.map(score));
-    const top = active.filter((b) => score(b) === best);
-    return best > 0 && top.length === 1 ? top[0] : active[0];
+    // several equally good matches (a weekday two visits share): the nearest of them, never a visit the text did not name
+    return best > 0 ? active.find((b) => score(b) === best) : active[0];
   }
 
   async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
