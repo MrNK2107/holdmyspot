@@ -31,7 +31,7 @@ export class RequestPreview {
   ) {
     const capture: FetchLike = async (url, init) => {
       if (url.endsWith('/v1/oauth2/token')) {
-        return { status: 200, json: async () => ({ access_token: 'preview', expires_in: 3600 }), text: async () => '' };
+        return { status: 200, json: async () => ({ access_token: 'preview', expires_in: 3600 }), text: async () => JSON.stringify({ access_token: 'preview', expires_in: 3600 }) };
       }
       const { Authorization: _auth, ...headers } = init.headers;
       this.requests.push({

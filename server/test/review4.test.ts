@@ -5,6 +5,8 @@ import type { AiTask, AiTasks, LlmProvider } from '../src/ai/provider.js';
 import { DEFAULT_RULES } from '../src/domain/policy.js';
 import { buildApp } from '../src/app.js';
 import { Workspaces } from '../src/workspaces.js';
+import { PaymentsError } from '../src/paypal/gateway.js';
+import { PayPalRestGateway, type FetchLike } from '../src/paypal/rest.js';
 
 // Review round 2 (2026-11-02): HTTP surface, REST adapter, AI output and UI rendering.
 
@@ -125,5 +127,54 @@ describe('POST /reset only resets an existing workspace', () => {
     expect(r.statusCode).toBe(404);
     expect(ws.get('attacker-chosen')).toBeUndefined();
     expect((await app.inject({ method: 'POST', url: '/api/ws/demo/reset', payload: {} })).statusCode).toBe(200);
+  });
+});
+
+describe('PayPalRestGateway transport errors', () => {
+  const captureReq = { requestId: 'rq-cap-1', authorizationId: 'AUTH1', amountCents: 2000, finalCapture: true };
+  const make = (fetch: FetchLike, extra: Record<string, unknown> = {}) =>
+    new PayPalRestGateway({ clientId: 'id', clientSecret: 's', returnUrl: 'r', cancelUrl: 'c', fetch, now: () => 0, ...extra });
+  const tokenRes = { status: 200, json: async () => ({}), text: async () => JSON.stringify({ access_token: 'T', expires_in: 32400 }) };
+
+  it('a 401 on a cached token refreshes the token once and replays the call with the same PayPal-Request-Id', async () => {
+    const seen: Array<{ url: string; headers: Record<string, string> }> = [];
+    let captures = 0;
+    const g = make(async (url, init) => {
+      seen.push({ url, headers: init.headers });
+      if (url.endsWith('/v1/oauth2/token')) return tokenRes;
+      captures++;
+      if (captures === 1) return { status: 401, json: async () => ({}), text: async () => JSON.stringify({ name: 'AUTHENTICATION_FAILURE' }) };
+      return { status: 201, json: async () => ({}), text: async () => JSON.stringify({ id: 'CAP1', status: 'COMPLETED', amount: { value: '20.00' } }) };
+    });
+    const r = await g.capture(captureReq);
+    expect(r).toEqual({ status: 'COMPLETED', captureId: 'CAP1', amountCents: 2000 });
+    const caps = seen.filter((s) => s.url.includes('/capture'));
+    expect(caps).toHaveLength(2);
+    expect(caps.map((c) => c.headers['PayPal-Request-Id'])).toEqual(['rq-cap-1', 'rq-cap-1']);
+    expect(seen.filter((s) => s.url.endsWith('/v1/oauth2/token'))).toHaveLength(2);
+  });
+
+  it('a non-JSON error page maps to a PaymentsError with the HTTP status, not a SyntaxError', async () => {
+    const g = make(async (url) => (url.endsWith('/v1/oauth2/token') ? tokenRes : { status: 503, json: async () => ({}), text: async () => '<html>Service Unavailable</html>' }));
+    const err = await g.capture(captureReq).catch((e) => e);
+    expect(err).toBeInstanceOf(PaymentsError);
+    expect(String(err.message)).toContain('503');
+  });
+
+  it('a network failure maps to a PaymentsError', async () => {
+    const g = make(async (url) => {
+      if (url.endsWith('/v1/oauth2/token')) return tokenRes;
+      throw new TypeError('fetch failed');
+    });
+    const err = await g.capture(captureReq).catch((e) => e);
+    expect(err).toBeInstanceOf(PaymentsError);
+    expect(err.issue).toBe('NETWORK_ERROR');
+  });
+
+  it('a call PayPal never answers times out instead of holding the workspace lock forever', async () => {
+    const g = make(async (url) => (url.endsWith('/v1/oauth2/token') ? tokenRes : new Promise(() => undefined)), { timeoutMs: 50 });
+    const err = await g.capture(captureReq).catch((e) => e);
+    expect(err).toBeInstanceOf(PaymentsError);
+    expect(err.issue).toBe('TIMEOUT');
   });
 });

@@ -12,7 +12,7 @@ import {
   valueToCents,
 } from './gateway.js';
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   status: number;
   json(): Promise<any>;
   text(): Promise<string>;
@@ -26,6 +26,8 @@ export interface PayPalRestConfig {
   cancelUrl: string;
   fetch?: FetchLike;
   now?: () => number;
+  /** per request; a call PayPal never answers must not hold the workspace lock forever (default 20 s) */
+  timeoutMs?: number;
 }
 
 export const SANDBOX_BASE = 'https://api-m.sandbox.paypal.com';
@@ -38,6 +40,14 @@ const DECLINE_HEADER = JSON.stringify({ mock_application_codes: 'INSTRUMENT_DECL
 /** A request body that is already JSON text and must be sent byte for byte. */
 class RawJson {
   constructor(readonly text: string) {}
+}
+
+function parseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 function isJsonObject(text: string): boolean {
@@ -65,15 +75,39 @@ export class PayPalRestGateway implements PaymentsGateway {
   private async accessToken(): Promise<string> {
     if (this.token && this.token.expiresAt > this.now() + 60_000) return this.token.value;
     const basic = Buffer.from(`${this.cfg.clientId}:${this.cfg.clientSecret}`).toString('base64');
-    const res = await this.fetch(`${this.base}/v1/oauth2/token`, {
+    const res = await this.send(`${this.base}/v1/oauth2/token`, {
       method: 'POST',
       headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=client_credentials',
     });
     if (res.status !== 200) throw new PaymentsError('AUTHENTICATION_FAILURE', `oauth status ${res.status}`);
-    const j = await res.json();
+    const j = parseJson(res.text);
+    if (typeof j?.access_token !== 'string') throw new PaymentsError('AUTHENTICATION_FAILURE', 'oauth response has no access token');
     this.token = { value: j.access_token, expiresAt: this.now() + j.expires_in * 1000 };
     return this.token.value;
+  }
+
+  /** One HTTP exchange with a timeout; transport failures become PaymentsErrors (TIMEOUT / NETWORK_ERROR). */
+  private async send(url: string, init: { method: string; headers: Record<string, string>; body?: string }): Promise<{ status: number; text: string }> {
+    const ms = this.cfg.timeoutMs ?? 20_000;
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctl.abort();
+        reject(new PaymentsError('TIMEOUT', `no answer from PayPal in ${ms} ms`));
+      }, ms);
+    });
+    try {
+      const res = await Promise.race([this.fetch(url, { ...init, signal: ctl.signal }), timeout]);
+      const text = await Promise.race([res.text(), timeout]);
+      return { status: res.status, text };
+    } catch (err) {
+      if (err instanceof PaymentsError) throw err;
+      throw new PaymentsError('NETWORK_ERROR', (err as Error).message);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async call(
@@ -82,6 +116,7 @@ export class PayPalRestGateway implements PaymentsGateway {
     requestId: string | undefined,
     body?: unknown,
     extra: Record<string, string> = {},
+    retried = false,
   ): Promise<{ status: number; json: any }> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${await this.accessToken()}`,
@@ -91,9 +126,18 @@ export class PayPalRestGateway implements PaymentsGateway {
     };
     if (requestId) headers['PayPal-Request-Id'] = requestId;
     const payload = body === undefined ? undefined : body instanceof RawJson ? body.text : JSON.stringify(body);
-    const res = await this.fetch(`${this.base}${path}`, { method, headers, body: payload });
-    const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    const res = await this.send(`${this.base}${path}`, { method, headers, body: payload });
+    if (res.status === 401 && !retried) {
+      // cached token revoked or expired early: fetch a new one and replay once (same PayPal-Request-Id)
+      this.token = undefined;
+      return this.call(method, path, requestId, body, extra, true);
+    }
+    const json = res.text ? parseJson(res.text) : {};
+    if (json === undefined) {
+      // an HTML error page from an edge/proxy: keep the status, not the page
+      if (res.status >= 300) return { status: res.status, json: { name: res.status >= 500 ? 'UPSTREAM_ERROR' : 'UNEXPECTED_RESPONSE' } };
+      throw new PaymentsError('UNEXPECTED_RESPONSE', `HTTP ${res.status} non-JSON body`);
+    }
     return { status: res.status, json };
   }
 
