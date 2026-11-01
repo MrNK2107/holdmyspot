@@ -171,7 +171,7 @@ export const DEMO_BEATS: DemoBeat[] = [
   {
     id: 'alex-refund',
     title: 'Changed her mind: refund',
-    say: 'Alex apologises. Priya types "Alex apologised, refund her fee". The agent finds the capture and proposes the refund as a card; it cannot send money itself. Priya taps Refund and the engine refunds the capture.',
+    say: "Alex apologises. Priya asks her front desk; it checks the capture with PayPal's Agent Toolkit and prepares the refund. Only her tap sends it.",
     view: { tab: 'console', sel: 'alex', phone: 'alex' },
     run: async (e) => {
       await e.askAssistant('Alex apologised, please refund her no-show fee.');
