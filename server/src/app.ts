@@ -134,7 +134,10 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   app.post<{ Params: { ws: string }; Body: { to?: number; byMs?: number } }>('/api/ws/:ws/time', async (req, reply) =>
     act(req.params.ws, reply, async (e) => {
-      const target = req.body.to ?? e.now() + (req.body.byMs ?? 0);
+      // a non-number or absurd target would leave the clock NaN/unrepresentable and brick the workspace
+      const { to, byMs } = req.body ?? {};
+      const target = typeof to === 'number' ? to : typeof byMs === 'number' ? e.now() + byMs : NaN;
+      if (!Number.isFinite(target) || target < e.now() || target > e.now() + 400 * 86_400_000) throw new Error('time travel needs a target between now and 400 days ahead');
       return e.clock.advanceTo(target);
     }),
   );

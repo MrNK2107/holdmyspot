@@ -65,3 +65,28 @@ describe('POST /policy/approve validates the whole rule shape', () => {
     });
   }
 });
+
+describe('POST /time validates the target', () => {
+  for (const body of [{ to: 'abc' }, { to: 1e300 }, { byMs: 'x' }, { byMs: -5 }, {}]) {
+    it(`rejects ${JSON.stringify(body)} and leaves the clock a number`, async () => {
+      const ws = new Workspaces();
+      await ws.create('demo');
+      const app = await buildApp({ workspaces: ws });
+      const e = ws.get('demo')!.engine;
+      const before = e.now();
+      const r = await app.inject({ method: 'POST', url: '/api/ws/demo/time', payload: body });
+      expect(r.statusCode).toBe(400);
+      expect(e.now()).toBe(before);
+      expect((await app.inject('/api/ws/demo/state')).statusCode).toBe(200);
+    });
+  }
+  it('still travels to a valid time', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws });
+    const e = ws.get('demo')!.engine;
+    const to = e.now() + 3_600_000;
+    expect((await app.inject({ method: 'POST', url: '/api/ws/demo/time', payload: { to } })).statusCode).toBe(200);
+    expect(e.now()).toBe(to);
+  });
+});
