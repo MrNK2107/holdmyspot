@@ -90,3 +90,28 @@ describe('POST /time validates the target', () => {
     expect(e.now()).toBe(to);
   });
 });
+
+describe('POST /bookings validates the start time', () => {
+  for (const start of ['abc', '1700000000000', null, 1.5, -1]) {
+    it(`rejects start=${JSON.stringify(start)} without placing a hold`, async () => {
+      const ws = new Workspaces();
+      await ws.create('demo');
+      const app = await buildApp({ workspaces: ws });
+      const e = ws.get('demo')!.engine;
+      const n = e.bookings.size;
+      const r = await app.inject({ method: 'POST', url: '/api/ws/demo/bookings', payload: { clientId: 'sam', serviceId: 'gel', start } });
+      expect(r.statusCode).toBe(400);
+      expect(e.bookings.size).toBe(n);
+    });
+  }
+  it('rejects a visit that already started (it would hold the wallet and then ask about attendance)', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws });
+    const e = ws.get('demo')!.engine;
+    const n = e.bookings.size;
+    const r = await app.inject({ method: 'POST', url: '/api/ws/demo/bookings', payload: { clientId: 'sam', serviceId: 'gel', start: e.now() - 3_600_000 } });
+    expect(r.statusCode).toBe(400);
+    expect(e.bookings.size).toBe(n);
+  });
+});

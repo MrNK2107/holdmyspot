@@ -327,6 +327,8 @@ export class Engine {
   async createBooking(input: { clientId: string; serviceId: string; start: number; refillOf?: string }): Promise<Booking> {
     const svc = this.services.get(input.serviceId);
     if (!svc) throw new Error(`unknown service ${input.serviceId}`);
+    // a past or non-number start would place a hold for a visit that already happened (or NaN timers)
+    if (!Number.isSafeInteger(input.start) || input.start <= this.now()) throw new Error('start must be a future time (epoch ms)');
     const c = this.client(input.clientId);
     const b: Booking = {
       id: this.nextId('bk'),
