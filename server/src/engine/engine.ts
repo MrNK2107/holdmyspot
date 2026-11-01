@@ -650,7 +650,7 @@ export class Engine {
     if (r.status !== 'COMPLETED') throw new PaymentsError(r.issue);
     b.captureId = r.captureId;
     this.setState(b, 'CHARGED', `fee captured (${r.captureId})`);
-    await this.reply(b, 'charged', { fee: `$${(feeCents / 100).toFixed(0)}` });
+    await this.reply(b, b.cancelledAt ? 'charged' : 'charged_no_show', { fee: `$${(feeCents / 100).toFixed(0)}` });
   }
 
   /** Owner relents after a capture. */

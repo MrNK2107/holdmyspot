@@ -178,6 +178,8 @@ function draftReply(name: string, situation: string, f: Record<string, string>):
       return `Good news, ${first}: your spot was filled, so you pay $0. Your hold is released.`;
     case 'charged':
       return `Hi ${first}, we couldn't fill your spot, so the ${f.fee ?? 'cancellation'} fee from your hold was applied, per the policy you agreed to.`;
+    case 'charged_no_show':
+      return `Hi ${first}, we missed you today. Per the policy you agreed to, the ${f.fee ?? 'no-show'} fee from your hold was applied. Reply if something happened.`;
     case 'clarify':
       return `Hi ${first}, just to check: do you want to cancel your ${f.appointment ?? 'appointment'}, or move it?`;
     case 'owner_review':

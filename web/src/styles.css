@@ -288,7 +288,8 @@ textarea {
   right: 0;
   height: 2px;
   background: var(--accent);
-  z-index: 3;
+  z-index: 1;
+  pointer-events: none;
 }
 .now-line::before {
   content: '';
