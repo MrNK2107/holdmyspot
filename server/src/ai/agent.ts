@@ -36,10 +36,14 @@ export const MONEY_TOOLS_NOT_GIVEN = ['create_order (authorize)', 'capture_autho
 
 export const MAX_STEPS = 8;
 
-const short = (x: unknown) => {
+const clip = (x: unknown, max: number) => {
   const s = typeof x === 'string' ? x : JSON.stringify(x);
-  return s.length > 800 ? `${s.slice(0, 797)}…` : s;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 };
+/** what the trace shows */
+const short = (x: unknown) => clip(x, 800);
+/** what the model sees back (bounded so a tool cannot flood the context) */
+const forModel = (x: unknown) => clip(x, 6000);
 
 export class FrontDeskAgent {
   constructor(
@@ -53,7 +57,7 @@ export class FrontDeskAgent {
     /** records a step; may return the stored step so its result can be filled in after the tool runs */
     onStep: (s: Omit<TraceStep, 'n'>) => TraceStep | void,
     bookingId?: string,
-  ): Promise<{ history: AgentHistoryItem[]; finished: boolean }> {
+  ): Promise<{ history: AgentHistoryItem[]; finished: boolean; final?: Record<string, unknown> }> {
     const byName = new Map(tools.map((t) => [t.name, t]));
     const history: AgentHistoryItem[] = [];
     for (let i = 0; i < MAX_STEPS; i++) {
@@ -83,7 +87,7 @@ export class FrontDeskAgent {
       }
       if (tool.access === 'end') {
         onStep({ kind: 'tool', name, access: 'end', why, args, result: 'done' });
-        return { history, finished: true };
+        return { history, finished: true, final: args };
       }
       // record the call before it runs, so what the tool triggers (policy check, owner gate) is listed after it
       this.audit.add('ai', `agent → ${name}`, { bookingId, data: { args, why } });
@@ -95,7 +99,7 @@ export class FrontDeskAgent {
         result = { error: (err as Error).message };
       }
       if (rec) rec.result = short(result);
-      history.push({ tool: name, argsJson: JSON.stringify(args), result: short(result) });
+      history.push({ tool: name, argsJson: JSON.stringify(args), result: forModel(result) });
     }
     return { history, finished: false };
   }

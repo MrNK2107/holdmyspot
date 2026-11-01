@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AgentTraceCard, AgentTraceView } from './AgentTrace';
+import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
 import { Api, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
 
 // AG Grid is only loaded when the ledger tab opens
@@ -260,6 +260,7 @@ export function App() {
           </section>
           <aside className="side" aria-label="Approvals and booking details">
             <Approvals s={s} busy={busy} onResolve={(id, c) => run(() => api.resolve(id, c))} onSelect={setSelected} />
+            <AskFrontDesk s={s} busy={busy} onAsk={(t) => api.ask(t)} onState={setS} />
             <AgentTraceCard s={s} selected={selected} onOpen={() => setTab('agent')} />
             {sel ? (
               <BookingPanel b={sel} s={s} api={api} busy={busy} onRefund={() => run(() => api.refund(sel.id))} onApprove={(o) => run(() => api.simApprove(o))} />
@@ -527,6 +528,8 @@ function Approvals({
     waive: 'Waive',
     excuse: 'Excuse (no charge)',
     refill_then_charge: 'Refill, then charge',
+    refund: 'Refund',
+    keep: 'Keep the fee',
   };
   return (
     <div className="card approvals">
@@ -554,6 +557,7 @@ function Approvals({
               {a.prompt}
             </button>
             {a.kind === 'capture' && <div className="fee">Fee {usd(a.feeCents ?? 0)} from the existing hold</div>}
+            {a.kind === 'refund' && <div className="fee">Refund {usd(a.feeCents ?? 0)} to the client's PayPal. Prepared by the front desk agent; only your tap sends it.</div>}
             <div className="actions">
               {a.options.map((o) => (
                 <button key={o} disabled={busy} className={o === a.suggested || o === 'arrived' ? 'primary' : o === 'charge' ? 'danger' : ''} onClick={() => onResolve(a.id, o)}>

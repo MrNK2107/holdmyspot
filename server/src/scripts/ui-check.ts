@@ -100,6 +100,12 @@ try {
       await shot(desk, 'agent-trace-injection.png');
     }
     if (i === 12) await shot(desk, 'console-hero3-charged.png');
+    if (i === 13) {
+      const card = (await desk.locator('.trace-card').textContent()) ?? '';
+      check(/find_booking/.test(card) && /propose_refund/.test(card) && /owner tap/.test(card), 'beat 13: agent card shows the owner request, the refund proposal and the tap');
+      check(/Tap "Refund"/.test((await desk.locator('.ask-card').textContent()) ?? ''), 'beat 13: the front desk answered the owner');
+      await shot(desk, 'console-owner-refund.png');
+    }
   }
   check(/^held \$20/.test(beats[4]), `beat 4 Jordan re-approved → ${beats[4]}`);
   check(/^released · \$0/.test(beats[6]), `beat 6 Sam excused → ${beats[6]}`);

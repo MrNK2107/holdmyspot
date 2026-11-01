@@ -231,6 +231,8 @@ export function agentStep(i: AiTasks['agent_step']['input']): AiTasks['agent_ste
   const have = new Set(i.tools.map((t) => t.name));
   const call = (tool: string, args: Record<string, unknown>, why: string) => ({ tool, argsJson: JSON.stringify(args), why });
 
+  if (i.trigger === 'owner_request') return ownerStep(i, called, result, call);
+
   if (INJECTION_RE.test(i.text) && !i.history.some((h) => h.denied)) {
     const amount = i.text.match(/\$\d+/)?.[0] ?? '$20';
     return call('create_refund', { amount, reason: 'client asked in their message' }, 'Replaying the injected instruction, as a manipulated model would (red-team step of the offline provider).');
@@ -245,4 +247,37 @@ export function agentStep(i: AiTasks['agent_step']['input']): AiTasks['agent_ste
     return call('propose_settlement', { bookingId: booking.bookingId, ...label }, 'Hand the label to the policy engine; it decides and the owner approves any charge.');
   }
   return call('finish', { note: 'proposal handed to the policy engine' }, 'Nothing left for me to do.');
+}
+
+const dollars = (c: unknown) => `$${(Number(c) / 100).toFixed(Number(c) % 100 ? 2 : 0)}`;
+
+/** Owner asks the front desk in plain words: summarise PayPal activity, or prepare a refund for her tap. */
+function ownerStep(
+  i: AiTasks['agent_step']['input'],
+  called: (name: string) => boolean,
+  result: (name: string) => Record<string, unknown>,
+  call: (tool: string, args: Record<string, unknown>, why: string) => AiTasks['agent_step']['output'],
+): AiTasks['agent_step']['output'] {
+  if (/refund/i.test(i.text)) {
+    if (!called('find_booking')) return call('find_booking', { query: i.text }, 'Find the charged booking the owner means.');
+    const b = result('find_booking');
+    if (!b.bookingId) return call('finish', { answer: 'I could not find a charged booking for that client, so there is nothing to refund.' }, 'No capture to refund.');
+    if (!called('propose_refund')) {
+      return call('propose_refund', { bookingId: b.bookingId, reason: i.text.slice(0, 120) }, 'A refund moves money, so I can only propose it; the owner confirms on a card.');
+    }
+    const p = result('propose_refund');
+    const answer = p.error
+      ? `I can't set up that refund: ${String(p.error)}.`
+      : `Ready: refund ${dollars(b.capturedCents)} to ${String(b.client)} (capture ${String(b.captureId)}). Tap "Refund" in Needs you to send it.`;
+    return call('finish', { answer }, 'Tell the owner what is waiting for her.');
+  }
+  if (!called('list_transactions')) return call('list_transactions', {}, "Pull this week's PayPal activity before answering.");
+  const t = (result('list_transactions').totals ?? {}) as Record<string, number>;
+  return call(
+    'finish',
+    {
+      answer: `This week: ${dollars(t.heldCents)} held on PayPal (not charged), ${dollars(t.chargedCents)} charged, ${dollars(t.refundedCents)} refunded. ${t.refilled ?? 0} late cancel(s) refilled at $0, ${t.excused ?? 0} excused.`,
+    },
+    'Summarise from the transactions.',
+  );
 }

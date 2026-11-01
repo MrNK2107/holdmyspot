@@ -22,7 +22,8 @@ export type Approval =
       suggested: 'excuse' | 'refill_then_charge';
       options: ['excuse', 'refill_then_charge'];
       resolved?: string;
-    };
+    }
+  | { id: string; kind: 'refund'; bookingId: string; createdAt: number; prompt: string; feeCents: number; suggested: 'refund'; options: ['refund', 'keep']; resolved?: string };
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 export type NewApproval = DistributiveOmit<Approval, 'id' | 'createdAt'>;
@@ -62,6 +63,8 @@ export interface AgentRun {
   bookingId?: string;
   provider: string;
   steps: TraceStep[];
+  /** owner requests: the agent's reply */
+  answer?: string;
   /** where money stands after the run */
   gate: { kind: 'none' | 'auto_release' | 'owner_approval' | 'refill' | 'code'; summary: string; approvalId?: string; resolved?: string };
 }
@@ -581,6 +584,106 @@ export class Engine {
     return { label, decision: d };
   }
 
+  /**
+   * The owner asks the front desk in plain words ("how did this week go?", "Alex apologised, refund her").
+   * Same agent loop, owner toolset: read PayPal activity, find a booking, and *propose* a refund, which
+   * becomes a card the owner taps. The agent still has no tool that moves money.
+   */
+  async askAssistant(text: string): Promise<{ answer: string; run: AgentRun }> {
+    const ask = String(text ?? '').slice(0, 300);
+    if (!ask.trim()) throw new Error('ask the front desk something');
+    const run: AgentRun = {
+      id: this.nextId('run'),
+      at: this.now(),
+      clientId: 'owner',
+      clientName: `${this.ownerName} (owner)`,
+      text: ask,
+      provider: this.frontdesk.providerName,
+      steps: [],
+      gate: { kind: 'none', summary: 'answered; no money moved' },
+    };
+    this.agentRuns.push(run);
+    if (this.agentRuns.length > 60) this.agentRuns.shift();
+    this.audit.add('owner', `${this.ownerName} asked the front desk: ${ask}`);
+    const charged = () => [...this.bookings.values()].filter((b) => b.state === 'CHARGED' && b.captureId);
+    let card: Approval | undefined;
+    const tools: AgentTool[] = [
+      {
+        name: 'list_transactions',
+        access: 'read',
+        description: "This week's PayPal objects per booking (authorization, capture, refund) and totals.",
+        run: async () => {
+          const s = this.snapshot();
+          const sum = (f: (b: (typeof s.bookings)[number]) => number) => s.bookings.reduce((a, b) => a + f(b), 0);
+          return {
+            totals: {
+              heldCents: sum((b) => (b.money === 'held' || b.money === 'pending-refill' ? b.holdCents : 0)),
+              chargedCents: sum((b) => (b.captureId ? (b.capturedCents ?? 0) : 0)),
+              refundedCents: sum((b) => (b.refundId ? (b.capturedCents ?? 0) : 0)),
+              refilled: s.bookings.filter((b) => b.state === 'REFILLED').length,
+              excused: s.bookings.filter((b) => b.state === 'EXCUSED').length,
+            },
+            transactions: s.bookings
+              .filter((b) => b.authorizationId || b.captureId)
+              .map((b) => ({ bookingId: b.id, client: b.clientName, money: b.money, authorizationId: b.authorizationId, captureId: b.captureId, refundId: b.refundId })),
+          };
+        },
+      },
+      {
+        name: 'find_booking',
+        access: 'read',
+        description: 'Find the most recent charged booking for a client named in the query (first or full name).',
+        run: async (args) => {
+          const q = String(args.query ?? args.client ?? '').toLowerCase();
+          const b = charged()
+            .filter((x) => {
+              const name = this.client(x.clientId).name.toLowerCase();
+              return q.includes(name) || q.split(/\W+/).includes(name.split(' ')[0]);
+            })
+            .sort((x, y) => y.start - x.start)[0];
+          if (!b) return { bookingId: null };
+          return { bookingId: b.id, client: this.client(b.clientId).name, when: this.slotLabel(b), capturedCents: b.capturedCents, captureId: b.captureId, refunded: !!b.refundId };
+        },
+      },
+      {
+        name: 'propose_refund',
+        access: 'propose',
+        description: 'Prepare a full refund of a captured fee as a card for the owner to tap. Does not refund anything itself.',
+        run: async (args) => {
+          const b = this.bookings.get(String(args.bookingId ?? ''));
+          if (!b || b.state !== 'CHARGED' || !b.captureId) return { error: 'that booking has no captured fee' };
+          if (b.refundId) return { error: 'that fee is already refunded' };
+          const open = this.openApprovals().find((a) => a.kind === 'refund' && a.bookingId === b.id);
+          if (open) return { status: 'awaiting_owner', approvalId: open.id };
+          const fee = b.capturedCents ?? b.holdCents;
+          card = this.addApproval({
+            kind: 'refund',
+            bookingId: b.id,
+            prompt: `Front desk proposes: refund ${this.client(b.clientId).name}'s ${`$${(fee / 100).toFixed(0)}`} fee (capture ${b.captureId}).`,
+            feeCents: fee,
+            suggested: 'refund',
+            options: ['refund', 'keep'],
+          });
+          run.bookingId = b.id;
+          return { status: 'awaiting_owner', approvalId: card.id };
+        },
+      },
+      { name: 'finish', access: 'end', description: 'End the turn. args: {"answer": "<short reply to the owner>"}', run: async () => ({}) },
+    ];
+    const out = await this.traced(run, () =>
+      this.frontdesk.agent.run({ trigger: 'owner_request', clientName: this.ownerName, text: ask }, tools, (st) => {
+        const rec = { ...st, n: run.steps.length + 1 };
+        run.steps.push(rec);
+        return rec;
+      }),
+    );
+    const answer = String(out.final?.answer ?? '').slice(0, 400) || 'Sorry, I could not finish that. Nothing was changed.';
+    if (card) run.gate = { kind: 'owner_approval', summary: `waiting for ${this.ownerName}'s tap: refund / keep`, approvalId: card.id };
+    run.answer = answer;
+    this.emit('message');
+    return { answer, run };
+  }
+
   private startRun(clientId: string, text: string, bookingId?: string): AgentRun {
     const run: AgentRun = {
       id: this.nextId('run'),
@@ -922,6 +1025,9 @@ export class Engine {
     } else if (a.kind === 'capture') {
       if (choice === 'charge') await this.capture(b, a.feeCents);
       else await this.excuse(b, 'owner waived the fee', { waiver: true });
+    } else if (a.kind === 'refund') {
+      if (choice === 'refund') await this.refund(b.id);
+      else this.audit.add('owner', `${this.ownerName} kept the fee; no refund`, { bookingId: b.id });
     }
   }
 

@@ -4,7 +4,7 @@ import { type AgentRun, type Snapshot, type TraceStep, fmtDay, fmtTime } from '.
 const ACCESS_LABEL: Record<string, string> = {
   read: 'read only',
   model: 'model · label only',
-  propose: 'proposal → policy engine',
+  propose: 'proposal only, no money',
   end: 'end turn',
 };
 
@@ -60,7 +60,7 @@ function Gate({ run }: { run: AgentRun }) {
   return (
     <div className={`trace-gate g-${run.gate.kind}${run.gate.resolved ? ' resolved' : ''}`}>
       <strong>{run.gate.resolved ? `Owner chose “${run.gate.resolved.replace(/_/g, ' ')}”` : GATE_LABEL[run.gate.kind]}</strong>
-      {run.gate.summary && <span> · {run.gate.summary}</span>}
+      {run.gate.resolved ? <span> · the engine acted on the tap (see the PayPal step above)</span> : run.gate.summary && <span> · {run.gate.summary}</span>}
     </div>
   );
 }
@@ -136,6 +136,20 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
             </ul>
           </div>
           <div>
+            <h3>When {s.owner} asks it something</h3>
+            <ul>
+              <li>
+                <code>list_transactions</code> <span className="trace-tag acc-read">read only</span>
+              </li>
+              <li>
+                <code>find_booking</code> <span className="trace-tag acc-read">read only</span>
+              </li>
+              <li>
+                <code>propose_refund</code> <span className="trace-tag acc-propose">proposal → owner card</span>
+              </li>
+            </ul>
+          </div>
+          <div>
             <h3>Tools it does not have</h3>
             <ul>
               {(s.agentToolsNotGiven ?? []).map((t) => (
@@ -177,11 +191,84 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
             </h2>
             <p className="trace-msg">“{current.text}”</p>
             <Steps run={current} />
+            {current.answer && (
+              <p className="trace-answer">
+                <strong>Reply to {s.owner}:</strong> {current.answer}
+              </p>
+            )}
             <Gate run={current} />
             <p className="muted small">Provider: {current.provider}. Every step is also in the audit log.</p>
           </section>
         )}
       </div>
     </main>
+  );
+}
+
+const ASK_EXAMPLES = ['How did this week go?', 'Alex apologised, refund her fee'];
+
+/** The owner talks to the same agent. Anything that would move money comes back as a card to tap. */
+export function AskFrontDesk({
+  s,
+  busy,
+  onAsk,
+  onState,
+}: {
+  s: Snapshot;
+  busy: boolean;
+  onAsk: (text: string) => Promise<{ state: Snapshot; result: { answer: string } }>;
+  onState: (s: Snapshot) => void;
+}) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const last = (s.agentRuns ?? []).find((r) => r.clientId === 'owner');
+  const send = async (t: string) => {
+    if (!t.trim()) return;
+    setSending(true);
+    setErr(null);
+    try {
+      const r = await onAsk(t);
+      onState(r.state);
+      setText('');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <section className="card ask-card" aria-label="Ask your front desk">
+      <h2>Ask your front desk</h2>
+      <form
+        className="ask-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(text);
+        }}
+      >
+        <label className="sr-only" htmlFor="ask-input">
+          Ask the front desk agent
+        </label>
+        <input id="ask-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. refund Alex, or how did this week go?" maxLength={300} />
+        <button className="primary" disabled={busy || sending || !text.trim()}>
+          {sending ? 'Asking…' : 'Ask'}
+        </button>
+      </form>
+      <div className="ask-examples">
+        {ASK_EXAMPLES.map((q) => (
+          <button key={q} className="ask-chip" disabled={busy || sending} onClick={() => send(q)}>
+            {q}
+          </button>
+        ))}
+      </div>
+      {err && <p className="demo-err">{err}</p>}
+      {last?.answer && (
+        <p className="trace-answer" aria-live="polite">
+          <strong>Front desk:</strong> {last.answer}
+          {last.gate.resolved && <em> Done: you chose “{last.gate.resolved}”.</em>}
+        </p>
+      )}
+    </section>
   );
 }

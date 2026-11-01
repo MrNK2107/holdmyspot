@@ -61,7 +61,7 @@ const INSTRUCTIONS: Record<AiTask, string> = {
   rank_and_draft_offer: 'Rank the given candidates (ids only, from the list) for the open slot and write one short offer text that asks them to reply YES.',
   draft_reply: 'Write one short text message to the client for this situation using only the given facts.',
   agent_step:
-    'You are handling one inbound client text as the front desk agent. Choose the single next tool to call from `tools` (by exact name) given the `history` of calls so far. argsJson is a JSON object string of arguments. Typical order: get_booking, get_policy, classify_message, then propose_settlement with the booking id, then finish. You cannot move money; you can only propose. Call finish when there is nothing left to do. why: one short sentence.',
+    'You are handling one inbound client text as the front desk agent. Choose the single next tool to call from `tools` (by exact name) given the `history` of calls so far. argsJson is a JSON object string of arguments. For trigger client_text the typical order is get_booking, get_policy, classify_message, then propose_settlement with the booking id, then finish. For trigger owner_request (the business owner asking you something) use the read tools to answer, propose_refund when she asks for a refund, and put your short answer to her in finish as {\"answer\": \"...\"}. You cannot move money; you can only propose. Call finish when there is nothing left to do. why: one short sentence.',
 };
 
 export interface MessagesClient {

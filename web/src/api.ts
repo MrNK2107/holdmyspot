@@ -25,7 +25,7 @@ export interface BookingView {
 
 export interface Approval {
   id: string;
-  kind: 'attendance' | 'capture' | 'review';
+  kind: 'attendance' | 'capture' | 'review' | 'refund';
   bookingId: string;
   createdAt: number;
   prompt: string;
@@ -69,6 +69,7 @@ export interface AgentRun {
   bookingId?: string;
   provider: string;
   steps: TraceStep[];
+  answer?: string;
   gate: { kind: 'none' | 'auto_release' | 'owner_approval' | 'refill' | 'code'; summary: string; approvalId?: string; resolved?: string };
 }
 
@@ -139,6 +140,7 @@ export class Api {
   resolve = (id: string, choice: string) => this.req<{ state: Snapshot }>('POST', `/approvals/${id}`, { choice });
   travel = (to: number) => this.req<{ state: Snapshot; result: string[] }>('POST', '/time', { to });
   mode = (mode: 'ask' | 'autopilot') => this.req<{ state: Snapshot }>('POST', '/mode', { mode });
+  ask = (text: string) => this.req<{ state: Snapshot; result: { answer: string; runId: string } }>('POST', '/assistant', { text });
   refund = (id: string) => this.req<{ state: Snapshot }>('POST', `/bookings/${id}/refund`);
   reset = () => this.req<{ state: Snapshot }>('POST', '/reset');
   compile = (prose: string) =>

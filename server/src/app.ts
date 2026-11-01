@@ -128,6 +128,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }),
   );
 
+  // the owner asks the front desk agent in plain words; any refund it prepares waits for her tap
+  app.post<{ Params: { ws: string }; Body: { text: string } }>('/api/ws/:ws/assistant', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => {
+      const r = await e.askAssistant(String(req.body?.text ?? ''));
+      return { answer: r.answer, runId: r.run.id };
+    }),
+  );
+
   app.post<{ Params: { ws: string; id: string } }>('/api/ws/:ws/bookings/:id/refund', async (req, reply) =>
     act(req.params.ws, reply, (e) => e.refund(req.params.id)),
   );
