@@ -17,24 +17,9 @@ export interface AppOptions {
   webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
 }
 
-/** Serializes engine operations per workspace so concurrent requests never interleave money logic. */
-class Locks {
-  private tails = new Map<string, Promise<unknown>>();
-  run<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.tails.get(key) ?? Promise.resolve();
-    const next = prev.then(fn, fn);
-    this.tails.set(
-      key,
-      next.catch(() => undefined),
-    );
-    return next;
-  }
-}
-
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
   const workspaces = opts.workspaces ?? new Workspaces();
-  const locks = new Locks();
 
   async function ws(id: string, reply: FastifyReply): Promise<Workspace | undefined> {
     const w = workspaces.get(id);
@@ -49,7 +34,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     const w = await ws(id, reply);
     if (!w) return;
     try {
-      const result = await locks.run(id, () => fn(w.engine, w));
+      const result = await workspaces.run(id, () => fn(w.engine, w));
       return { ok: true, result, state: w.engine.snapshot() };
     } catch (err) {
       return reply.code(400).send({ ok: false, error: (err as Error).message, state: w.engine.snapshot() });
@@ -217,7 +202,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     const w = workspaces.findByPendingApproval(id);
     if (!w) return reply.code(404).type('text/html').send('<p>This approval link has expired or was already used.</p>');
     try {
-      await locks.run(w.engine.id, () => w.engine.completeApproval(id));
+      await workspaces.run(w.engine.id, () => w.engine.completeApproval(id));
       return reply.redirect(`/book?ws=${encodeURIComponent(w.engine.id)}&approved=1`);
     } catch (err) {
       return reply.code(400).type('text/html').send(`<p>PayPal approval failed: ${String((err as Error).message).replace(/[<>&]/g, '')}</p>`);

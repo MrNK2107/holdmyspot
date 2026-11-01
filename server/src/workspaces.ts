@@ -37,6 +37,8 @@ export interface Workspace {
 export class Workspaces {
   private map = new Map<string, Workspace>();
   private seq = 0;
+  /** per-workspace tail of the operation queue (see run) */
+  private tails = new Map<string, Promise<unknown>>();
   /** one toolkit client for the real sandbox account (shared, like the real gateway) */
   private toolkitShared?: PayPalToolkitReader;
 
@@ -85,7 +87,7 @@ export class Workspaces {
       // Deliver simulated webhooks after the API call returns, as PayPal does.
       mock.onWebhook((e) => {
         setImmediate(() => {
-          engine.ingestWebhook(e).catch((err) => engine.audit.add('webhook', `${e.event_type} ${e.id}: handler error ${(err as Error).message}`));
+          this.run(id, () => engine.ingestWebhook(e)).catch((err) => engine.audit.add('webhook', `${e.event_type} ${e.id}: handler error ${(err as Error).message}`));
         });
       });
     }
@@ -93,6 +95,20 @@ export class Workspaces {
     this.map.set(id, ws);
     await seed(engine);
     return ws;
+  }
+
+  /**
+   * Serializes engine operations per workspace (HTTP actions, PayPal returns, webhooks real and simulated)
+   * so money logic never interleaves at a network await.
+   */
+  run<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.tails.get(id) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    this.tails.set(
+      id,
+      next.catch(() => undefined),
+    );
+    return next;
   }
 
   get(id: string): Workspace | undefined {
@@ -118,6 +134,6 @@ export class Workspaces {
     const wsId = e.resource.custom_id?.split(':')[0];
     const ws = wsId ? this.map.get(wsId) : undefined;
     if (!ws) return 'unknown_workspace';
-    return ws.engine.ingestWebhook(e);
+    return this.run(ws.engine.id, () => ws.engine.ingestWebhook(e));
   }
 }
