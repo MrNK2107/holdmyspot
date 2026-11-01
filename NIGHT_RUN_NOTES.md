@@ -3,24 +3,39 @@
 ## 2026-11-01 (branch `night-run/2026-11-01`, local only, never pushed)
 
 Plan: `docs/superpowers/plans/2026-11-01-holdmyspot-plan.md` (tasks 1-17). Design: `docs/superpowers/specs/2026-11-01-holdmyspot-design.md`.
+The folder was not a git repo: initialised, initial commit on `master`, all work on `night-run/2026-11-01`.
 
-### Done
-- Repo initialised (was not a git repo), `.gitignore`, initial commit on master, work on `night-run/2026-11-01`.
-- Plan tasks 1-13 (server): npm workspaces (`server`, `web`), TypeScript + vitest + Fastify.
-  - `server/src/domain`: types, booking state machine, policy rules + `decide()` + capture invariants.
-  - `server/src/clock.ts` DemoClock (time travel fires due jobs), `audit.ts` append-only audit log.
-  - `server/src/paypal`: `PaymentsGateway` interface; `mock.ts` deterministic sandbox simulator (honor period, 29-day expiry, reauthorize from day 4, idempotency by PayPal-Request-Id, negative-testing declines, webhooks with custom_id); `rest.ts` real Orders v2 intent=AUTHORIZE + Payments v2 adapter, tested only with recorded HTTP.
-  - `server/src/ai`: `LlmProvider` interface, `FakeLlmProvider` (keyword rules), `FrontDesk` (whitelists every AI output, audits it). Test enforces that no AI module imports paypal/engine.
-  - `server/src/engine/engine.ts`: holds (MIT with vault, buyer-present links), T-72h job (+ reauth fallback), failure path 1 (decline → re-approval link), settlement via `decide()`, approval cards (ask-me-first / autopilot), refill with top-3 fan-out and claim-on-authorization (failure path 2), attendance prompt at +10m, end-of-day NEEDS_REVIEW (silence never charges), capture with invariants (+ reauthorize after honor period), refund.
-  - `seed.ts` (Priya, 3 services, 12 bookings, 3 waitlisters), `workspaces.ts` (per-visitor workspaces, webhook routing by custom_id).
-  - `app.ts` HTTP API + SSE, simulator approval page, `/api/paypal/webhook`. `config.ts` picks mock vs sandbox from env.
-- Tests: `npm test` (root) → 73 passing.
+### Done (plan tasks)
+- **1** npm workspaces (`server`, `web`), TypeScript, vitest, Fastify.
+- **2-3** `server/src/domain/stateMachine.ts`, `clock.ts` (DemoClock: time travel fires due jobs), `audit.ts`.
+- **4** `server/src/paypal/gateway.ts` + `mock.ts`: deterministic sandbox simulator (3-day honor period, 29-day expiry, reauthorize from day 4, capture <= authorized, void only open auths, idempotency by PayPal-Request-Id, INSTRUMENT_DECLINED negative tests, Vault v3 setup tokens, webhooks with custom_id delivered async).
+- **5** `server/src/paypal/rest.ts`: real Orders v2 intent=AUTHORIZE (buyer-present with store_in_vault, MIT with vault_id + stored_credential), Payments v2 capture/void/reauthorize/refund, Vault v3 setup/payment tokens, webhook signature verification. Tested only with recorded HTTP.
+- **6** webhook dedupe + routing by custom_id; HTTP endpoint refuses events unless `PAYPAL_WEBHOOK_ID` verification is configured (unverified events could fake an authorization).
+- **7** `server/src/domain/policy.ts`: rules, `decide()`, capture invariants, code-generated client summary + hash.
+- **8** `server/src/ai`: `LlmProvider`, `FakeLlmProvider`, `FrontDesk` (whitelists outputs, audits), `AnthropicProvider` (Claude, structured outputs via `output_config.format`, model `claude-sonnet-5-5` per design; tested with an injected client, no network). Boundary test: no AI module imports paypal/engine.
+- **9-11** `server/src/engine/engine.ts`: settlement, ask-me-first/autopilot cards, attendance at +10m, end-of-day NEEDS_REVIEW, capture (+ reauthorize after honor period), refund, refill (top-3 fan-out, claim fills only on authorization, declined claimer → next), T-72h MIT hold + reauth fallback, failure path 1 with re-approval link, vault-first booking for >72h, excused clients rebook by replying 1-3.
+- **12** `seed.ts` (Priya, 3 services, 12 bookings, 3 waitlisters, scripted decliners Jordan + Eli), `workspaces.ts` (per-visitor, capped at 100).
+- **13** `app.ts`: REST + SSE, simulator approval page `/sim/:ws/paypal/approve/:id`, public booking API (`/slots`, `/book`).
+- **14** `web/`: owner console (week grid with money chips, approval cards, money timeline, time-travel scenes, owner mode, message simulator phone with quick replies), policy editor (compile → questions → approve), client booking page `/book`. URL params `?ws=&sel=<bookingId>&phone=<clientId>&tab=policy` for screenshots/video.
+- **15** `npm run eval` (`server/src/eval/run.ts`): message reader macro-F1 / cost-weighted errors / abstain, injection money effects through the real engine (0 on fake), waitlist matcher. Data in `server/eval/*.json` is a DRAFT starter set (40 messages, 20 pairs) that the author must review/extend and freeze.
+- **16 (code only)** Anthropic provider + PayPal sandbox smoke script `server/src/scripts/sandbox-smoke.ts`. Not run: no keys.
+- **17** README (architecture, where we refused AI, invariants, failure paths, honest not-built list), MIT LICENSE, `render.yaml` draft (not deployed), `.env.example`.
 
-### In progress / next
-- See the bottom of this section (updated at the end of the run).
+### Verified
+- `npm test` (root) → 86 tests passing (10 files). Peak memory ~0.9 GB under memcap.
+- App started headless on port 18080, all hero flows driven over HTTP (failure 1, hero 1 excuse, hero 2 refill with Eli's decline then Chris, hero 3 no-show capture + refund), policy compile. Screenshots in `docs/screenshots/` (console-main, console-hero2-refilled, console-hero3-noshow, booking-page-mobile). Server killed at the end.
+
+### Next (in order)
+1. **User input needed** (see `_night_run/2026-11-01/NEEDS_INPUT.md`): PayPal sandbox app keys (+ webhook id, 4 sandbox personal accounts), Bryntum licence/registry access, Anthropic key.
+2. With keys: run `node --env-file=../.env --import tsx src/scripts/sandbox-smoke.ts` from `server/` for the Day-1 spikes (MIT authorize with vault_id; partial capture with final_capture; INSTRUMENT_DECLINED on authorize). Adjust `rest.ts` only; the engine is gateway-agnostic. Then run the app with `PAYMENTS=sandbox` and use the real PayPal JS SDK button on `/book` (currently a redirect link to the approval URL; the JS SDK popup + return handler `/paypal/return` is not built).
+3. Bryntum Scheduler swap-in for `WeekGrid` in `web/src/App.tsx` once licence is confirmed (fallback FullCalendar).
+4. Eval: author reviews the draft labels, extends to 80 messages (30 dev / 50 held-out, freeze), adds 15 real public policies with gold rules for the policy-compiler eval (design §7). Then run evals with `AI=anthropic`.
+5. Agent Toolkit `create_refund` / `list_transactions` (design §5) — currently refund goes through `PaymentsGateway.refund`.
+6. Deploy to Render (needs user approval; `render.yaml` is a draft: `tsx` is a devDependency, so keep `npm ci` without `--omit=dev`).
 
 ### Gotchas
-- Windows: the Bash tool fails on long heredocs with apostrophes; write files with the editor tool.
-- Run tests under memcap: `bash ../_night_run/tools/memcap.sh 2 5 'npm test'` (peak ~0.8 GB).
-- No `.env` exists yet: real PayPal sandbox calls need the user's sandbox app keys (see `_night_run/2026-11-01/NEEDS_INPUT.md`).
-- Bryntum Scheduler is not on public npm (trial/licensed registry). The console uses a hand-built week grid for now; swap-in is plan task 14b once the licence question is answered.
+- Windows Bash tool: long heredocs with apostrophes break; write files with the editor tool. Python one-off patch scripts inside heredocs mangle `\b`/`\d` escapes; check regexes after patching.
+- Run tests under memcap: `bash ../_night_run/tools/memcap.sh 2 5 'npm test'`.
+- Headless screenshots: `~/AppData/Local/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-win64/chrome-headless-shell.exe --screenshot=... --timeout=9000 --window-size=1680,1000 URL` with a fresh `--user-data-dir`; first attempt sometimes captures the loading state, retry.
+- `npx tsx src/index.ts` spawns npx → tsx → node; kill all three PIDs.
+- The fake classifier is deliberately simple; do not tune it to the held-out set.
