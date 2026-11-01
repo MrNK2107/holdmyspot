@@ -28,7 +28,7 @@ describe('seeded workspace', () => {
     expect(bookingOf('sam').state).toBe('HELD'); // Wed 17:00 is 56h away
     expect(bookingOf('maya').state).toBe('VAULTED'); // Thu 17:00 is 80h away
     expect(bookingOf('ben').state).toBe('BOOKED'); // not vaulted: waiting for buyer approval
-    expect(bookingOf('ben').approvalLink).toMatch(/\/sim\/paypal\/approve\/ORDER-/);
+    expect(bookingOf('ben').approvalLink).toMatch(/^\/sim\/t1\/paypal\/approve\/ORDER-/);
     expect(e.clock.pending().some((j) => j.name.startsWith('T-72h'))).toBe(true);
     expect(e.waitlist.map((w) => w.parsed?.serviceIds)).toEqual([['gel'], ['gel'], ['gel', 'pedi']]);
   });

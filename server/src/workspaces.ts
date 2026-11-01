@@ -31,7 +31,7 @@ export class Workspaces {
     let mock: MockPayPalGateway | undefined;
     let gateway = this.deps.gateway;
     if (!gateway) {
-      mock = new MockPayPalGateway(() => clock.now(), { baseUrl: this.deps.baseUrl ?? '' });
+      mock = new MockPayPalGateway(() => clock.now(), { baseUrl: `${this.deps.baseUrl ?? ''}/sim/${id}` });
       gateway = mock;
     }
     const llm = this.deps.llm ?? (() => new FakeLlmProvider());

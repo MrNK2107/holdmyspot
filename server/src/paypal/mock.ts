@@ -95,7 +95,7 @@ export class MockPayPalGateway implements PaymentsGateway {
       this.orders.set(orderId, { id: orderId, req, approved: !!req.vaultId });
       if (!req.vaultId) {
         const base = this.opts.baseUrl ?? '';
-        return { status: 'PAYER_ACTION_REQUIRED', orderId, approvalUrl: `${base}/sim/paypal/approve/${orderId}` } as const;
+        return { status: 'PAYER_ACTION_REQUIRED', orderId, approvalUrl: `${base}/paypal/approve/${orderId}` } as const;
       }
       return this.authorize(orderId);
     });

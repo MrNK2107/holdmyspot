@@ -1,0 +1,178 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import fastifyStatic from '@fastify/static';
+import type { PolicyRules } from './domain/policy.js';
+import { approve } from './domain/policy.js';
+import type { Engine } from './engine/engine.js';
+import type { WebhookEvent } from './paypal/gateway.js';
+import { Workspaces, type Workspace } from './workspaces.js';
+
+export interface AppOptions {
+  workspaces?: Workspaces;
+  webDist?: string;
+  logger?: boolean;
+}
+
+/** Serializes engine operations per workspace so concurrent requests never interleave money logic. */
+class Locks {
+  private tails = new Map<string, Promise<unknown>>();
+  run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.tails.get(key) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    this.tails.set(
+      key,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
+}
+
+export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.logger ?? false });
+  const workspaces = opts.workspaces ?? new Workspaces();
+  const locks = new Locks();
+
+  async function ws(id: string, reply: FastifyReply): Promise<Workspace | undefined> {
+    const w = workspaces.get(id);
+    if (!w) {
+      await reply.code(404).send({ error: `unknown workspace ${id}` });
+      return undefined;
+    }
+    return w;
+  }
+
+  const act = async <T>(id: string, reply: FastifyReply, fn: (e: Engine, w: Workspace) => Promise<T>) => {
+    const w = await ws(id, reply);
+    if (!w) return;
+    try {
+      const result = await locks.run(id, () => fn(w.engine, w));
+      return { ok: true, result, state: w.engine.snapshot() };
+    } catch (err) {
+      return reply.code(400).send({ ok: false, error: (err as Error).message, state: w.engine.snapshot() });
+    }
+  };
+
+  app.get('/api/health', async () => ({ ok: true, workspaces: workspaces.ids().length }));
+
+  app.post('/api/workspaces', async () => {
+    const w = await workspaces.create();
+    return { id: w.engine.id };
+  });
+
+  app.get<{ Params: { ws: string } }>('/api/ws/:ws/state', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    return w?.engine.snapshot();
+  });
+
+  app.get<{ Params: { ws: string }; Querystring: { booking?: string } }>('/api/ws/:ws/audit', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    return req.query.booking ? w.engine.audit.forBooking(req.query.booking) : w.engine.audit.all();
+  });
+
+  app.get<{ Params: { ws: string } }>('/api/ws/:ws/events', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    reply.raw.write(`event: hello\ndata: {}\n\n`);
+    let pending = false;
+    const off = w.engine.on((e) => {
+      // coalesce bursts into one change event per tick
+      if (pending) return;
+      pending = true;
+      setImmediate(() => {
+        pending = false;
+        reply.raw.write(`event: change\ndata: ${JSON.stringify(e)}\n\n`);
+      });
+    });
+    const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000);
+    req.raw.on('close', () => {
+      off();
+      clearInterval(ping);
+    });
+    return reply;
+  });
+
+  app.post<{ Params: { ws: string }; Body: { clientId: string; text: string } }>('/api/ws/:ws/messages', async (req, reply) =>
+    act(req.params.ws, reply, (e) => e.receiveMessage(req.body.clientId, req.body.text)),
+  );
+
+  app.post<{ Params: { ws: string; id: string }; Body: { choice: string } }>('/api/ws/:ws/approvals/:id', async (req, reply) =>
+    act(req.params.ws, reply, (e) => e.resolveApproval(req.params.id, req.body.choice)),
+  );
+
+  app.post<{ Params: { ws: string }; Body: { clientId: string; serviceId: string; start: number } }>('/api/ws/:ws/bookings', async (req, reply) =>
+    act(req.params.ws, reply, (e) => e.createBooking(req.body)),
+  );
+
+  app.post<{ Params: { ws: string; id: string } }>('/api/ws/:ws/bookings/:id/refund', async (req, reply) =>
+    act(req.params.ws, reply, (e) => e.refund(req.params.id)),
+  );
+
+  app.post<{ Params: { ws: string }; Body: { to?: number; byMs?: number } }>('/api/ws/:ws/time', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => {
+      const target = req.body.to ?? e.now() + (req.body.byMs ?? 0);
+      return e.clock.advanceTo(target);
+    }),
+  );
+
+  app.post<{ Params: { ws: string }; Body: { mode: 'ask' | 'autopilot' } }>('/api/ws/:ws/mode', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => {
+      if (req.body.mode !== 'ask' && req.body.mode !== 'autopilot') throw new Error('mode must be ask or autopilot');
+      e.mode = req.body.mode;
+      e.audit.add('owner', `mode → ${e.mode}`);
+      return e.mode;
+    }),
+  );
+
+  app.post<{ Params: { ws: string }; Body: { prose: string } }>('/api/ws/:ws/policy/compile', async (req, reply) =>
+    act(req.params.ws, reply, (e) => e.frontdesk.compilePolicy(String(req.body.prose ?? '').slice(0, 5000))),
+  );
+
+  app.post<{ Params: { ws: string }; Body: { rules: PolicyRules; prose: string } }>('/api/ws/:ws/policy/approve', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => {
+      const p = approve(e.policy, req.body.rules, req.body.prose, e.now());
+      e.setPolicy(p);
+      return p;
+    }),
+  );
+
+  app.post<{ Params: { ws: string } }>('/api/ws/:ws/reset', async (req) => {
+    const w = await workspaces.reset(req.params.ws);
+    return { ok: true, state: w.engine.snapshot() };
+  });
+
+  // Sandbox simulator for buyer approval (mock mode only). The real flow uses the PayPal JS SDK popup.
+  app.post<{ Params: { ws: string; orderId: string } }>('/api/ws/:ws/sim/approve/:orderId', async (req, reply) =>
+    act(req.params.ws, reply, async (e, w) => {
+      if (!w.mock) throw new Error('simulator approval is only available in mock mode');
+      w.mock.approve(req.params.orderId);
+      return e.completeApproval(req.params.orderId);
+    }),
+  );
+
+  app.get<{ Params: { ws: string; orderId: string } }>('/sim/:ws/paypal/approve/:orderId', async (req, reply) => {
+    const { ws: wsId, orderId } = req.params;
+    reply.type('text/html').send(`<!doctype html><meta name=viewport content="width=device-width"><title>PayPal sandbox simulator</title>
+<body style="font-family:system-ui;max-width:420px;margin:40px auto;padding:16px">
+<p style="background:#fff3cd;padding:8px;border-radius:6px">Sandbox simulator: no real money. With keys configured this is the PayPal popup.</p>
+<h2>Approve a hold</h2><p>Order <code>${orderId.replace(/[^\w-]/g, '')}</code></p>
+<button id=b style="background:#ffc439;border:0;border-radius:20px;padding:12px 24px;font-weight:700">Approve with PayPal</button><p id=r></p>
+<script>b.onclick=async()=>{const r=await fetch('/api/ws/${wsId.replace(/[^\w-]/g, '')}/sim/approve/${orderId.replace(/[^\w-]/g, '')}',{method:'POST'});document.getElementById('r').textContent=r.ok?'Approved. You can close this tab.':'Failed: '+(await r.json()).error}</script>`);
+  });
+
+  // Real PayPal webhooks. Signature verification (POST /v1/notifications/verify-webhook-signature) is a TODO before going live.
+  app.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req) => ({ result: await workspaces.routeWebhook(req.body) }));
+
+  const dist = opts.webDist;
+  if (dist && existsSync(join(dist, 'index.html'))) {
+    await app.register(fastifyStatic, { root: dist });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'not found' });
+      return reply.sendFile('index.html');
+    });
+  }
+
+  return app;
+}
