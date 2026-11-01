@@ -282,3 +282,28 @@ describe('error responses do not leak internals', () => {
     });
   }
 });
+
+describe('T-72h hold when PayPal errors (not a decline)', () => {
+  it('a 5xx/timeout on the T-72h hold becomes HOLD_FAILED with a re-approval link instead of aborting the clock run', async () => {
+    const w = await new Workspaces().create('t72');
+    const e = w.engine;
+    const riley = [...e.bookings.values()].find((b) => b.clientId === 'riley' && b.serviceId === 'art')!;
+    expect(riley.state).toBe('VAULTED');
+    const gw = e.gateway as { placeHold: typeof e.gateway.placeHold };
+    const real = gw.placeHold.bind(e.gateway);
+    let failed = 0;
+    gw.placeHold = async (req) => {
+      if (req.vaultId && req.customId.endsWith(riley.id) && failed === 0) {
+        failed++;
+        throw new PaymentsError('TIMEOUT', 'no answer from PayPal');
+      }
+      return real(req);
+    };
+    const target = riley.start - 72 * 3_600_000 + 60_000;
+    await expect(e.clock.advanceTo(target)).resolves.toBeDefined();
+    expect(failed).toBe(1);
+    expect(e.now()).toBe(target);
+    expect(riley.state).toBe('HOLD_FAILED');
+    expect(riley.approvalLink).toBeTruthy();
+  });
+});

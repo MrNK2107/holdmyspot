@@ -526,8 +526,17 @@ export class Engine {
       else await this.onHoldDeclined(b, r.issue ?? 'DECLINED');
       return;
     }
-    const res = await this.placeHold(b);
-    if (res.status === 'PAYER_ACTION_REQUIRED') await this.reply(b, 'approve_hold', { link: res.approvalUrl });
+    // A PayPal error (5xx, timeout) is not a decline, but it leaves no hold either: an exception here would
+    // abort the clock run and leave the visit with no hold and no link. Treat it as a decline (re-approval link).
+    // If PayPal did authorize before the error, its AUTHORIZATION.CREATED webhook still attaches that hold.
+    const res = await this.placeHold(b).catch(async (err: Error) => {
+      const issue = err instanceof PaymentsError ? err.issue : 'HOLD_ERROR';
+      this.audit.add('paypal', `hold at T-72h failed → ${issue}`, { bookingId: b.id });
+      if (b.authorizationId || !['BOOKED', 'VAULTED'].includes(b.state)) return undefined;
+      await this.onHoldDeclined(b, issue).catch((e2: Error) => this.audit.add('engine', `re-approval link could not be created: ${e2.message}`, { bookingId: b.id }));
+      return undefined;
+    });
+    if (res?.status === 'PAYER_ACTION_REQUIRED') await this.reply(b, 'approve_hold', { link: res.approvalUrl });
   }
 
   // ---------- webhooks ----------
