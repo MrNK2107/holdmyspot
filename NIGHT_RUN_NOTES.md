@@ -42,3 +42,22 @@ The folder was not a git repo: initialised, initial commit on `master`, all work
 - Headless screenshots: `~/AppData/Local/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-win64/chrome-headless-shell.exe --screenshot=... --timeout=9000 --window-size=1680,1000 URL` with a fresh `--user-data-dir`; first attempt sometimes captures the loading state, retry.
 - `npx tsx src/index.ts` spawns npx → tsx → node; kill all three PIDs.
 - The fake classifier is deliberately simple; do not tune it to the held-out set.
+
+## 2026-11-01, pass 2 (21:40-00:30 IST, same branch, local only)
+
+### Done
+- **No-hold late cancel gap fixed** (`engine.ts` `requestSettlement`/`refillCutoff`/`onAuthorized`, `stateMachine.ts`): a late cancel (PENDING_REFILL or OWNER_REVIEW outcome) on a booking with no authorization now goes to PENDING_REFILL and is offered to the waitlist like a held booking; if unfilled at the slot start it becomes EXCUSED automatically (no capture card, not counted as a policy excusal). Pending buyer approvals for it are dropped, and an authorization that still arrives is voided. Early cancels and EXCUSE outcomes with no hold still just free the slot. Snapshot money is `none` for finished bookings that never had an authorization. Tests: `server/test/noHoldRefill.test.ts` (6).
+- **Guided demo** (`server/src/demo.ts`, `GET /api/ws/:ws/demo`, `POST /api/ws/:ws/demo/next`, simulator only): 13 beats on the scripted clock (week → policy → Jordan decline + re-approve → Sam excused → Maya late cancel, Eli declines, Chris refills → injection → Alex no-show, charge, refund). When the clock jumps, routine visits are marked arrived (owner tap in the audit log) so the cards show only the story. UI: "Guided demo" toggle / `?demo=1`, → or N key, `&autoplay=12`.
+- **One command:** `npm run demo` (builds web, starts on 18080, prints the guided-demo URL). Smoke-tested on 18082 and killed.
+- **E2E over HTTP** (`server/test/e2e.test.ts`, 8 tests): real Fastify socket + fetch, per-test visitor workspace: hero 1 (+ rebook by "2"), hero 2 + failure 2, hero 3 + refund + double-refund refusal, failure 1 via the simulator HTML page, booking page book+approve+slot taken, SSE change event, the whole guided demo, off-script refusal.
+- **Headless UI check** `npm run ui-check` (`server/src/scripts/ui-check.ts`): starts the app in-process on 18091, isolated headless Chromium via project-local `playwright-core@1.64.1` (uses the cached chromium_headless_shell-1248) + `axe-core@4.14.0`; plays all 13 beats, checks chip texts, 390px no-sideways-scroll for console and booking page, books + approves on the booking page, unknown-workspace error state. **axe: 0 violations of any impact on 8 screens.** Refreshes `docs/screenshots/` (console-main, policy-editor, console-hero1-excused, console-hero2-refilled, console-hero3-charged, console-demo-end, console-mobile, booking-page-mobile, booking-page-booked).
+- **UI polish:** money chips show the real amount (captured/refunded use `capturedCents`; released shows `· $0`), money strip sums captured amounts and shows refunds, legend has a "What do these mean?" panel, booking panel explains the money state in a sentence; loading spinner + unknown-workspace page + lost-connection banner; booking page loading/empty/error/sending states and a "what's missing" hint; darker money colours (contrast), landmarks, h1/h2 order, labels, focusable scroll regions; phone layout: grid scrolls inside its card, travel bar scrolls sideways.
+- **Bug found by the UI run:** `useEffect(() => el.scrollIntoView())` returned a Promise in Chrome 156, React called it as a cleanup and the console crashed on tab switch. Fixed (and the thread now scrolls itself instead of the page).
+- **Docs:** `docs/DEMO_SCRIPT.md` (2:52 storyboard, what to press/say, honesty line about the simulator), `docs/DEVPOST_SUBMISSION.md` (draft with [TODO]s; not submitted), README run section.
+
+### Verified
+- `npm test` → 111 passing (13 files), peak 0.97 GB under memcap. `npm run ui-check` passes, peak 0.8 GB.
+
+### Gotchas (new)
+- Python patching on Windows: set `PYTHONUTF8=1` and write with `newline=''`, or CRLF files get rewritten. The repo mixes LF and CRLF files.
+- `PITCH.md` is stale (it describes the earlier "Casefile" idea). Left untouched; the user should delete or rewrite it.
