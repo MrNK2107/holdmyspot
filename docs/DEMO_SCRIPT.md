@@ -32,7 +32,7 @@ Honesty line (keep it on screen or say it): *"Payments in this recording run on 
 | 2:07–2:19 | 10 · A message cannot move money | The **Agent trace** tab opens on Taylor's run: `create_refund` in red, **denied · not in toolset**; the toolset panel shows the four money tools struck through (engine only); the run ends "No money moved" | "Taylor tries a prompt injection. The trace shows the model reaching for a refund tool. Denied: the agent doesn't have one. It can only propose a label, and nothing moves." |
 | 2:17–2:27 | 11 · Thu 11:10 AM: did Alex show? | Alex marked no-show; capture card **Fee $20 from the existing hold** | "Ten minutes after Alex's slot, the console asks. Silence never charges: unanswered, it goes to review." |
 | 2:27–2:37 | 12 · She taps Charge | Alex's chip turns red, **charged $20**; the panel shows the capture ID | "Nobody to refill, so Priya taps Charge, and the engine captures $20 from the authorization." |
-| 2:37–2:45 | 13 · Changed her mind: refund | **refunded $20**; click the **Ledger** tab: the AG Grid ledger with Alex's authorization, capture and refund ids and the totals row | "Alex apologises; one tap refunds it. Every booking, PayPal id and API call is in the ledger." |
+| 2:37–2:47 | 13 · Changed her mind: refund | The beat asks the front desk "Alex apologised, please refund her no-show fee": the agent card shows `find_booking` → `propose_refund` → **money gate** → **Priya tapped "refund"** → PayPal refund; Alex's chip turns **refunded $20**. If time allows, click the **Ledger** tab (AG Grid: authorization, capture and refund ids, totals row) | "Alex apologises. Priya just asks her front desk. The agent finds the capture and prepares the refund, but only her tap sends it. Every booking, PayPal id and API call is in the ledger." |
 | 2:45–2:52 | *(close)* | Strip + logo | "HoldMySpot. Fair, without the fight." |
 
 Total: about 2:54. If a take runs long, shorten beat 2 (the rules are already on screen) and the close.
@@ -52,3 +52,4 @@ The guided demo (`server/src/demo.ts`) drives the same engine methods as the HTT
 - The legend's **What do these mean?** panel for the money states.
 - `npm run eval` output: injection money effects 0.
 - Ledger → **PayPal calls**: type `capture` in the search box to filter the API-call log; **Export CSV**.
+- **Ask your front desk** → "How did this week go?": the agent answers from `list_transactions`.

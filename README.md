@@ -66,6 +66,8 @@ Each inbound client text runs a tool-calling loop (`FrontDeskAgent`, max 8 steps
 
 There is no tool that authorizes, captures, voids or refunds: those exist only in the engine. A request for any other tool is logged as **denied** and nothing runs. Releasing a hold is automatic when the policy says so (it only returns money); every charge waits for the owner's tap. If the model stops without proposing, the fixed pipeline (classify → `decide()`) handles the message, so a client is never ignored. A YES to a refill offer and a rebook pick ("2") are routed by code, not by the model, and are traced as such.
 
+**The owner can talk to the same agent** ("Ask your front desk" box in the console, `POST /api/ws/:ws/assistant`). Its owner toolset is `list_transactions` and `find_booking` (read only) and `propose_refund`, which creates a **Refund / Keep the fee** card; only the owner's tap makes the engine call PayPal's refund. "How did this week go?" is answered from `list_transactions`; "Alex apologised, refund her fee" finds the capture and prepares the card. Tests: `server/test/assistant.test.ts`.
+
 Without an API key the agent runs on the deterministic offline provider, which plans the same tool sequence and, for a message carrying a prompt injection, first replays what a manipulated model would try (`create_refund`) so the demo shows the denial. With `AI=anthropic`, Claude picks the tools through structured outputs (`agent_step`). Tests: `server/test/agent.test.ts`.
 
 ### Where we refused to use AI
