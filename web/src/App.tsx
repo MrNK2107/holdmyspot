@@ -195,18 +195,22 @@ export function App() {
       </header>
 
       <nav className="travel" aria-label="Demo clock and controls">
-        <span className="travel-label">Time travel</span>
-        {SCENES.map((sc) => (
+        {!demoOn && <span className="travel-label">Time travel</span>}
+        {!demoOn && SCENES.map((sc) => (
           <button key={sc.label} disabled={busy || sc.at <= s.now} onClick={() => run(() => api.travel(sc.at))}>
             {sc.label}
           </button>
         ))}
-        <button disabled={busy} onClick={() => run(() => api.travel(s.now + HOUR))}>
-          +1 hour
-        </button>
-        <button disabled={busy || !s.jobs.length} onClick={() => run(() => api.travel(s.jobs[0].at))} title={s.jobs[0]?.name}>
-          Next job ›
-        </button>
+        {!demoOn && (
+          <>
+            <button disabled={busy} onClick={() => run(() => api.travel(s.now + HOUR))}>
+              +1 hour
+            </button>
+            <button disabled={busy || !s.jobs.length} onClick={() => run(() => api.travel(s.jobs[0].at))} title={s.jobs[0]?.name}>
+              Next job ›
+            </button>
+          </>
+        )}
         <span className="spacer" />
         <label className="mode">
           <span>Owner mode</span>
@@ -268,7 +272,7 @@ export function App() {
           </aside>
         </main>
       ) : tab === 'policy' ? (
-        <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} />
+        <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} autoCompile={demoOn} />
       ) : tab === 'agent' ? (
         <AgentTraceView s={s} />
       ) : (
@@ -361,7 +365,15 @@ function DemoBar({
         <div className="demo-step">
           {current ? `Beat ${d.step} of ${d.total}` : 'Guided demo'} · {current?.title ?? 'about 3 minutes, scripted clock'}
         </div>
-        <p className="demo-say">{current?.say ?? 'Each step plays one scene on the PayPal simulator: time travel, a client text, or an owner tap. The money states update live.'}</p>
+        {current ? (
+          <p className="demo-say">{current.say}</p>
+        ) : (
+          <p className="demo-say">
+            <strong>Who:</strong> one-chair studios that book by text and DM. <strong>Problem:</strong> a no-show is an empty chair and a lost day’s income, yet most owners never charge the fee
+            they wrote, because charging a regular with a sick kid feels unfair. <strong>HoldMySpot:</strong> an AI front desk that holds the fee with PayPal, reads the reason, refills the slot
+            first, and charges only when the owner taps. Each step plays one scene on the PayPal simulator.
+          </p>
+        )}
         {err && <p className="demo-err">{err}</p>}
       </div>
       {upcoming ? (
@@ -526,7 +538,13 @@ function Approvals({
           PayPal hold {u.authorizationId} could not be released automatically ({u.error}). Release it in PayPal.
         </div>
       ))}
-      {s.approvals.length === 0 && <p className="muted">Nothing to decide. Charges always wait for your tap.</p>}
+      {s.approvals.length === 0 && (
+        <p className="all-quiet">
+          <strong>All quiet.</strong>{' '}
+          {usd(s.bookings.filter((b) => b.money === 'held' || b.money === 'pending-refill').reduce((a, b) => a + b.holdCents, 0))} held on PayPal this week, nothing charged without your
+          tap.
+        </p>
+      )}
       {s.approvals
         .slice()
         .reverse()
@@ -720,7 +738,7 @@ function Phone({
   );
 }
 
-function PolicyEditor({ s, api, onApproved }: { s: Snapshot; api: Api; onApproved: (s: Snapshot) => void }) {
+function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot; api: Api; onApproved: (s: Snapshot) => void; autoCompile?: boolean }) {
   const [prose, setProse] = useState(s.policy.prose);
   const [rules, setRules] = useState<PolicyRules | null>(null);
   const [questions, setQuestions] = useState<Ambiguity[]>([]);
@@ -736,6 +754,11 @@ function PolicyEditor({ s, api, onApproved }: { s: Snapshot; api: Api; onApprove
     setErrors(r.result.errors);
     setAnswers({});
   };
+  // in the guided demo the compiled rules and the AI's questions are on screen as soon as the tab opens
+  useEffect(() => {
+    if (autoCompile) compile().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCompile]);
 
   const merged = useMemo(() => {
     if (!rules) return null;

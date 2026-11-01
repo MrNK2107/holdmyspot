@@ -1353,3 +1353,11 @@ code.struck {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+.all-quiet {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e7f4ed;
+  color: #0f5136;
+  font-size: 13px;
+}
