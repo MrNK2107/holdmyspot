@@ -17,6 +17,8 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **Reads "can't make it" texts.** The AI labels each message (intent, reason, confidence, evidence span). A deterministic policy engine decides what happens: release the hold, refill first, or ask the owner.
 - **Refill first, fee last.** A late cancel offers the slot to the top three matching waitlisters. The slot is only filled once the claimer's own PayPal hold authorizes; if their hold declines, the next person gets it. If it fills, the canceller's authorization is voided: "Late cancel. $0 lost. $0 charged."
 - **The owner always taps before money moves.** No-shows and unfilled late cancels produce a capture card; one tap captures the fee from the existing authorization. Refund is one more tap. Silence never charges.
+- **An agent you can inspect.** Each client text runs the front desk as a tool-calling agent: `get_booking`, `get_policy` (read only), `classify_message` (label only), `propose_settlement` (a proposal to the policy engine). The **Agent trace** tab shows every call with its arguments and result, the policy check it triggered and the money gate: released automatically, refill first, or waiting for the owner. There is no capture, void, refund or authorize tool; a request for one is logged as denied. The owner's tap and the PayPal call it caused are added to the same run.
+- **Money ledger (AG Grid).** One row per booking with its money state, held / charged / refunded amounts and the PayPal authorization, capture and refund ids, plus a totals row; a second view lists every PayPal API call and webhook. Search, filters, CSV export.
 - **Money timeline.** Every booking shows its audit log: AI outputs, engine decisions, PayPal calls and webhooks.
 
 ## How we built it
@@ -24,8 +26,10 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **TypeScript end to end.** Fastify API with server-sent events; React + Vite owner console and booking page; vitest.
 - **Engine** (`server/src/engine/engine.ts`): a booking state machine (BOOKED → VAULTED → HELD → PENDING_REFILL → REFILLED / CHARGED / EXCUSED …), a pure `decide()` policy function, and capture invariants (capture ≤ authorized, ≤ policy maximum, never on emergency/medical/bereavement without the owner, never without an owner tap). It is the only code that calls the payments gateway.
 - **Payments gateway interface** with two adapters: the real PayPal REST adapter, and a deterministic sandbox simulator that models PayPal's rules (3-day honor period, 29-day validity, one reauthorization, capture ≤ authorized, idempotency by `PayPal-Request-Id`, negative-testing declines, async webhooks).
-- **AI front desk** behind a provider interface: Claude through the Anthropic API with structured outputs, plus a deterministic fake provider for tests and keyless demos. A test fails the build if any AI module imports the payments or engine code.
-- **Testing:** 118 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations) and refreshes the screenshots.
+- **AI front desk** behind a provider interface: Claude through the Anthropic API with structured outputs, plus a deterministic offline provider for tests and keyless demos. The agent loop (`server/src/ai/agent.ts`) gets its tools from the engine per message as plain functions; a test fails the build if any AI module imports the payments or engine code, and agent tests check that a model asking only for money tools moves no money.
+- **Ledger:** AG Grid Community (`ag-grid-react`), lazy-loaded so the console stays light.
+- **Hosting:** a Render Blueprint (`render.yaml`, one free web service, keyless by default; a test checks it against the real scripts and health route).
+- **Testing:** 132 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 13 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
 - **Guided demo:** `npm run demo` starts a seeded studio with a scripted clock; 13 beats show the whole week in under three minutes.
 
 ## PayPal APIs used
@@ -47,8 +51,8 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 ## How we used AI
 
 - **Model:** Claude (Anthropic API, `claude-sonnet-5-5`), structured outputs. [TODO confirm the model actually used for the final run]
-- **Four jobs:** compile the owner's prose policy into rules + clarifying questions; classify client messages (intent, reason, confidence, evidence span); parse free-text waitlist wishes and rank eligible candidates; draft the friendly replies.
-- **Where we refused to use AI:** money. The model never sees an amount, an authorization or a PayPal parameter in its output schema and has no tools. It proposes a label; the engine decides; the owner taps. Waitlist eligibility is a deterministic filter; the model only ranks the filtered list. The client-facing policy summary is generated by code.
+- **Five jobs:** run the front desk agent (choose the next tool for each client text); compile the owner's prose policy into rules + clarifying questions; classify client messages (intent, reason, confidence, evidence span); parse free-text waitlist wishes and rank eligible candidates; draft the friendly replies.
+- **Where we refused to use AI:** money. The model never sees an amount, an authorization or a PayPal parameter in its output schema, and the agent's tools can read and propose but never move money. It proposes a label; the engine decides; the owner taps. Waitlist eligibility is a deterministic filter; the model only ranks the filtered list. The client-facing policy summary is generated by code.
 - **Evaluation:** `npm run eval` measures the message reader (macro-F1, cost-weighted wrongful-charge errors, abstain rate), the money effect of prompt-injection messages through the real engine (0 so far), and the waitlist matcher. [TODO replace with numbers from the Claude run; the current numbers are from the deterministic fake provider on a draft label set: intent F1 1.0, reason F1 0.857, injection money effects 0, waitlist 20/20.]
 - **Building it:** [TODO, per the hackathon's AI-disclosure rule: say which AI coding tools were used during development, if the rules ask for it.]
 
@@ -75,12 +79,12 @@ Authorizations, not deposits, are the right primitive for no-show protection: th
 - Run the full flow on the live PayPal sandbox and record the video against it.
 - PayPal Agent Toolkit for refunds and transaction lookups in the owner's assistant.
 - Real messaging channels (SMS, WhatsApp, Instagram DMs) instead of the message simulator.
-- Persistence (Postgres) and hosting on Render.
+- Persistence (Postgres) and the hosted Render deployment (the Blueprint is ready).
 - A drag-and-drop scheduler, and an eval of the policy compiler on real published policies.
 
 ## Built with
 
-TypeScript · Node.js · Fastify · React · Vite · Vitest · Playwright · axe-core · PayPal Orders v2 · PayPal Payments v2 · PayPal Vault v3 · PayPal Webhooks · Anthropic Claude API
+TypeScript · Node.js · Fastify · React · Vite · AG Grid Community · Vitest · Playwright · axe-core · Render · PayPal Orders v2 · PayPal Payments v2 · PayPal Vault v3 · PayPal Webhooks · Anthropic Claude API
 
 ## Submission checklist
 

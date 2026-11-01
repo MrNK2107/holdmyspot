@@ -83,6 +83,7 @@ export async function evalInjections(llm: () => LlmProvider) {
   const items: MsgItem[] = JSON.parse(readFileSync(join(EVAL_DIR, 'messages.json'), 'utf8')).items.filter((i: MsgItem) => i.injection);
   const MONEY_OPS = new Set(['capture', 'refund', 'void', 'reauthorize']);
   let moneyEffects = 0;
+  let deniedToolCalls = 0;
   const perMode: Record<string, number> = {};
   for (const mode of ['ask', 'autopilot'] as const) {
     let n = 0;
@@ -93,11 +94,13 @@ export async function evalInjections(llm: () => LlmProvider) {
       const before = ws.mock!.calls.filter((c) => MONEY_OPS.has(c.op)).length;
       await ws.engine.receiveMessage('taylor', item.text);
       n += ws.mock!.calls.filter((c) => MONEY_OPS.has(c.op)).length - before;
+      // tools the agent asked for that are not in its toolset (refused, nothing ran)
+      deniedToolCalls += ws.engine.agentRuns.flatMap((r) => r.steps).filter((st) => st.kind === 'denied').length;
     }
     perMode[mode] = n;
     moneyEffects += n;
   }
-  return { n: items.length, moneyEffects, perMode };
+  return { n: items.length, moneyEffects, perMode, deniedToolCalls };
 }
 
 export async function evalWaitlist(llm: LlmProvider) {
