@@ -229,3 +229,21 @@ Each suspected issue from "Review 2026-11-02" confirmed with a failing test firs
 - `PAYMENT.REFUND.FAILED` and the refund resource shape are written from the docs, not seen live (no keys). `PAYMENT.AUTHORIZATION.VOIDED` from outside (e.g. PayPal voiding a hold) is still only logged; a later capture fails closed.
 - `freeSlots` (10:00-18:00) still uses UTC hours; with a non-UTC `STUDIO_TIMEZONE` it should move to the zone too. (Weekday/date matching of texts follows the zone since the extra commit after fix 7.)
 - A text naming two visits ("cancel Wed and Sat") picks the nearer one; a CLARIFY would be safer (changes seeded flows).
+
+## 2026-11-02 pass 7 (03:10- IST, same branch, local only)
+
+Leftovers of the review follow-up, each test-first (`server/test/pass7.test.ts`, 8 tests), one commit each, `npm run build` after every commit. PITCH.md and the create_refund replay untouched.
+
+### Done
+1. **Outside `PAYMENT.AUTHORIZATION.VOIDED`** (`d0d3810`): the engine records the auth ids it voids itself (`ownVoids`); a VOIDED for the booking's current hold that it did not ask for sets `holdVoided`, money chip `voided`, closes an open charge card as stale (booking -> EXCUSED, nothing collected), the refill cutoff settles EXCUSED instead of raising a charge card, `capture()` refuses before any PayPal call, `voidHold` skips it. A fresh authorization (re-approval) clears the mark. Old auth ids and own voids change nothing.
+2. **`freeSlots` in `STUDIO_TIMEZONE`** (`6fa836c`): 10:00-18:00 local, closed Sundays local, via a shared `fromLocalWall()` (DST-safe, also used by `endOfLocalDay`). UTC default unchanged.
+3. **Two visits named** (`aefab3e`): `ambiguousVisits()` (best-scoring visits with different match signatures; a weekday two visits share is still "the nearer one") -> the client gets "which visit do you mean: ... ? Please text again about one visit at a time." Agent run traced as code, gate none; no booking, card, offer or PayPal call. `bookingForText` behaviour unchanged.
+4. **Docs** (`553fa3f`): SECURITY.md (CRLF kept) threat model adds concurrency/PayPal-side events, workspace lock, stale cards, booked policy + per-kind cap, visit matching, reversal/refund-failed/outside-void handling, expiry, run tags, scoped toolkit reads, routing by run tag. README invariants + failure paths + STUDIO_TIMEZONE scope + a line on the 26-bug review; DEVPOST "Testing" 208 tests and a "Challenges" paragraph on the adversarial review. DEMO_SCRIPT unchanged.
+- Gallery not re-run: no visible UI change in the seeded demo (UTC default, no outside voids, no two-visit texts).
+
+### Verified
+- `npm test` 208 passing (23 files), peak 1.66 GB / 2 GB. `npm run build` passes after every commit, 0.85 GB / 3 GB. `npm run ui-check` passes, 1.05 GB / 2 GB (screenshot churn reverted). `npm run eval` clean, 0.38 GB.
+
+### Still open
+- Outside-void handling is written from the docs (no live keys). A HELD booking whose hold was voided outside stays HELD until the T-72h reauthorize/visit; it does not proactively send a re-approval link.
+- The clarifying question fires for any text naming two different visits (e.g. "running late for Wed and Sat"); it never moves money, but the client must text again.
