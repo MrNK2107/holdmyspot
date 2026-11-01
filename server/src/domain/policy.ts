@@ -159,6 +159,8 @@ export interface CaptureCheck {
   rules: PolicyRules;
   label?: MessageLabel;
   ownerApproved: boolean;
+  /** what the fee is for: the capture may not exceed that fee (the hold is only the outer cap) */
+  kind?: 'no_show' | 'late_cancel';
 }
 
 /** Engine invariants checked immediately before every capture. Any violation blocks the capture. */
@@ -167,6 +169,8 @@ export function captureViolations(c: CaptureCheck): string[] {
   if (!Number.isInteger(c.amountCents) || c.amountCents <= 0) v.push('amount must be a positive integer');
   if (c.amountCents > c.authorizedCents) v.push('amount exceeds authorized amount');
   if (c.amountCents > c.rules.holdCents) v.push('amount exceeds policy maximum');
+  if (c.kind === 'no_show' && c.amountCents > c.rules.noShowFeeCents) v.push('amount exceeds the no-show fee');
+  if (c.kind === 'late_cancel' && c.amountCents > c.rules.lateCancelFeeCents) v.push('amount exceeds the late-cancel fee');
   if (!c.ownerApproved) v.push('every capture needs an owner tap');
   if (c.label && c.label.confidence < c.rules.minConfidence) v.push('classifier confidence below threshold');
   if (c.label && c.rules.protectedReasons.includes(c.label.reason) && !c.ownerApproved) v.push('protected reason without owner');

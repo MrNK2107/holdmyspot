@@ -54,3 +54,30 @@ describe('which visit a text is about (several upcoming visits)', () => {
     expect(e.bookingForText('riley', 'running 10 min late')?.start).toBe(at(2, 15));
   });
 });
+
+describe('capture invariant', () => {
+  it('caps a capture at the fee for its kind, not just at the hold', async () => {
+    const rules = { ...(await import('../src/domain/policy.js')).DEFAULT_RULES, holdCents: 2000, noShowFeeCents: 1000, lateCancelFeeCents: 1500 };
+    const { captureViolations } = await import('../src/domain/policy.js');
+    const check = (amountCents: number, kind: 'no_show' | 'late_cancel') => captureViolations({ amountCents, authorizedCents: 2000, rules, kind, ownerApproved: true });
+    expect(check(1000, 'no_show')).toEqual([]);
+    expect(check(2000, 'no_show').join()).toMatch(/no-show fee/);
+    expect(check(1500, 'late_cancel')).toEqual([]);
+    expect(check(1600, 'late_cancel').join()).toMatch(/late-cancel fee/);
+  });
+
+  it('a fee card whose amount exceeds the no-show fee is blocked at capture', async () => {
+    const { approve } = await import('../src/domain/policy.js');
+    const w = await new Workspaces().create('t4');
+    const e = w.engine;
+    e.setPolicy(approve(e.policy, { ...e.policy.rules, noShowFeeCents: 1000, lateCancelFeeCents: 1000 }, 'v2', e.now()));
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    await e.clock.advanceTo(at(3, 18, 10));
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'attendance')!.id, 'no_show');
+    const card = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'capture')!;
+    if (card.kind !== 'capture') throw new Error('no capture card');
+    card.feeCents = b.holdCents; // e.g. a card built from the wrong rule
+    await expect(e.resolveApproval(card.id, 'charge')).rejects.toThrow(/no-show fee/);
+    expect(b.captureId).toBeUndefined();
+  });
+});
