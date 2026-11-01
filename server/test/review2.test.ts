@@ -115,6 +115,26 @@ describe('review 2026-11-02', () => {
     expect(await two.engine.ingestWebhook({ id: 'WH-STALE', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: firstAuth!, custom_id: oldCustom } })).toBe('ignored');
     expect(riley2.authorizationId).toBe(secondAuth);
   });
+  it('a refilled slot is never charged, even when releasing its hold fails at PayPal', async () => {
+    await e.clock.advanceTo(at(5, 9));
+    const maya = bk('maya');
+    await e.receiveMessage('maya', "I can't make it today, something came up");
+    expect(maya.state).toBe('PENDING_REFILL');
+    const gw = e.gateway as { void: (a: string, r: string) => Promise<{ status: 'VOIDED' }> };
+    const realVoid = gw.void;
+    gw.void = async (a, r) => {
+      if (a === maya.authorizationId) throw new Error('HTTP 503 temporarily unavailable');
+      return realVoid(a, r);
+    };
+    await e.receiveMessage('chris', 'yes!').catch(() => undefined);
+    gw.void = realVoid;
+    const claim = [...e.bookings.values()].find((x) => x.refillOfBookingId === maya.id && x.clientId === 'chris')!;
+    expect(claim.state).toBe('HELD');
+    await e.clock.advanceTo(at(5, 18));
+    expect(e.openApprovals().filter((a) => a.bookingId === maya.id && a.kind === 'capture')).toEqual([]);
+    expect(maya.state).toBe('REFILLED');
+    expect(e.unreleasedAuths.map((u) => u.authorizationId)).toContain(maya.authorizationId);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

@@ -986,7 +986,14 @@ export class Engine {
     if (!o || o.status !== 'claiming' || slot.state !== 'PENDING_REFILL') return;
     o.status = 'filled';
     slot.refilledByBookingId = nb.id;
-    await this.voidHold(slot, 'slot refilled');
+    try {
+      await this.voidHold(slot, 'slot refilled');
+    } catch (err) {
+      // the slot is refilled, so the canceller owes nothing whatever PayPal said: never leave it chargeable.
+      // The hold that could not be released is shown to the owner instead of being dropped.
+      this.unreleasedAuths.push({ bookingId: slot.id, authorizationId: slot.authorizationId!, error: (err as Error).message });
+      this.emit('state');
+    }
     this.setState(slot, 'REFILLED', `refilled by ${this.client(nb.clientId).name}`);
     this.say(nb.clientId, `Confirmed! See you ${this.slotLabel(nb)}.`);
     for (const id of o.offeredTo.filter((x) => x !== nb.clientId)) this.say(id, 'That spot has been filled. You are still on the waitlist.');
