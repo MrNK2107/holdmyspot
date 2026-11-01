@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Engine } from '../src/engine/engine.js';
 import type { MockPayPalGateway } from '../src/paypal/mock.js';
+import { PAYPAL_ID_FORMATS } from '../src/paypal/ids.js';
 import { Workspaces } from '../src/workspaces.js';
 
 const at = (day: number, hour: number, min = 0) => Date.UTC(2026, 10, day, hour, min);
@@ -28,7 +29,7 @@ describe('seeded workspace', () => {
     expect(bookingOf('sam').state).toBe('HELD'); // Wed 17:00 is 56h away
     expect(bookingOf('maya').state).toBe('VAULTED'); // Thu 17:00 is 80h away
     expect(bookingOf('ben').state).toBe('BOOKED'); // not vaulted, >72h out: asked to save PayPal (Vault v3), no hold yet
-    expect(bookingOf('ben').approvalLink).toMatch(/^\/sim\/t1\/paypal\/approve\/VSETUP-/);
+    expect(bookingOf('ben').approvalLink).toMatch(/^\/sim\/t1\/paypal\/approve\/[A-Z0-9]{17}$/);
     expect(e.clock.pending().some((j) => j.name.startsWith('T-72h'))).toBe(true);
     expect(e.waitlist.map((w) => w.parsed?.serviceIds)).toEqual([['gel'], ['gel'], ['gel', 'pedi']]);
   });
@@ -127,7 +128,7 @@ describe('hero 3: no-show', () => {
     expect(alex.state).toBe('CHARGED');
     expect(mock.authorizationStatus(alex.authorizationId!)).toBe('CAPTURED');
     await e.refund(alex.id);
-    expect(alex.refundId).toMatch(/^REFUND-/);
+    expect(alex.refundId).toMatch(PAYPAL_ID_FORMATS.refund);
     await expect(e.refund(alex.id)).rejects.toThrow('already refunded');
   });
 

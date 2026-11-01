@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeLlmProvider } from '../src/ai/fake.js';
 import type { AiTask, AiTasks, LlmProvider } from '../src/ai/provider.js';
 import type { Engine } from '../src/engine/engine.js';
+import { PAYPAL_ID_FORMATS, simPayPalId } from '../src/paypal/ids.js';
 import { MockPayPalGateway } from '../src/paypal/mock.js';
 import {
   PayPalToolkitReader,
@@ -74,12 +75,12 @@ describe('PayPal Agent Toolkit: read-only allow-list', () => {
     const before = moneyOps(mock);
     const r = PayPalToolkitReader.simulator(mock);
     const refund = JSON.stringify(await r.rawToolkitCallForTest('create_refund', { capture_id: captureId }));
-    const pay = JSON.stringify(await r.rawToolkitCallForTest('pay_order', { id: 'ORDER-000001' }));
+    const pay = JSON.stringify(await r.rawToolkitCallForTest('pay_order', { id: '5O190127TN364715T' }));
     expect(refund).toMatch(/refused before it left the server/);
     expect(pay).toMatch(/refused before it left the server/);
     expect(r.http.filter((h) => h.blocked).map((h) => `${h.method} ${h.path}`)).toEqual([
       `POST /v2/payments/captures/${captureId}/refund`,
-      'POST /v2/checkout/orders/ORDER-000001/capture',
+      'POST /v2/checkout/orders/5O190127TN364715T/capture',
     ]);
     expect(moneyOps(mock)).toBe(before);
   });
@@ -93,10 +94,35 @@ describe('PayPal Agent Toolkit: read-only allow-list', () => {
   });
 });
 
-describe('PayPal Agent Toolkit: read tools answer from the simulator through the toolkit code', () => {
+describe('simulator ids have the real PayPal formats (the toolkit MCP schemas validate them)', () => {
+  it('order, authorization, capture, refund, setup token, vault token and webhook ids', async () => {
+    const { e, mock, captureId } = await chargedAlex();
+    const alex = [...e.bookings.values()].find((b) => b.captureId === captureId)!;
+    expect(alex.orderId).toMatch(PAYPAL_ID_FORMATS.order);
+    expect(alex.orderId).toMatch(PAYPAL_ID_FORMATS.resource17);
+    expect(alex.authorizationId).toMatch(PAYPAL_ID_FORMATS.resource17);
+    expect(captureId).toMatch(PAYPAL_ID_FORMATS.capture);
+    expect(captureId).toMatch(PAYPAL_ID_FORMATS.resource17);
+    const refund = await mock.refund(captureId, 500, 'fmt-refund');
+    expect(refund.refundId).toMatch(PAYPAL_ID_FORMATS.refund);
+    expect(refund.refundId).toMatch(PAYPAL_ID_FORMATS.resource17);
+    expect(mock.delivered.length).toBeGreaterThan(0);
+    for (const ev of mock.delivered) expect(ev.id).toMatch(PAYPAL_ID_FORMATS.webhookEvent);
+    for (const c of e.snapshot().clients) if (c.vaulted) expect(e.clients.get(c.id)!.vaultId).toMatch(PAYPAL_ID_FORMATS.vaultPaymentToken);
+  });
+
+  it('ids are unique and repeatable', () => {
+    const ids = new Set<string>();
+    for (const kind of ['ORDER', 'AUTH', 'CAPTURE', 'REFUND', 'VSETUP', 'WH'] as const) for (let i = 1; i <= 5000; i++) ids.add(simPayPalId(kind, i));
+    expect(ids.size).toBe(6 * 5000);
+    expect(simPayPalId('ORDER', 42)).toBe(simPayPalId('ORDER', 42));
+  });
+});
+
+describe.each(['functions', 'mcp'] as const)('PayPal Agent Toolkit (%s): read tools answer from the simulator through the toolkit code', (via) => {
   it('list_transactions, get_order and get_refund return PayPal-shaped data', async () => {
     const { e, mock, captureId } = await chargedAlex();
-    const r = PayPalToolkitReader.simulator(mock);
+    const r = PayPalToolkitReader.simulator(mock, via);
     const tx = (await r.call('list_transactions', { transaction_id: captureId })) as { result: { found: boolean; transaction_details: Array<{ transaction_info: { transaction_id: string } }> } };
     expect(tx.result.found).toBe(true);
     expect(tx.result.transaction_details[0].transaction_info.transaction_id).toBe(captureId);
@@ -108,7 +134,9 @@ describe('PayPal Agent Toolkit: read tools answer from the simulator through the
     const got = (await r.call('get_refund', { refund_id: refund.refundId })) as { result: { status: string }; http: string[] };
     expect(got.result.status).toBe('COMPLETED');
     expect(got.http).toEqual([`GET /v2/payments/refunds/${refund.refundId} → 200`]);
-    expect(r.http.every((h) => h.method === 'GET')).toBe(true);
+    expect((order as unknown as { via: string }).via).toBe(via);
+    expect(r.http.every((h) => h.method === 'GET' || h.path.includes('oauth2'))).toBe(true);
+    expect(r.http.some((h) => h.blocked)).toBe(false);
   });
 });
 

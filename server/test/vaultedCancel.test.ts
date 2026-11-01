@@ -23,7 +23,7 @@ async function bookAndSaveWallet() {
   const b = await e.createBooking({ clientId: c.id, serviceId: 'gel', start });
   expect(b.state).toBe('BOOKED');
   const token = b.approvalLink!.split('/').at(-1)!;
-  expect(token).toMatch(/^VSETUP/);
+  expect(token).toMatch(/^[A-Z0-9]{17}$/);
   mock.approve(token);
   await e.completeApproval(token);
   expect(b.state).toBe('VAULTED');

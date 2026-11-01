@@ -11,6 +11,7 @@ import {
   PaymentsError,
   centsToValue,
 } from './gateway.js';
+import { type SimIdKind, simPayPalId } from './ids.js';
 
 interface Auth {
   id: string;
@@ -36,7 +37,7 @@ interface Order {
  * Deterministic PayPal sandbox simulator. Implements the documented rules the engine relies on:
  * 3-day honor period, 29-day validity, reauthorize only from day 4, capture <= authorized amount,
  * void only an uncaptured authorization, idempotency by PayPal-Request-Id, webhooks with custom_id.
- * IDs are sequential so tests and demo screenshots are repeatable.
+ * IDs have PayPal's real shapes (see ids.ts) but come from a counter, so tests and screenshots repeat.
  */
 export class MockPayPalGateway implements PaymentsGateway {
   readonly mode = 'mock' as const;
@@ -65,8 +66,8 @@ export class MockPayPalGateway implements PaymentsGateway {
   /** Delivered events, kept so tests can replay duplicates. */
   readonly delivered: WebhookEvent[] = [];
 
-  private id(prefix: string): string {
-    return `${prefix}-${String(++this.seq).padStart(6, '0')}`;
+  private id(kind: SimIdKind): string {
+    return simPayPalId(kind, ++this.seq);
   }
 
   private async once<T>(op: string, requestId: string, fn: () => Promise<T> | T): Promise<T> {

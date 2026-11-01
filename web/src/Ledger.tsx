@@ -258,7 +258,7 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
             </div>
             <label className="ledger-search">
               <span className="sr-only">Search the ledger</span>
-              <input type="search" placeholder="Search: client, charged, AUTH-…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+              <input type="search" placeholder="Search: client, charged, PayPal id…" value={filter} onChange={(e) => setFilter(e.target.value)} />
             </label>
             <button onClick={() => gridRef.current?.exportDataAsCsv({ fileName: `holdmyspot-${view}.csv` })}>Export CSV</button>
           </div>

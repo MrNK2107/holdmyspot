@@ -1,6 +1,7 @@
 import { HOUR } from './clock.js';
 import { approve, DEFAULT_RULES } from './domain/policy.js';
 import type { Engine } from './engine/engine.js';
+import { simPayPalId } from './paypal/ids.js';
 
 /** Demo clock starts Monday 2 Nov 2026, 09:00 (all demo times are UTC). */
 export const DEMO_START = Date.UTC(2026, 10, 2, 9, 0);
@@ -39,8 +40,8 @@ export async function seed(e: Engine): Promise<void> {
     ['chris', 'Chris Patel', true, false],
     ['dana', 'Dana Kim', false, false],
   ];
-  for (const [id, name, vaulted, decline] of clients) {
-    e.addClient({ id, name, ...(vaulted ? { vaultId: `VAULT-${id.toUpperCase()}` } : {}), ...(decline ? { sandboxDecline: true } : {}) });
+  for (const [i, [id, name, vaulted, decline]] of clients.entries()) {
+    e.addClient({ id, name, ...(vaulted ? { vaultId: simPayPalId('VAULT', 900_000 + i) } : {}), ...(decline ? { sandboxDecline: true } : {}) });
   }
 
   const bookings: Array<[string, string, number]> = [

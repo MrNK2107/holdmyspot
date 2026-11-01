@@ -38,7 +38,7 @@ describe('MockPayPalGateway', () => {
     gw.approve(r.orderId);
     const a = await gw.authorizeApprovedOrder(r.orderId, 'r3');
     expect(a.status).toBe('AUTHORIZED');
-    if (a.status === 'AUTHORIZED') expect(a.vaultId).toMatch(/^VAULT-/);
+    if (a.status === 'AUTHORIZED') expect(a.vaultId).toMatch(/^[a-z0-9]{7}$/);
     expect(events.map((e) => e.event_type)).toEqual(['VAULT.PAYMENT-TOKEN.CREATED', 'PAYMENT.AUTHORIZATION.CREATED']);
   });
 

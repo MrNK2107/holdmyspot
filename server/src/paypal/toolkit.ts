@@ -216,8 +216,8 @@ export interface ToolkitReadToolDef {
  *  - 'mcp': PayPal's MCP server class from the same package (`@paypal/agent-toolkit/mcp`, what
  *    `npx @paypal/mcp --tools=...` runs), connected in-process over an in-memory MCP transport.
  *    Only the allow-listed tools are registered, so the MCP layer itself rejects any other name.
- *    Its tool schemas validate PayPal id formats, which the simulator's short ids (ORDER-000001)
- *    do not match: get_order / get_refund return a validation error in simulator + mcp mode.
+ *    Its tool schemas validate PayPal id formats; the simulator issues ids in the real formats
+ *    (paypal/ids.ts), so get_order / get_refund work in both modes against the simulator too.
  */
 export type ToolkitVia = 'functions' | 'mcp';
 
