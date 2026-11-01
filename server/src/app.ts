@@ -128,6 +128,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }),
   );
 
+  // simulator mode: the exact REST requests the real PayPal adapter builds for each simulated call
+  app.get<{ Params: { ws: string } }>('/api/ws/:ws/paypal-requests', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    return w.preview ? w.preview.requests.slice().reverse() : [];
+  });
+
   // the owner asks the front desk agent in plain words; any refund it prepares waits for her tap
   app.post<{ Params: { ws: string }; Body: { text: string } }>('/api/ws/:ws/assistant', async (req, reply) =>
     act(req.params.ws, reply, async (e) => {

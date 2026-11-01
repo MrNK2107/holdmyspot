@@ -5,6 +5,7 @@ import { DemoClock } from './clock.js';
 import { Engine } from './engine/engine.js';
 import type { PaymentsGateway, WebhookEvent } from './paypal/gateway.js';
 import { MockPayPalGateway } from './paypal/mock.js';
+import { RequestPreview } from './paypal/preview.js';
 import { DEMO_START, SEED_POLICY, seed } from './seed.js';
 
 export interface WorkspaceDeps {
@@ -17,6 +18,8 @@ export interface WorkspaceDeps {
 export interface Workspace {
   engine: Engine;
   mock?: MockPayPalGateway;
+  /** simulator mode: the REST requests the real adapter would have sent (see paypal/preview.ts) */
+  preview?: RequestPreview;
   /** beats of the guided demo already played (see demo.ts) */
   demoStep?: number;
 }
@@ -39,10 +42,12 @@ export class Workspaces {
     }
     const clock = new DemoClock(DEMO_START);
     let mock: MockPayPalGateway | undefined;
+    let preview: RequestPreview | undefined;
     let gateway = this.deps.gateway;
     if (!gateway) {
       mock = new MockPayPalGateway(() => clock.now(), { baseUrl: `${this.deps.baseUrl ?? ''}/sim/${id}` });
-      gateway = mock;
+      preview = new RequestPreview(() => clock.now(), this.deps.baseUrl ?? '');
+      gateway = preview.wrap(mock);
     }
     const llm = this.deps.llm ?? (() => new FakeLlmProvider());
     const engine = new Engine({
@@ -63,7 +68,7 @@ export class Workspaces {
         });
       });
     }
-    const ws = { engine, mock };
+    const ws = { engine, mock, preview };
     this.map.set(id, ws);
     await seed(engine);
     return ws;

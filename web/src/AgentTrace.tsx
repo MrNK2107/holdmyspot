@@ -81,7 +81,7 @@ export function AgentTraceCard({ s, selected, onOpen }: { s: Snapshot; selected:
   return (
     <section className="card trace-card" aria-label="Front desk agent">
       <h2>
-        Front desk agent <span className="pill">{tools.length} tool calls</span>
+        Front desk agent <span className="pill">{tools.length ? `${tools.length} tool calls` : "routed by code, no model"}</span>
       </h2>
       <p className="trace-msg">
         <strong>{run.clientName}:</strong> “{run.text}”

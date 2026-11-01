@@ -131,6 +131,13 @@ try {
   check(/final_capture/.test((await desk.locator('.ledger-grid').textContent()) ?? ''), 'ledger PayPal-calls view finds the capture by search');
   await shot(desk, 'ledger-paypal-calls.png');
   await desk.getByRole('searchbox').fill('');
+  await desk.getByRole('button', { name: 'REST requests' }).click();
+  await desk.locator('.rest-json').waitFor({ timeout: 10000 });
+  const restText = (await desk.locator('.rest-json').textContent()) ?? '';
+  check(/POST https:\/\/api-m\.sandbox\.paypal\.com\/v2\/payments\/authorizations\/.+\/capture/.test(restText) && /final_capture/.test(restText) && /PayPal-Request-Id/.test(restText), 'ledger REST view shows the real capture request');
+  check(!/Bearer/.test(restText), 'REST preview carries no token');
+  await axe(desk, 'ledger REST requests');
+  await shot(desk, 'ledger-rest-requests.png');
   await axe(desk, 'ledger PayPal calls');
 
   // ---- phone-width console ----

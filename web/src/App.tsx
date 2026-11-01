@@ -801,7 +801,9 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
         <p className="summary">{s.policy.summary}</p>
       </section>
       <section className="card">
-        <h2>Compiled rules</h2>
+        <h2>
+          Compiled rules {merged && <span className="draft-tag">draft, not live until you approve</span>}
+        </h2>
         {!merged && <p className="muted">Compile your policy to see the rules the engine will enforce. The AI only proposes; you approve.</p>}
         {merged && (
           <>

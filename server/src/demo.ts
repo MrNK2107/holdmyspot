@@ -70,7 +70,7 @@ export const DEMO_BEATS: DemoBeat[] = [
   {
     id: 'policy',
     title: 'Her policy, in her words',
-    say: 'She pastes the policy she already texts clients. Claude turns it into rules and asks about the gaps; she approves. Code, not the model, enforces it.',
+    say: 'She pastes the policy she already texts clients. The AI turns it into rules and asks about the gaps; she approves. Code, not the model, enforces it.',
     view: { tab: 'policy' },
   },
   {
@@ -125,7 +125,7 @@ export const DEMO_BEATS: DemoBeat[] = [
   {
     id: 'eli-declines',
     title: "Eli says yes, but his hold declines",
-    say: "Claude ranked the waitlist and texted the top three. Eli answers first, but the slot is only his once PayPal authorizes his hold, and it declines.",
+    say: "The AI ranked the waitlist and texted the top three. Eli answers first, but the slot is only his once PayPal authorizes his hold, and it declines.",
     view: { tab: 'console', sel: 'maya', phone: 'eli' },
     run: async (e) => {
       await e.receiveMessage('eli', 'YES');
