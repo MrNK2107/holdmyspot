@@ -247,3 +247,17 @@ describe('charging after the 29-day authorization expiry', () => {
     expect(alex.holdExpiresAt).toBe(at(2, 11) + 29 * 24 * 3600_000);
   });
 });
+
+describe('visit matching in the studio time zone', () => {
+  it('"Tuesday" means the visit on Tuesday local time, even when it is Wednesday in UTC', async () => {
+    const e = (await new Workspaces({ timeZone: 'America/Los_Angeles' }).create('t10')).engine;
+    const mon = await e.createBooking({ clientId: 'chris', serviceId: 'art', start: at(3, 4) }); // Mon 2 Nov 20:00 PST = Tue 04:00 UTC
+    const tue = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(4, 2) }); // Tue 3 Nov 18:00 PST = Wed 02:00 UTC
+    const thu = await e.createBooking({ clientId: 'chris', serviceId: 'pedi', start: at(5, 20) }); // Thu 5 Nov 12:00 PST
+    expect(e.bookingForText('chris', 'cancel thursday please')?.id).toBe(thu.id);
+    expect(e.bookingForText('chris', "can't do Tuesday, sorry")?.id).toBe(tue.id);
+    expect(e.bookingForText('chris', 'cancel the 3rd')?.id).toBe(tue.id);
+    expect(e.bookingForText('chris', 'cancel Monday')?.id).toBe(mon.id);
+    expect(e.bookingForText('chris', 'cancel Wednesday')?.id).toBe(mon.id); // no visit on Wednesday local: the next visit
+  });
+});

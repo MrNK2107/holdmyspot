@@ -606,7 +606,9 @@ export class Engine {
     const t = ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
     const said = (w: string) => t.includes(` ${w} `);
     const DAYS = [['sunday', 'sun'], ['monday', 'mon'], ['tuesday', 'tue', 'tues'], ['wednesday', 'wed'], ['thursday', 'thu', 'thur', 'thurs'], ['friday', 'fri'], ['saturday', 'sat']];
-    const dayOf = (ms: number) => new Date(ms).getUTCDay();
+    // days and dates in the studio's time zone (UTC in the demo)
+    const local = (ms: number) => new Date(ms + zoneOffset(ms, this.timeZone));
+    const dayOf = (ms: number) => local(ms).getUTCDay();
     const today = dayOf(this.now());
     const named = new Set<number>();
     DAYS.forEach((names, d) => names.some(said) && named.add(d));
@@ -625,7 +627,7 @@ export class Engine {
     for (const m of t.matchAll(new RegExp(`(?<= )${mon} (\\d{1,2})(?:st|nd|rd|th)?(?= )`, 'g'))) dates.push({ day: Number(m[2]), month: MONTHS.indexOf(m[1]) });
     for (const m of t.matchAll(new RegExp(`(?<= )(\\d{1,2})(?:st|nd|rd|th)? (?:of )?${mon}(?= )`, 'g'))) dates.push({ day: Number(m[1]), month: MONTHS.indexOf(m[2]) });
     const onDate = (ms: number) => {
-      const d = new Date(ms);
+      const d = local(ms);
       return dates.some((x) => x.day === d.getUTCDate() && (x.month === undefined || x.month === d.getUTCMonth()));
     };
     const score = (b: Booking) => (onDate(b.start) ? 2 : 0) + (named.has(dayOf(b.start)) ? 1 : 0) + (serviceWords(b.serviceId).some(said) ? 1 : 0);
