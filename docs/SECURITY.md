@@ -73,7 +73,7 @@ Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, 
 - **Scoped toolkit reads.** With real PayPal credentials all workspaces share one sandbox account, so each workspace gets a scoped view of the one toolkit client: `get_order` / `get_refund` / a transaction lookup are refused before any request unless the id is that workspace's, `list_transactions` rows and disputes are filtered to its own objects, and each view has its own HTTP log. One visitor's owner questions cannot read another visitor's payments.
 - **No owner login.** Anyone with a workspace URL acts as its owner. Fine for a sandbox demo; a real deployment needs owner authentication before anything else.
 - The simulator approval page and the guided demo are refused outside simulator mode. Ids interpolated into the simulator page are stripped to `[A-Za-z0-9_-]`; error text on `/paypal/return` is stripped of `<>&`.
-- Fastify's default body limit (1 MiB) applies. Routes that run the model (client texts, the owner's assistant, policy compile, public booking) are rate limited in process: 30 per workspace and 300 server-wide per minute (429 beyond that).
+- Fastify's default body limit (1 MiB) applies. Routes that run the model (client texts, the owner's assistant, policy compile, public booking, reset) are rate limited in process: 30 per workspace and 300 server-wide per minute (429 beyond that). New workspaces (seeded through the model, and PayPal in sandbox mode; each may evict the oldest visitor's) share one budget of 30 per minute.
 - State is in memory: a restart forgets workspaces (and their audit logs). Fine for the demo; a real deployment needs a database.
 
 ## 6. Dependency audit (`npm audit`, 2026-11-02)

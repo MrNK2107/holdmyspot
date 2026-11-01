@@ -249,3 +249,17 @@ describe('model-backed routes are rate limited', () => {
     expect(codes.filter((c) => c === 429).length).toBe(2);
   });
 });
+
+describe('workspace creation and reset are rate limited (each seeds through the model and, in sandbox mode, PayPal)', () => {
+  it('creating workspaces in a loop gets 429 instead of evicting every visitor\'s workspace', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws, rateLimit: { perWorkspacePerMin: 2, globalPerMin: 100 } });
+    const codes: number[] = [];
+    for (let i = 0; i < 4; i++) codes.push((await app.inject({ method: 'POST', url: '/api/workspaces' })).statusCode);
+    expect(codes).toEqual([200, 200, 429, 429]);
+    const resets: number[] = [];
+    for (let i = 0; i < 3; i++) resets.push((await app.inject({ method: 'POST', url: '/api/ws/demo/reset', payload: {} })).statusCode);
+    expect(resets).toEqual([200, 200, 429]);
+  });
+});

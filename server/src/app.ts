@@ -68,7 +68,13 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // each of these runs the model (and, for /book, PayPal); without a budget one script could run up the bill
   app.addHook('preHandler', async (req, reply) => {
     if (req.method !== 'POST') return;
-    const m = /^\/api\/ws\/([^/]+)\/(messages|assistant|policy\/compile|book)$/.exec(req.url.split('?')[0]);
+    const path = req.url.split('?')[0];
+    // a new workspace (or a reset) is seeded through the model and, in sandbox mode, PayPal; creating one may evict another visitor's
+    if (path === '/api/workspaces') {
+      if (!allowModelCall('(new workspace)')) return reply.code(429).send({ ok: false, error: 'too many new demos: try again in a minute' });
+      return;
+    }
+    const m = /^\/api\/ws\/([^/]+)\/(messages|assistant|policy\/compile|book|reset)$/.exec(path);
     if (m && workspaces.get(decodeURIComponent(m[1])) && !allowModelCall(decodeURIComponent(m[1]))) {
       return reply.code(429).send({ ok: false, error: 'too many requests: try again in a minute' });
     }
