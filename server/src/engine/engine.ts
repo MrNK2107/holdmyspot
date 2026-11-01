@@ -80,7 +80,8 @@ export type EngineEvent = { type: 'audit' | 'state' | 'message' | 'approval'; at
 
 const HOLD_LEAD = 72 * HOUR;
 const OFFER_FANOUT = 3;
-const YES = /^\s*(yes|yep|yeah|y|i'?ll take it|claim|me!?)\b/i;
+// a claim places a hold on the claimer's wallet, so the yes must be a word of its own ("y'all ..." is not a yes)
+const YES = /^\s*(yes|yep|yeah|y|i'?ll take it|claim|me!?)(?![\w'’])/i;
 
 /**
  * Deterministic policy engine and the only caller of the payments gateway.

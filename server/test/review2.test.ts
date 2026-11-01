@@ -170,6 +170,16 @@ describe('review 2026-11-02', () => {
     await e.clock.advanceTo(at(7, 16));
     expect(e.approvals.filter((a) => a.bookingId === art.id)).toEqual([]);
   });
+  it("a text that merely starts with a y (\"y'all\") is not a YES to a refill offer, so no hold is placed", async () => {
+    await e.clock.advanceTo(at(5, 9));
+    const maya = bk('maya');
+    await e.receiveMessage('maya', "I can't make it today, something came up");
+    expect(e.offers.at(-1)!.offeredTo).toContain('chris');
+    const r = await e.receiveMessage('chris', "y'all are the best, but I'm away this week");
+    expect(r.claimed).toBeUndefined();
+    expect([...e.bookings.values()].filter((x) => x.refillOfBookingId === maya.id && x.clientId === 'chris')).toEqual([]);
+    expect((await e.receiveMessage('chris', 'Yes!')).claimed).toBe(true);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {
