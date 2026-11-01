@@ -1,0 +1,24 @@
+# Render Blueprint (draft, not deployed). One web service; state is in memory per demo workspace.
+services:
+  - type: web
+    name: holdmyspot
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w web
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PAYMENTS
+        value: mock
+      - key: AI
+        value: fake
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
