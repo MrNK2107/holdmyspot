@@ -1,0 +1,12 @@
+{
+  "name": "holdmyspot",
+  "private": true,
+  "license": "MIT",
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "test": "npm test -w server",
+    "dev": "npm run dev -w server",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "npm start -w server"
+  }
+}
