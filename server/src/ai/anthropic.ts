@@ -65,14 +65,18 @@ const INSTRUCTIONS: Record<AiTask, string> = {
 };
 
 export interface MessagesClient {
-  messages: { create(params: any): Promise<any> };
+  messages: { create(params: any, options?: { timeout?: number; maxRetries?: number }): Promise<any> };
 }
 
 export class AnthropicProvider implements LlmProvider {
   readonly name: string;
   private client: MessagesClient;
 
-  constructor(opts: { model?: string; client?: MessagesClient; apiKey?: string } = {}) {
+  /** per call; model calls run inside the workspace lock, so a stuck one must not block the studio for minutes */
+  private timeoutMs: number;
+
+  constructor(opts: { model?: string; client?: MessagesClient; apiKey?: string; timeoutMs?: number } = {}) {
+    this.timeoutMs = opts.timeoutMs ?? 60_000;
     this.model = opts.model ?? 'claude-sonnet-5-5';
     this.name = `anthropic:${this.model}`;
     this.client = opts.client ?? (new Anthropic(opts.apiKey ? { apiKey: opts.apiKey } : {}) as unknown as MessagesClient);
@@ -81,13 +85,23 @@ export class AnthropicProvider implements LlmProvider {
   private model: string;
 
   async run<K extends AiTask>(task: K, input: AiTasks[K]['input']): Promise<AiTasks[K]['output']> {
-    const res = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 4000,
-      system: SYSTEM,
-      output_config: { effort: task === 'compile_policy' ? 'medium' : 'low', format: { type: 'json_schema', schema: SCHEMAS[task] } },
-      messages: [{ role: 'user', content: `${INSTRUCTIONS[task]}\n\n<input>\n${JSON.stringify(input)}\n</input>` }],
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const res = await Promise.race([
+      this.client.messages.create(
+        {
+          model: this.model,
+          max_tokens: 4000,
+          system: SYSTEM,
+          output_config: { effort: task === 'compile_policy' ? 'medium' : 'low', format: { type: 'json_schema', schema: SCHEMAS[task] } },
+          messages: [{ role: 'user', content: `${INSTRUCTIONS[task]}\n\n<input>\n${JSON.stringify(input)}\n</input>` }],
+        },
+        { timeout: this.timeoutMs, maxRetries: 1 },
+      ),
+      // backstop in case a client ignores the timeout option (one retry allowed)
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`LLM call timed out for ${task}`)), this.timeoutMs * 2 + 1000);
+      }),
+    ]).finally(() => clearTimeout(timer));
     if (res.stop_reason === 'refusal') throw new Error(`LLM refused ${task}`);
     if (res.stop_reason === 'max_tokens') throw new Error(`LLM output truncated for ${task}`);
     const text = (res.content ?? []).find((b: any) => b.type === 'text')?.text;

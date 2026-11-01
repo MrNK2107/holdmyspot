@@ -307,3 +307,23 @@ describe('T-72h hold when PayPal errors (not a decline)', () => {
     expect(riley.approvalLink).toBeTruthy();
   });
 });
+
+describe('model calls are bounded in time', () => {
+  it('a model call that never answers rejects after timeoutMs (it runs inside the workspace lock)', async () => {
+    const { AnthropicProvider } = await import('../src/ai/anthropic.js');
+    let opts: unknown;
+    const p = new AnthropicProvider({
+      client: {
+        messages: {
+          create: (_params: unknown, o?: unknown) => {
+            opts = o;
+            return new Promise(() => undefined);
+          },
+        },
+      } as never,
+      timeoutMs: 50,
+    } as never);
+    await expect(p.run('draft_reply', { clientName: 'Sam', situation: 'ack', facts: {} })).rejects.toThrow(/timed out/);
+    expect(opts).toMatchObject({ timeout: 50 });
+  });
+});
