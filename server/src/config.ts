@@ -13,7 +13,8 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   aiMode: string;
   webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>;
 } {
-  const baseUrl = env.PUBLIC_URL ?? '';
+  // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
+  const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
   const deps: WorkspaceDeps = { baseUrl };
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>) | undefined;

@@ -1,24 +1,43 @@
-# Render Blueprint (draft, not deployed). One web service; state is in memory per demo workspace.
+# Render Blueprint for HoldMySpot (not deployed yet; see "Deploy on Render" in README.md).
+#
+# One Node web service serves the API, the server-sent events and the built React app.
+# State is in memory, one isolated demo workspace per visitor, so a restart (or the free
+# plan spinning down after ~15 idle minutes) resets every demo to Monday 9 AM. That is fine
+# for a judged demo; persistence is on the roadmap.
+#
+# With no secrets set it runs keyless: PayPal simulator + offline front-desk provider, and
+# the guided demo at /?demo=1. To use the real PayPal sandbox and Claude, set PAYMENTS=sandbox
+# and AI=anthropic and fill the secrets (sync: false = entered in the Dashboard, never in git).
 services:
   - type: web
     name: holdmyspot
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build -w web
+    # tsx and the TypeScript toolchain are devDependencies: install them even if NODE_ENV is set
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    autoDeployTrigger: commit
     envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Render provides PORT; the server must listen on all interfaces
       - key: HOST
         value: 0.0.0.0
       - key: PAYMENTS
         value: mock
       - key: AI
         value: fake
+      # PayPal return/cancel URLs default to RENDER_EXTERNAL_URL (set by Render); override for a custom domain
+      - key: PUBLIC_URL
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: PUBLIC_URL
-        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5-5

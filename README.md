@@ -25,7 +25,14 @@ Open `http://127.0.0.1:18080/?demo=1` for the **guided demo**: 13 beats, about 3
 | Thu 9:00 AM · Maya texts | Late cancel → refill first. Offer goes to the top 3 waitlisters. Eli says YES but his hold is declined, so the spot stays open; Chris says YES, his hold authorizes, Maya's hold is voided. **Late cancel. $0 lost. $0 charged.** |
 | Thu 11:10 AM · did Alex show? | Owner taps No-show → nobody to refill → capture card → one tap captures $20. Refund is one more tap. |
 
-Every booking has a money timeline: AI outputs, engine decisions, PayPal calls and webhooks.
+Every booking has a money timeline: AI outputs, engine decisions, PayPal calls and webhooks. Two more tabs:
+
+- **Agent trace**: every client text is one run of the front desk agent. You see each tool call with its arguments and result, the policy check it triggered, the money gate (released automatically, refill first, or waiting for the owner's tap) and, later, the owner's tap and the PayPal call it caused.
+- **Ledger** (AG Grid): one row per booking with its money state, held / charged / refunded amounts and the PayPal authorization, capture and refund ids, plus a pinned totals row; a second view lists every PayPal API call and webhook. Quick search, column filters, CSV export. Click a row to open that booking on the schedule.
+
+| Agent trace (prompt injection denied) | Ledger (AG Grid) |
+|---|---|
+| ![Agent trace](docs/screenshots/agent-trace-injection.png) | ![Ledger](docs/screenshots/ledger.png) |
 
 ## Architecture
 
@@ -41,8 +48,25 @@ Every booking has a money timeline: AI outputs, engine decisions, PayPal calls a
 - `server/src/domain` – booking state machine, policy rules, `decide()`, capture invariants.
 - `server/src/engine/engine.ts` – the only caller of the payments gateway.
 - `server/src/ai` – the front desk. It returns labels and text. A test fails the build if any AI module imports the payments or engine code.
+- `server/src/ai/agent.ts` – the front desk as a tool-calling agent (see below).
 - `server/src/paypal` – the gateway interface, the simulator, the real REST adapter.
 - `web/` – React + Vite owner console and booking page.
+
+### The front desk agent
+
+Each inbound client text runs a tool-calling loop (`FrontDeskAgent`, max 8 steps). The model picks one tool per step from the toolset the engine hands it; the server executes it and feeds the result back.
+
+| Tool | Access | What it does |
+|---|---|---|
+| `get_booking` | read | the client's next active booking and its hold state |
+| `get_policy` | read | the approved policy version, hash, fee window, excused reasons |
+| `classify_message` | model, label only | intent, reason, confidence, evidence words (whitelisted) |
+| `propose_settlement` | proposal | hands a label to `decide()`; the engine picks the outcome |
+| `finish` | – | ends the turn |
+
+There is no tool that authorizes, captures, voids or refunds: those exist only in the engine. A request for any other tool is logged as **denied** and nothing runs. Releasing a hold is automatic when the policy says so (it only returns money); every charge waits for the owner's tap. If the model stops without proposing, the fixed pipeline (classify → `decide()`) handles the message, so a client is never ignored. A YES to a refill offer and a rebook pick ("2") are routed by code, not by the model, and are traced as such.
+
+Without an API key the agent runs on the deterministic offline provider, which plans the same tool sequence and, for a message carrying a prompt injection, first replays what a manipulated model would try (`create_refund`) so the demo shows the denial. With `AI=anthropic`, Claude picks the tools through structured outputs (`agent_step`). Tests: `server/test/agent.test.ts`.
 
 ### Where we refused to use AI
 - **Money.** The AI has no amount, authorization or PayPal parameter anywhere in its output schemas. The engine decides; every capture needs an owner tap.
@@ -58,12 +82,19 @@ T−72h hold declined → re-approval link · late cancel before any hold exists
 ## Configuration
 See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
 
+## Deploy on Render
+
+`render.yaml` is a Blueprint for one free Node web service (not deployed yet). In the Render Dashboard: **New → Blueprint**, pick the repo, keep the defaults. It builds with `npm ci --include=dev && npm run build` (tsx is a dev dependency), starts with `npm start`, listens on Render's `PORT` with `HOST=0.0.0.0`, and health-checks `/api/health`. With no secrets it runs keyless (simulator + offline provider) and the guided demo is at `https://<service>.onrender.com/?demo=1`.
+
+For the real PayPal sandbox and Claude, set `PAYMENTS=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `AI=anthropic` and `ANTHROPIC_API_KEY` in the Dashboard (they are `sync: false`, never in git). PayPal return/cancel URLs use Render's `RENDER_EXTERNAL_URL` unless `PUBLIC_URL` is set. Point the sandbox app's webhook at `https://<service>.onrender.com/api/paypal/webhook`. State is in memory: the free plan spins down after about 15 idle minutes, which resets the demo. `server/test/app.test.ts` checks the Blueprint against the real scripts and health route.
+
 ## Not built yet (honest list)
-Agent Toolkit `create_refund`/`list_transactions`; Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
+PayPal Agent Toolkit / MCP server (our agent's tools are our own; money stays in the engine); Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
 
 ## Tools
 - PayPal Orders v2 (intent=AUTHORIZE, merchant-initiated with `vault_id` + `stored_credential`), Payments v2 (capture, void, reauthorize, refund), Vault v3 (setup token → payment token for bookings more than 72h out), webhooks (signature-verified; the endpoint refuses events when no `PAYPAL_WEBHOOK_ID` is configured).
-- Claude (Anthropic API) for policy compilation, message classification, waitlist parsing/ranking and reply drafting, behind a provider interface with a deterministic fake for tests and keyless demos.
+- Claude (Anthropic API) for policy compilation, the front desk agent's tool choice, message classification, waitlist parsing/ranking and reply drafting, behind a provider interface with a deterministic offline provider for tests and keyless demos.
+- AG Grid Community (MIT) for the money ledger; Render Blueprint for hosting.
 
 ## Licence
 MIT, see `LICENSE`.

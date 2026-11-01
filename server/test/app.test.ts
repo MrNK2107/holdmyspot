@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { Workspaces } from '../src/workspaces.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { configFromEnv } from '../src/config.js';
 
 let app: FastifyInstance;
@@ -99,6 +101,33 @@ describe('config', () => {
     expect(configFromEnv({}).paymentsMode).toBe('mock');
     expect(() => configFromEnv({ PAYMENTS: 'sandbox' })).toThrow('PAYPAL_CLIENT_ID');
     expect(configFromEnv({ PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b' }).deps.gateway?.mode).toBe('sandbox');
+  });
+
+  it("uses Render's external URL for PayPal return links unless PUBLIC_URL overrides it", () => {
+    expect(configFromEnv({ RENDER_EXTERNAL_URL: 'https://holdmyspot.onrender.com' }).deps.baseUrl).toBe('https://holdmyspot.onrender.com');
+    expect(configFromEnv({ PUBLIC_URL: 'https://x.example', RENDER_EXTERNAL_URL: 'https://y.onrender.com' }).deps.baseUrl).toBe('https://x.example');
+    expect(configFromEnv({ PUBLIC_URL: '', RENDER_EXTERNAL_URL: 'https://y.onrender.com' }).deps.baseUrl).toBe('https://y.onrender.com');
+  });
+
+  it('render.yaml matches the app: scripts exist, health path is served, keyless defaults, secrets not in git', () => {
+    const yaml = readFileSync(join(__dirname, '..', '..', 'render.yaml'), 'utf8');
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8'));
+    const field = (k: string) => yaml.match(new RegExp(`^\\s+${k}: (.+)$`, 'm'))?.[1].trim() ?? '';
+    const scripts = [...field('buildCommand').matchAll(/npm run (\S+)/g)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const s of scripts) expect(pkg.scripts[s], s).toBeDefined();
+    expect(field('buildCommand')).toContain('--include=dev'); // tsx is a devDependency
+    expect(field('startCommand')).toBe('npm start');
+    expect(pkg.scripts.start).toBeDefined();
+    expect(field('healthCheckPath')).toBe('/api/health');
+    expect(yaml).toMatch(/key: PAYMENTS\s+value: mock/);
+    expect(yaml).toMatch(/key: AI\s+value: fake/);
+    expect(yaml).toMatch(/key: HOST\s+value: 0\.0\.0\.0/);
+    for (const secret of ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID', 'ANTHROPIC_API_KEY']) expect(yaml).toMatch(new RegExp(`key: ${secret}\\s+sync: false`));
+  });
+
+  it('serves the health check the Render blueprint points at', async () => {
+    expect((await app.inject('/api/health')).statusCode).toBe(200);
   });
 });
 
