@@ -1,10 +1,11 @@
+import { AnthropicProvider } from './ai/anthropic.js';
 import { PayPalRestGateway } from './paypal/rest.js';
 import type { WorkspaceDeps } from './workspaces.js';
 
 /**
  * Picks adapters from env. Defaults are the deterministic simulator and fake LLM, so the app
  * runs with no keys. PAYMENTS=sandbox with PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET switches to real
- * PayPal sandbox traffic. (The Anthropic provider is plan task 16.)
+ * PayPal sandbox traffic. AI=anthropic with ANTHROPIC_API_KEY switches the front desk to Claude.
  */
 export function configFromEnv(env: Record<string, string | undefined>): { deps: WorkspaceDeps; paymentsMode: string; aiMode: string } {
   const baseUrl = env.PUBLIC_URL ?? '';
@@ -20,5 +21,12 @@ export function configFromEnv(env: Record<string, string | undefined>): { deps: 
     });
     paymentsMode = 'sandbox';
   }
-  return { deps, paymentsMode, aiMode: 'fake' };
+  let aiMode = 'fake';
+  if (env.AI === 'anthropic') {
+    if (!env.ANTHROPIC_API_KEY) throw new Error('AI=anthropic needs ANTHROPIC_API_KEY');
+    const model = env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5';
+    deps.llm = () => new AnthropicProvider({ model, apiKey: env.ANTHROPIC_API_KEY });
+    aiMode = `anthropic:${model}`;
+  }
+  return { deps, paymentsMode, aiMode };
 }
