@@ -126,3 +126,56 @@ describe('shared sandbox account: the Agent Toolkit reads only the asking worksp
     expect(mine.result.id).toBe(alexA.orderId);
   });
 });
+
+describe('money webhooks other than AUTHORIZATION.CREATED', () => {
+  const charged = async () => {
+    const w = await new Workspaces().create('t5');
+    const e = w.engine;
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!.id, 'no_show');
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!.id, 'charge');
+    expect(alex.state).toBe('CHARGED');
+    return { e, alex, mock: w.mock! };
+  };
+  const view = (e: import('../src/engine/engine.js').Engine, id: string) => e.snapshot().bookings.find((b) => b.id === id)!;
+
+  it.each(['PAYMENT.CAPTURE.DENIED', 'PAYMENT.CAPTURE.REVERSED'] as const)('%s: the booking no longer shows a collected fee, and it cannot be "refunded"', async (type) => {
+    const { e, alex } = await charged();
+    expect(view(e, alex.id).money).toBe('captured');
+    const r = await e.ingestWebhook({ id: `WH-${type}`, event_type: type, create_time: '', resource: { id: alex.captureId!, custom_id: `t5:${alex.id}`, status: type.endsWith('DENIED') ? 'DECLINED' : 'REVERSED' } });
+    expect(r).toBe('processed');
+    expect(view(e, alex.id).money).toBe('reversed');
+    expect(alex.paymentIssue).toMatch(type.endsWith('DENIED') ? /denied/ : /reversed/);
+    await expect(e.refund(alex.id)).rejects.toThrow(/no collected fee to refund/);
+    const run = await e.askAssistant('how did this week go?');
+    expect(JSON.stringify(run.run.steps)).not.toMatch(/"chargedCents":2000/);
+  });
+
+  it('a capture event for another capture id (an older one) changes nothing', async () => {
+    const { e, alex } = await charged();
+    await e.ingestWebhook({ id: 'WH-X', event_type: 'PAYMENT.CAPTURE.DENIED', create_time: '', resource: { id: 'SOMEOTHERCAPTURE1', custom_id: `t5:${alex.id}` } });
+    expect(view(e, alex.id).money).toBe('captured');
+    expect(alex.paymentIssue).toBeUndefined();
+  });
+
+  it('a failed refund is no longer shown as refunded, and the owner gets a card to try again with a new request id', async () => {
+    const { e, alex, mock } = await charged();
+    await e.refund(alex.id);
+    const refundId = alex.refundId!;
+    // the simulator has no failing refunds: undo its bookkeeping, as PayPal would for a FAILED refund
+    (mock as unknown as { captures: Map<string, { refundedCents: number }> }).captures.get(alex.captureId!)!.refundedCents = 0;
+    expect(view(e, alex.id).money).toBe('refunded');
+    // refund resources carry no custom_id: matched by the refund id this workspace created
+    const reg = new Workspaces();
+    (reg as unknown as { map: Map<string, unknown> }).map.set('t5', { engine: e });
+    expect(await reg.routeWebhook({ id: 'WH-RF', event_type: 'PAYMENT.REFUND.FAILED', create_time: '', resource: { id: refundId, status: 'FAILED' } })).toBe('processed');
+    expect(alex.refundId).toBeUndefined();
+    expect(view(e, alex.id).money).toBe('captured');
+    const card = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'refund');
+    expect(card?.prompt).toMatch(/refund .* failed/i);
+    await e.resolveApproval(card!.id, 'refund');
+    expect(alex.refundId).toBeTruthy();
+    expect(alex.refundId).not.toBe(refundId); // a new request, not a replay of the failed one
+  });
+});

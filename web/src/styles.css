@@ -392,7 +392,8 @@ textarea {
 .m-captured {
   --c: var(--m-captured);
 }
-.m-failed {
+.m-failed,
+.m-reversed {
   --c: var(--m-failed);
 }
 .m-refunded {

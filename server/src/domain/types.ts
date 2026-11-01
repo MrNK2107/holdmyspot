@@ -11,7 +11,7 @@ export type BookingState =
   | 'CHARGED'
   | 'NEEDS_REVIEW';
 
-export type MoneyState = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed';
+export type MoneyState = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed' | 'reversed';
 
 export interface Service {
   id: string;
@@ -51,6 +51,8 @@ export interface Booking {
   refillOfBookingId?: string;
   approvalLink?: string;
   cancelledAt?: number;
+  /** PayPal took back a captured fee (capture denied or reversed): it is no longer collected */
+  paymentIssue?: string;
   lastLabel?: MessageLabel;
 }
 

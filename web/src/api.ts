@@ -1,4 +1,4 @@
-export type Money = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed' | 'refunded';
+export type Money = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed' | 'refunded' | 'reversed';
 
 export interface BookingView {
   id: string;

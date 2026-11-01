@@ -134,7 +134,8 @@ export class Workspaces {
   /** Real PayPal webhooks: route by custom_id = "<workspace>:<booking>". */
   async routeWebhook(e: WebhookEvent): Promise<'processed' | 'duplicate' | 'ignored' | 'unknown_workspace'> {
     const wsId = e.resource.custom_id?.split(':')[0];
-    const ws = wsId ? this.map.get(wsId) : undefined;
+    // refund resources carry no custom_id: find the workspace that created the object
+    const ws = wsId ? this.map.get(wsId) : [...this.map.values()].find((w) => w.engine.paypalIds().has(e.resource.id));
     if (!ws) return 'unknown_workspace';
     return this.run(ws.engine.id, () => ws.engine.ingestWebhook(e));
   }

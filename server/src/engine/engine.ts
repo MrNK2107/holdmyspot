@@ -138,6 +138,8 @@ export class Engine {
   private holdAttempts = new Map<string, number>();
   /** authorizations being (or already) reauthorized: their successor replaces them without a void */
   private reauthParents = new Set<string>();
+  /** bookingId -> refunds PayPal failed: a retry needs a new PayPal-Request-Id, or PayPal replays the failure */
+  private refundRetries = new Map<string, number>();
   /** late authorizations whose void failed: shown to the owner, never silently dropped */
   unreleasedAuths: Array<{ bookingId: string; authorizationId: string; error: string }> = [];
   private baseUrl: string;
@@ -504,12 +506,47 @@ export class Engine {
       return 'duplicate';
     }
     this.seenEvents.add(e.id);
-    const bookingId = e.resource.custom_id?.split(':')[1];
-    const b = this.ownsCustomId(e.resource.custom_id) && bookingId ? this.bookings.get(bookingId) : undefined;
+    const cid = e.resource.custom_id;
+    const bookingId = cid?.split(':')[1];
+    const b = cid
+      ? this.ownsCustomId(cid) && bookingId ? this.bookings.get(bookingId) : undefined
+      : // refund resources carry no custom_id: only an object this workspace created
+        [...this.bookings.values()].find((x) => x.refundId === e.resource.id || x.captureId === e.resource.id);
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
     if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
+    else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
+    else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
     return 'processed';
+  }
+
+  /** A capture that later is denied (a PENDING capture under review) or reversed (e.g. a dispute): the fee is not collected. */
+  private onCaptureLost(b: Booking, e: WebhookEvent): void {
+    if (!b.captureId || b.captureId !== e.resource.id || b.paymentIssue) return;
+    b.paymentIssue =
+      e.event_type === 'PAYMENT.CAPTURE.DENIED' ? `PayPal denied capture ${b.captureId}: no fee was collected` : `capture ${b.captureId} was reversed by PayPal: the fee is no longer collected`;
+    this.audit.add('engine', `money: ${b.paymentIssue}`, { bookingId: b.id });
+    // nothing left to refund
+    for (const a of this.openApprovals()) if (a.bookingId === b.id && a.kind === 'refund') a.resolved = 'stale';
+    this.emit('state');
+  }
+
+  /** A refund PayPal could not complete: the fee is still collected, so stop showing it as refunded and let the owner retry. */
+  private onRefundFailed(b: Booking, refundId: string): void {
+    if (b.refundId !== refundId) return;
+    b.refundId = undefined;
+    this.refundRetries.set(b.id, (this.refundRetries.get(b.id) ?? 0) + 1);
+    const fee = b.capturedCents ?? b.holdCents;
+    this.audit.add('engine', `money: refund ${refundId} failed at PayPal; the fee is still collected`, { bookingId: b.id });
+    this.addApproval({
+      kind: 'refund',
+      bookingId: b.id,
+      prompt: `PayPal refund ${refundId} of ${this.client(b.clientId).name}'s $${(fee / 100).toFixed(0)} fee failed; the fee is still collected. Try the refund again?`,
+      feeCents: fee,
+      suggested: 'refund',
+      options: ['refund', 'keep'],
+    });
+    this.emit('state');
   }
 
   /** custom_id is this engine's: not another workspace's, nor an earlier engine's under the same workspace id */
@@ -747,7 +784,7 @@ export class Engine {
           return {
             totals: {
               heldCents: sum((b) => (b.money === 'held' || b.money === 'pending-refill' ? b.holdCents : 0)),
-              chargedCents: sum((b) => (b.captureId ? (b.capturedCents ?? 0) : 0)),
+              chargedCents: sum((b) => (b.captureId && !b.paymentIssue ? (b.capturedCents ?? 0) : 0)),
               refundedCents: sum((b) => (b.refundId ? (b.capturedCents ?? 0) : 0)),
               refilled: s.bookings.filter((b) => b.state === 'REFILLED').length,
               excused: s.bookings.filter((b) => b.state === 'EXCUSED').length,
@@ -780,7 +817,7 @@ export class Engine {
         description: 'Prepare a full refund of a captured fee as a card for the owner to tap. Does not refund anything itself.',
         run: async (args) => {
           const b = this.bookings.get(String(args.bookingId ?? ''));
-          if (!b || b.state !== 'CHARGED' || !b.captureId) return { error: 'that booking has no captured fee' };
+          if (!b || b.state !== 'CHARGED' || !b.captureId || b.paymentIssue) return { error: 'that booking has no captured fee' };
           if (b.refundId) return { error: 'that fee is already refunded' };
           const open = this.openApprovals().find((a) => a.kind === 'refund' && a.bookingId === b.id);
           if (open) return { status: 'awaiting_owner', approvalId: open.id };
@@ -1217,7 +1254,7 @@ export class Engine {
       : a.kind === 'review' ? (choice === 'excuse' ? 'EXCUSED' : 'PENDING_REFILL')
       : a.kind === 'capture' ? (choice === 'charge' ? 'CHARGED' : 'EXCUSED')
       : undefined;
-    const refundGone = a.kind === 'refund' && choice === 'refund' && (b.state !== 'CHARGED' || !!b.refundId);
+    const refundGone = a.kind === 'refund' && choice === 'refund' && (b.state !== 'CHARGED' || !!b.refundId || !!b.paymentIssue);
     if (refundGone || (target && (b.state === target || !canTransition(b.state, target)))) {
       throw new StaleCardError(`this card is out of date: the booking is already ${b.refundId ? "refunded" : b.state}; nothing was changed`);
     }
@@ -1279,7 +1316,9 @@ export class Engine {
     const b = this.booking(bookingId);
     if (b.state !== 'CHARGED' || !b.captureId) throw new Error('nothing to refund');
     if (b.refundId) throw new Error('already refunded');
-    const r = await this.gateway.refund(b.captureId, b.capturedCents ?? b.holdCents, this.intentKey(b, 'refund', b.captureId));
+    if (b.paymentIssue) throw new Error(`no collected fee to refund: ${b.paymentIssue}`);
+    const retry = this.refundRetries.get(b.id) ?? 0;
+    const r = await this.gateway.refund(b.captureId, b.capturedCents ?? b.holdCents, this.intentKey(b, 'refund', retry ? `${b.captureId}-retry${retry}` : b.captureId));
     b.refundId = r.refundId;
     this.audit.add('paypal', `refund ${r.refundId} ($${(r.amountCents / 100).toFixed(2)})`, { bookingId: b.id, data: r });
     this.say(b.clientId, `${this.ownerName} refunded your fee. No hard feelings!`);
@@ -1296,7 +1335,9 @@ export class Engine {
       clientName: this.client(b.clientId).name,
       serviceName: this.services.get(b.serviceId)?.name,
       // a booking that never had an authorization has no money at stake, whatever its state
-      money: b.refundId
+      money: b.paymentIssue
+        ? 'reversed'
+        : b.refundId
         ? 'refunded'
         : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state)
           ? 'none'

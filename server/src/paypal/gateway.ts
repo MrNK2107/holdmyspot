@@ -82,6 +82,8 @@ export interface WebhookEvent {
     | 'PAYMENT.CAPTURE.COMPLETED'
     | 'PAYMENT.CAPTURE.DENIED'
     | 'PAYMENT.CAPTURE.REFUNDED'
+    | 'PAYMENT.CAPTURE.REVERSED'
+    | 'PAYMENT.REFUND.FAILED'
     | 'VAULT.PAYMENT-TOKEN.CREATED';
   create_time: string;
   resource: { id: string; custom_id?: string; status?: string; amount?: { currency_code: string; value: string } };

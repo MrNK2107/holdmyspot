@@ -23,6 +23,7 @@ const MONEY_LABEL: Record<string, string> = {
   captured: 'charged',
   failed: 'hold failed',
   refunded: 'refunded',
+  reversed: 'charge reversed',
 };
 
 /** Plain-English meaning of each money state, shown in the legend and the booking panel. */
@@ -35,6 +36,7 @@ const MONEY_EXPLAIN: Record<string, string> = {
   captured: 'Fee captured from the authorization after the owner tapped Charge.',
   failed: 'PayPal declined the hold. The client has a link to re-approve.',
   refunded: 'Fee captured, then refunded in full.',
+  reversed: 'PayPal denied or reversed the captured fee. It is no longer collected.',
 };
 
 /** The amount behind a money chip: the captured fee for charges and refunds, the hold otherwise. */
@@ -487,7 +489,8 @@ function Legend() {
   return (
     <details className="legend">
       <summary>
-        {Object.entries(MONEY_LABEL).map(([k, v]) => (
+        {/* a reversed charge is rare (a dispute or a denied capture): explained below, not in the strip */}
+        {Object.entries(MONEY_LABEL).filter(([k]) => k !== 'reversed').map(([k, v]) => (
           <span key={k} className={`legend-item m-${k}`} title={MONEY_EXPLAIN[k]}>
             <i aria-hidden />
             {v}
