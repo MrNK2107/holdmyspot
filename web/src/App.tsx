@@ -782,7 +782,8 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
     for (const sp of spans) {
       if (!sp.text) continue;
       const esc = sp.text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
-      html = html.replace(esc, `<mark title="${sp.field}">${esc}</mark>`);
+      const field = String(sp.field).replace(/\W/g, '');
+      html = html.replace(esc, () => `<mark title="${field}">${esc}</mark>`);
     }
     return html;
   }, [prose, spans]);

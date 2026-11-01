@@ -1,5 +1,5 @@
 import type { AuditLog } from '../audit.js';
-import { validateRules, type PolicyRules } from '../domain/policy.js';
+import { DEFAULT_RULES, validateRules, type PolicyRules } from '../domain/policy.js';
 import type { CancelReason, MessageIntent, MessageLabel, Service, WaitlistConstraints } from '../domain/types.js';
 import { FrontDeskAgent } from './agent.js';
 import type { AiTasks, Ambiguity, LlmProvider } from './provider.js';
@@ -56,7 +56,13 @@ export class FrontDesk {
   }
 
   async compilePolicy(prose: string): Promise<{ rules: PolicyRules; ambiguities: Ambiguity[]; spans: AiTasks['compile_policy']['output']['spans']; errors: string[] }> {
-    const out = await this.llm.run('compile_policy', { prose });
+    const raw = await this.llm.run('compile_policy', { prose });
+    // spans are rendered as highlights in the owner's UI: only real rule names and words she wrote
+    const fields = new Set(Object.keys(DEFAULT_RULES));
+    const spans = (Array.isArray(raw.spans) ? raw.spans : []).filter(
+      (s) => s && typeof s.field === 'string' && fields.has(s.field) && typeof s.text === 'string' && s.text.length > 0 && prose.includes(s.text),
+    );
+    const out = { ...raw, spans };
     const errors = validateRules(out.rules);
     this.audit.add('ai', `compile_policy → ${out.ambiguities.length} question(s)${errors.length ? `, ${errors.length} rule error(s)` : ''}`, { data: out });
     return { ...out, errors };
