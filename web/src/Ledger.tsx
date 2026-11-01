@@ -2,6 +2,7 @@ import {
   CellStyleModule,
   ClientSideRowModelModule,
   type ColDef,
+  type ColGroupDef,
   CsvExportModule,
   type GridApi,
   ModuleRegistry,
@@ -83,7 +84,7 @@ function toRow(b: BookingView, s: Snapshot): Row {
     authorizationId: b.authorizationId ?? '',
     captureId: b.captureId ?? '',
     refundId: b.refundId ?? '',
-    policy: `v${b.policyVersion} · ${b.policyHash.slice(0, 8)}`,
+    policy: `v${b.policyVersion} · ${b.policyHash.slice(0, 6)}`,
     refill: b.refilledByBookingId ? `refilled by ${name(b.refilledByBookingId)}` : b.refillOfBookingId ? `refill of ${name(b.refillOfBookingId)}` : '',
   };
 }
@@ -174,28 +175,38 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
     [rows],
   );
 
-  const cols = useMemo<ColDef<Row>[]>(
+  const cols = useMemo<(ColDef<Row> | ColGroupDef<Row>)[]>(
     () => [
-      { field: 'start', headerName: 'When', minWidth: 143, flex: 1, sort: 'asc', valueFormatter: (p) => (p.value ? `${fmtDay(p.value)} ${fmtTime(p.value)}` : ''), filter: false },
       { field: 'client', headerName: 'Client', minWidth: 122, flex: 1, pinned: 'left' },
-      { field: 'service', headerName: 'Service', width: 130 },
+      { field: 'start', headerName: 'When', minWidth: 172, flex: 1, sort: 'asc', valueFormatter: (p) => (p.value ? `${fmtDay(p.value)} ${fmtTime(p.value)}` : ''), filter: false },
+      { field: 'service', headerName: 'Service', width: 122 },
       {
-        field: 'money',
         headerName: 'Money',
-        minWidth: 106, flex: 1,
-        cellRenderer: (p: { value: string }) => (p.value ? <span className={`chip m-${p.value}`}>{MONEY_TEXT[p.value] ?? p.value}</span> : null),
-        filterValueGetter: (p) => MONEY_TEXT[p.data?.money ?? ''] ?? '',
-        getQuickFilterText: (p) => MONEY_TEXT[p.value] ?? p.value,
+        children: [
+          {
+            field: 'money',
+            headerName: 'State',
+            minWidth: 106, flex: 1,
+            cellRenderer: (p: { value: string }) => (p.value ? <span className={`chip m-${p.value}`}>{MONEY_TEXT[p.value] ?? p.value}</span> : null),
+            filterValueGetter: (p) => MONEY_TEXT[p.data?.money ?? ''] ?? '',
+            getQuickFilterText: (p) => MONEY_TEXT[p.value] ?? p.value,
+          },
+          { field: 'heldCents', headerName: 'Held', minWidth: 80, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
+          { field: 'chargedCents', headerName: 'Charged', minWidth: 96, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter', cellClassRules: { 'cell-charged': (p) => !!p.value } },
+          { field: 'refundedCents', headerName: 'Refunded', minWidth: 104, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
+        ],
       },
-      { field: 'heldCents', headerName: 'Held', minWidth: 73, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
-      { field: 'chargedCents', headerName: 'Charged', minWidth: 82, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter', cellClassRules: { 'cell-charged': (p) => !!p.value } },
-      { field: 'refundedCents', headerName: 'Refunded', minWidth: 86, flex: 1, type: 'rightAligned', valueFormatter: money, filter: 'agNumberColumnFilter' },
-      { field: 'state', headerName: 'Booking state', width: 150 },
-      { field: 'refill', headerName: 'Refill', width: 160 },
-      { field: 'authorizationId', headerName: 'PayPal authorization', minWidth: 155, flex: 1, cellClass: 'mono' },
-      { field: 'captureId', headerName: 'Capture', minWidth: 122, flex: 1, cellClass: 'mono' },
-      { field: 'refundId', headerName: 'Refund', minWidth: 122, flex: 1, cellClass: 'mono' },
-      { field: 'policy', headerName: 'Policy', minWidth: 106, flex: 1, cellClass: 'mono' },
+      { field: 'state', headerName: 'Booking state', width: 132 },
+      { field: 'refill', headerName: 'Refill', width: 150 },
+      {
+        headerName: 'PayPal objects behind it',
+        children: [
+          { field: 'authorizationId', headerName: 'Authorization', minWidth: 140, flex: 1, cellClass: 'mono' },
+          { field: 'captureId', headerName: 'Capture', minWidth: 148, flex: 1, cellClass: 'mono' },
+          { field: 'refundId', headerName: 'Refund', minWidth: 148, flex: 1, cellClass: 'mono' },
+        ],
+      },
+      { field: 'policy', headerName: 'Policy', minWidth: 112, flex: 1, cellClass: 'mono' },
     ],
     [],
   );

@@ -94,7 +94,7 @@ Goal: raise the judged score without keys. An independent read-only "judge" revi
 - Gotcha: switching between `AgGridReact` instances in one JSX slot reuses the component; give each a `key` or a column getter sees the other view's rows.
 
 ### Verified (end of pass 3)
-- `npm test` → 141 passing (19 files), peak ~1.07 GB under memcap. `npm run ui-check` passes (13 beats, agent trace, owner refund via agent, ledger 3 views, 390 px), **axe 0 violations on 14 screens**, peak ~0.92 GB. `npm run build` passes. `npm run eval`: injection money effects 0.
+- `npm test` → 141 passing (17 files), peak ~1.07 GB under memcap. `npm run ui-check` passes (13 beats, agent trace, owner refund via agent, ledger 3 views with AG Grid column groups, 390 px), **axe 0 violations on 14 screens**, peak ~0.92 GB. `npm run build` passes. `npm run eval`: injection money effects 0.
 
 ### Next
 1. Keys (NEEDS_INPUT): PayPal sandbox → `sandbox-smoke.ts`, then record on the real sandbox; Anthropic key → run `npm run eval` with `AI=anthropic` and check the agent_step tool choice live (only tested with injected/fake providers).
