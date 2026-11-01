@@ -68,3 +68,20 @@ The folder was not a git repo: initialised, initial commit on `master`, all work
 ### Gotchas (new)
 - Python patching on Windows: set `PYTHONUTF8=1` and write with `newline=''`, or CRLF files get rewritten. The repo mixes LF and CRLF files.
 - `PITCH.md` is stale (it describes the earlier "Casefile" idea). Left untouched; the user should delete or rewrite it.
+
+## 2026-11-01, pass 3 (22:08- IST, same branch, local only)
+
+Goal: raise the judged score without keys. An independent read-only "judge" review scored (before): Tech 7, Design 7, Impact 8, Innovation 8, Presentation 6; prize fit Agentic Commerce 3, PayPal+AI 6, AG Grid 1, Render 2, Most Impactful 7. Top weaknesses: no real agent, no AG Grid, render.yaml draft, "AI: fake" badge, empty compiled-rules on the policy beat, booking confirmation missing the date, no problem framing in the cold open, dev-tool toolbar.
+
+### Done
+- **Front desk as a tool-calling agent** (`server/src/ai/agent.ts`, wired in `Engine.receiveMessage`): per client text, the model picks one tool per step (max 8) from `get_booking`, `get_policy` (read), `classify_message` (label only), `propose_settlement` (proposal into `decide()`), `finish`. No authorize/capture/void/refund tool exists; any other tool name is recorded as **denied** and nothing runs. If the model never proposes, the fixed classify → decide pipeline runs (traced as fallback). YES-to-offer and rebook picks are routed by code and traced as such. New AI task `agent_step` (fake planner + Anthropic schema/instructions; Anthropic untested live). The offline provider replays a `create_refund` attempt for injection messages so the denial is visible (documented as a red-team replay in the trace's "why" line and in DEMO_SCRIPT).
+- **Agent runs** (`engine.agentRuns`, in the snapshot): steps in causal order (tool call → policy check → money gate), PayPal calls made by the engine, and later the owner's tap + the PayPal call it caused. Gate kinds: owner_approval / auto_release / refill / code / none.
+- **UI:** "Agent trace" tab (toolset vs. tools it does not have, runs list, full step detail with args/results) and a "Front desk agent" card in the console side column. Injection beat (10) opens the trace tab.
+- **AG Grid ledger** (`web/src/Ledger.tsx`, `ag-grid-react`/`ag-grid-community` 36.2.0 MIT, lazy-loaded chunk): bookings view (money chip, held/charged/refunded, PayPal auth/capture/refund ids, policy hash, refill links, pinned totals row) and a PayPal-calls view (API calls + webhooks from the audit log); quick search, filters, CSV export, row click opens the booking.
+- **Render:** `render.yaml` fixed (`npm ci --include=dev && npm run build`, NODE_VERSION 22, HOST 0.0.0.0, autoDeployTrigger, webhook id + model env), `PUBLIC_URL || RENDER_EXTERNAL_URL` for PayPal return links; README "Deploy on Render"; test checks the Blueprint against package scripts and the health route. Production start smoke-tested on 18093 (killed). Not deployed.
+- **Review gap closed:** `server/test/vaultedCancel.test.ts` (wallet saved via Vault, cancelled before T-72h: no hold ever placed, slot freed, vault kept, late wallet approval does not revive it).
+- **Polish:** booking confirmation shows date/time + authorization id (was "Gel manicure, ."); demo start card frames who/problem; policy beat compiles on open (rules + the AI's question visible); manual clock controls hidden during the guided demo; "All quiet" Needs-you state; AI badge "offline provider".
+- **Docs:** README (agent section, ledger, deploy), DEMO_SCRIPT (beats 0/2/5/10/13 + honesty notes), DEVPOST draft. PITCH.md untouched.
+
+### Verified
+- `npm test` → 132 passing (16 files), peak 0.94 GB. `npm run ui-check` passes: all 13 beats, agent trace (denied create_refund, proposal + policy check), ledger (ids, totals, calls search), 390 px no sideways scroll on console/agent/ledger/booking, **axe 0 violations on 13 screens**, peak 1.01 GB. `npm run build` passes. `npm run eval`: injection money effects 0, 16 denied agent tool calls.
