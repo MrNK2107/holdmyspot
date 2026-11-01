@@ -4,7 +4,7 @@ import { FrontDesk } from './ai/frontdesk.js';
 import type { LlmProvider } from './ai/provider.js';
 import { DemoClock } from './clock.js';
 import { Engine } from './engine/engine.js';
-import type { PaymentsGateway, WebhookEvent } from './paypal/gateway.js';
+import { upCaptureId, type PaymentsGateway, type WebhookEvent } from './paypal/gateway.js';
 import { MockPayPalGateway } from './paypal/mock.js';
 import { RequestPreview } from './paypal/preview.js';
 import { PayPalToolkitReader, type ToolkitVia } from './paypal/toolkit.js';
@@ -165,7 +165,8 @@ export class Workspaces {
   async routeWebhook(e: WebhookEvent): Promise<'processed' | 'duplicate' | 'ignored' | 'unknown_workspace'> {
     const wsId = e.resource.custom_id?.split(':')[0];
     // refund resources carry no custom_id: find the workspace that created the object
-    const ws = wsId ? this.map.get(wsId) : [...this.map.values()].find((w) => w.engine.paypalIds().has(e.resource.id));
+    const up = upCaptureId(e);
+    const ws = wsId ? this.map.get(wsId) : [...this.map.values()].find((w) => w.engine.paypalIds().has(e.resource.id) || (!!up && w.engine.paypalIds().has(up)));
     if (!ws) return 'unknown_workspace';
     return this.run(ws.engine.id, () => ws.engine.ingestWebhook(e));
   }

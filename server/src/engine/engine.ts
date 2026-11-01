@@ -7,7 +7,7 @@ import { type ApprovedPolicy, type Decision, captureViolations, decide } from '.
 import { assertTransition, canTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
 import { slotMatches } from '../domain/waitlist.js';
-import { type HoldResult, type PaymentsGateway, type ReauthorizeResult, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
+import { type HoldResult, type PaymentsGateway, type ReauthorizeResult, type WebhookEvent, PaymentsError, upCaptureId, valueToCents } from '../paypal/gateway.js';
 import { type PayPalToolkitReader, TOOLKIT_MONEY_TOOLS, TOOLKIT_PACKAGE, TOOLKIT_PREFIX, TOOLKIT_VERSION } from '../paypal/toolkit.js';
 
 /** Client texts longer than this are cut before they reach the model or the audit log (an SMS thread, not a document). */
@@ -559,13 +559,14 @@ export class Engine {
     const b = cid
       ? this.ownsCustomId(cid) && bookingId ? this.bookings.get(bookingId) : undefined
       : // refund resources carry no custom_id: only an object this workspace created
-        [...this.bookings.values()].find((x) => x.refundId === e.resource.id || x.captureId === e.resource.id);
+        [...this.bookings.values()].find((x) => x.refundId === e.resource.id || x.captureId === e.resource.id || (!!x.captureId && x.captureId === upCaptureId(e)));
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
     try {
       if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
       else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
       else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
+      else if (e.event_type === 'PAYMENT.CAPTURE.REFUNDED') this.onCaptureRefunded(b, e);
       else if (e.event_type === 'PAYMENT.AUTHORIZATION.VOIDED') this.onHoldVoided(b, e.resource.id);
     } catch (err) {
       // the route answers 5xx and PayPal redelivers the same event id: that retry must not be deduped away
@@ -600,9 +601,38 @@ export class Engine {
     this.emit('state');
   }
 
+  /**
+   * A refund of the booking's capture, ours or one made in the PayPal dashboard. Records the amount (once per
+   * refund id) so the booking is not shown as charged; a full refund marks it refunded and closes refund cards.
+   */
+  private onCaptureRefunded(b: Booking, e: WebhookEvent): void {
+    const up = upCaptureId(e);
+    if (!b.captureId || (up && up !== b.captureId) || b.refunds?.some((r) => r.id === e.resource.id)) return;
+    const fee = b.capturedCents ?? b.holdCents;
+    const given = e.resource.amount ? valueToCents(e.resource.amount.value) : NaN;
+    // PayPal's refund resource carries its amount; without one, assume the rest of the fee
+    const cents = Number.isFinite(given) && given > 0 ? given : fee - (b.refundedCents ?? 0);
+    (b.refunds ??= []).push({ id: e.resource.id, cents });
+    b.refundedCents = Math.min(fee, (b.refundedCents ?? 0) + cents);
+    this.audit.add('engine', `money: PayPal refunded $${(cents / 100).toFixed(2)} of capture ${b.captureId} (refund ${e.resource.id}, made outside HoldMySpot)`, { bookingId: b.id });
+    if (b.refundedCents >= fee && !b.refundId) {
+      b.refundId = e.resource.id;
+      for (const a of this.openApprovals()) if (a.bookingId === b.id && a.kind === 'refund') a.resolved = 'stale';
+    }
+    this.emit('state');
+  }
+
   /** A refund PayPal could not complete: the fee is still collected, so stop showing it as refunded and let the owner retry. */
   private onRefundFailed(b: Booking, refundId: string): void {
-    if (b.refundId !== refundId) return;
+    const part = b.refunds?.find((r) => r.id === refundId);
+    if (part) {
+      b.refunds = b.refunds!.filter((r) => r !== part);
+      b.refundedCents = Math.max(0, (b.refundedCents ?? 0) - part.cents);
+    }
+    if (b.refundId !== refundId) {
+      if (part) this.emit('state');
+      return;
+    }
     b.refundId = undefined;
     this.refundRetries.set(b.id, (this.refundRetries.get(b.id) ?? 0) + 1);
     const fee = b.capturedCents ?? b.holdCents;
@@ -885,7 +915,7 @@ export class Engine {
             totals: {
               heldCents: sum((b) => (b.money === 'held' || b.money === 'pending-refill' ? b.holdCents : 0)),
               chargedCents: sum((b) => (b.captureId && !b.paymentIssue ? (b.capturedCents ?? 0) : 0)),
-              refundedCents: sum((b) => (b.refundId ? (b.capturedCents ?? 0) : 0)),
+              refundedCents: sum((b) => (b.refundId ? (b.capturedCents ?? 0) : (b.refundedCents ?? 0))),
               refilled: s.bookings.filter((b) => b.state === 'REFILLED').length,
               excused: s.bookings.filter((b) => b.state === 'EXCUSED').length,
             },
@@ -1467,8 +1497,13 @@ export class Engine {
     if (b.refundId) throw new Error('already refunded');
     if (b.paymentIssue) throw new Error(`no collected fee to refund: ${b.paymentIssue}`);
     const retry = this.refundRetries.get(b.id) ?? 0;
-    const r = await this.gateway.refund(b.captureId, b.capturedCents ?? b.holdCents, this.intentKey(b, 'refund', retry ? `${b.captureId}-retry${retry}` : b.captureId));
+    // a part may already be refunded in the PayPal dashboard: refund the rest (PayPal refuses more than captured)
+    const fee = b.capturedCents ?? b.holdCents;
+    const rest = fee - (b.refundedCents ?? 0);
+    const r = await this.gateway.refund(b.captureId, rest, this.intentKey(b, 'refund', retry ? `${b.captureId}-retry${retry}` : b.captureId));
     b.refundId = r.refundId;
+    (b.refunds ??= []).push({ id: r.refundId, cents: r.amountCents });
+    b.refundedCents = Math.min(fee, (b.refundedCents ?? 0) + r.amountCents);
     this.audit.add('paypal', `refund ${r.refundId} ($${(r.amountCents / 100).toFixed(2)})`, { bookingId: b.id, data: r });
     this.say(b.clientId, `${this.ownerName} refunded your fee. No hard feelings!`);
     this.emit('state');
@@ -1490,6 +1525,8 @@ export class Engine {
         ? 'voided'
         : b.refundId
         ? 'refunded'
+        : b.captureId && b.refundedCents
+        ? 'part-refunded'
         : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state)
           ? 'none'
           : // refill window over and the fee card is waiting: the hold is simply held until the owner decides

@@ -1,4 +1,4 @@
-export type Money = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed' | 'refunded' | 'reversed';
+export type Money = 'none' | 'vaulted' | 'held' | 'pending-refill' | 'voided' | 'captured' | 'failed' | 'refunded' | 'part-refunded' | 'reversed';
 
 export interface BookingView {
   id: string;
@@ -15,6 +15,8 @@ export interface BookingView {
   captureId?: string;
   capturedCents?: number;
   refundId?: string;
+  /** refunded so far (ours and refunds made in the PayPal dashboard) */
+  refundedCents?: number;
   approvalLink?: string;
   orderId?: string;
   refillOfBookingId?: string;

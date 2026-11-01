@@ -43,8 +43,12 @@ export interface Booking {
   authorizationId?: string;
   authorizedAt?: number;
   captureId?: string;
+  /** set once the fee is refunded in full (by HoldMySpot or in the PayPal dashboard) */
   refundId?: string;
   capturedCents?: number;
+  /** every refund PayPal reported against the capture (ours and dashboard ones), and their sum */
+  refunds?: Array<{ id: string; cents: number }>;
+  refundedCents?: number;
   /** end of the hold's 29-day authorization validity (a reauthorization does not extend it) */
   holdExpiresAt?: number;
   /** PayPal allows one reauthorization per authorization */

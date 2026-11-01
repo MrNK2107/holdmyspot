@@ -23,6 +23,7 @@ const MONEY_LABEL: Record<string, string> = {
   captured: 'charged',
   failed: 'hold failed',
   refunded: 'refunded',
+  'part-refunded': 'partly refunded',
   reversed: 'charge reversed',
 };
 
@@ -36,6 +37,7 @@ const MONEY_EXPLAIN: Record<string, string> = {
   captured: 'Fee captured from the authorization after the owner tapped Charge.',
   failed: 'PayPal declined the hold. The client has a link to re-approve.',
   refunded: 'Fee captured, then refunded in full.',
+  'part-refunded': 'Fee captured, then partly refunded (in the PayPal dashboard). The rest is still collected.',
   reversed: 'PayPal denied or reversed the captured fee. It is no longer collected.',
 };
 
@@ -43,6 +45,7 @@ const MONEY_EXPLAIN: Record<string, string> = {
 function chipAmount(b: BookingView): string {
   if (b.money === 'held' || b.money === 'pending-refill') return ` ${usd(b.holdCents)}`;
   if (b.money === 'captured' || b.money === 'refunded') return ` ${usd(b.capturedCents ?? b.holdCents)}`;
+  if (b.money === 'part-refunded') return ` ${usd(b.refundedCents ?? 0)} of ${usd(b.capturedCents ?? b.holdCents)}`;
   if (b.money === 'voided') return ' · $0';
   return '';
 }
@@ -462,8 +465,8 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
 
 function MoneyStrip({ s }: { s: Snapshot }) {
   const held = s.bookings.filter((b) => b.money === 'held' || b.money === 'pending-refill').reduce((a, b) => a + b.holdCents, 0);
-  const charged = s.bookings.filter((b) => b.money === 'captured').reduce((a, b) => a + (b.capturedCents ?? 0), 0);
-  const refunded = s.bookings.filter((b) => b.money === 'refunded').reduce((a, b) => a + (b.capturedCents ?? 0), 0);
+  const charged = s.bookings.filter((b) => b.money === 'captured' || b.money === 'part-refunded').reduce((a, b) => a + (b.capturedCents ?? 0) - (b.money === 'part-refunded' ? (b.refundedCents ?? 0) : 0), 0);
+  const refunded = s.bookings.reduce((a, b) => a + (b.money === 'refunded' ? (b.capturedCents ?? 0) : b.money === 'part-refunded' ? (b.refundedCents ?? 0) : 0), 0);
   const refilled = s.bookings.filter((b) => b.state === 'REFILLED').length;
   const excused = s.bookings.filter((b) => b.state === 'EXCUSED').length;
   const failed = s.bookings.filter((b) => b.money === 'failed').length;
@@ -656,7 +659,7 @@ function BookingPanel({
       <div className="actions">
         {b.state === 'CHARGED' && !b.refundId && (
           <button disabled={busy} onClick={onRefund}>
-            Refund fee
+            {b.refundedCents ? `Refund the remaining ${usd((b.capturedCents ?? b.holdCents) - b.refundedCents)}` : 'Refund fee'}
           </button>
         )}
         {b.approvalLink && s.paymentsMode === 'mock' && (

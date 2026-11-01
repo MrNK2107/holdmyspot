@@ -396,7 +396,8 @@ textarea {
 .m-reversed {
   --c: var(--m-failed);
 }
-.m-refunded {
+.m-refunded,
+.m-part-refunded {
   --c: var(--m-refunded);
 }
 .event.m-voided,

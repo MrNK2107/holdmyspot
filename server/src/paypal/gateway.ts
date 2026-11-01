@@ -86,7 +86,13 @@ export interface WebhookEvent {
     | 'PAYMENT.REFUND.FAILED'
     | 'VAULT.PAYMENT-TOKEN.CREATED';
   create_time: string;
-  resource: { id: string; custom_id?: string; status?: string; amount?: { currency_code: string; value: string } };
+  resource: { id: string; custom_id?: string; status?: string; amount?: { currency_code: string; value: string }; links?: Array<{ rel: string; href: string }> };
+}
+
+/** A refund resource names its capture only through its "up" link (it may carry no custom_id). */
+export function upCaptureId(e: WebhookEvent): string | undefined {
+  if (e.event_type !== 'PAYMENT.CAPTURE.REFUNDED' && e.event_type !== 'PAYMENT.REFUND.FAILED') return undefined;
+  return e.resource.links?.find((l) => l.rel === 'up')?.href.match(/\/v2\/payments\/captures\/([^/?#]+)/)?.[1];
 }
 
 export class PaymentsError extends Error {

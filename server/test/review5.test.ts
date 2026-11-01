@@ -196,3 +196,74 @@ describe('the ?ws= value is encoded into API paths (web client)', () => {
     ]);
   });
 });
+
+describe('a refund made in the PayPal dashboard (PAYMENT.CAPTURE.REFUNDED) is recorded', () => {
+  async function charged() {
+    const { playNextBeat } = await import('../src/demo.js');
+    const reg = new Workspaces();
+    const w = await reg.create('rf');
+    for (let i = 0; i < 20 && ![...w.engine.bookings.values()].some((b) => b.captureId && b.state === 'CHARGED'); i++) await reg.run('rf', () => playNextBeat(w));
+    const b = [...w.engine.bookings.values()].find((x) => x.captureId && x.state === 'CHARGED')!;
+    expect(b).toBeTruthy();
+    const settle = async () => {
+      await new Promise((r) => setImmediate(r));
+      await reg.run('rf', async () => undefined);
+    };
+    const view = () => w.engine.snapshot().bookings.find((x) => x.id === b.id)!;
+    return { reg, w, b, settle, view };
+  }
+
+  it('a partial dashboard refund shows the refunded part; the owner can refund only the rest', async () => {
+    const { ledgerAmounts } = await import('../../web/src/money.js');
+    const { w, b, settle, view } = await charged();
+    const fee = b.capturedCents!;
+    await w.mock!.refund(b.captureId!, 500, 'dashboard-1');
+    await settle();
+    expect(view().money).toBe('part-refunded');
+    expect(view().refundedCents).toBe(500);
+    expect(ledgerAmounts(view())).toMatchObject({ chargedCents: fee, refundedCents: 500, keptCents: fee - 500 });
+    // the owner's refund button refunds the remainder (PayPal would refuse the full amount)
+    await w.engine.refund(b.id);
+    await settle();
+    expect(view().money).toBe('refunded');
+    expect(view().refundedCents).toBe(fee);
+    expect(w.mock!.readView().captures.find((c) => c.id === b.captureId)!.refundedCents).toBe(fee);
+    expect(ledgerAmounts(view())).toMatchObject({ refundedCents: fee, keptCents: 0 });
+  });
+
+  it('a full dashboard refund marks the booking refunded and the refund button is refused', async () => {
+    const { w, b, settle, view } = await charged();
+    await w.mock!.refund(b.captureId!, b.capturedCents!, 'dashboard-full');
+    await settle();
+    expect(view().money).toBe('refunded');
+    await expect(w.engine.refund(b.id)).rejects.toThrow(/already refunded/);
+  });
+
+  it('our own refund is not counted twice when its webhook arrives', async () => {
+    const { w, b, settle, view } = await charged();
+    await w.engine.refund(b.id);
+    await settle();
+    expect(view().refundedCents).toBe(b.capturedCents);
+  });
+
+  it('a real refund resource without custom_id is routed by its "up" link to the capture', async () => {
+    const { reg, b, view } = await charged();
+    const r = await reg.routeWebhook({
+      id: 'WH-dash-refund-1',
+      event_type: 'PAYMENT.CAPTURE.REFUNDED',
+      create_time: new Date().toISOString(),
+      resource: {
+        id: '1JU08902781691411',
+        status: 'COMPLETED',
+        amount: { currency_code: 'USD', value: '3.00' },
+        links: [
+          { rel: 'self', href: 'https://api.sandbox.paypal.com/v2/payments/refunds/1JU08902781691411' },
+          { rel: 'up', href: `https://api.sandbox.paypal.com/v2/payments/captures/${b.captureId}` },
+        ],
+      },
+    });
+    expect(r).toBe('processed');
+    expect(view().refundedCents).toBe(300);
+    expect(view().money).toBe('part-refunded');
+  });
+});
