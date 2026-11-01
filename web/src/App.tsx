@@ -26,7 +26,7 @@ const SCENES: Array<{ label: string; at: number }> = [
 ];
 
 const QUICK: Record<string, string[]> = {
-  sam: ["so sorry, kiddo threw up all night, can't make it today"],
+  sam: ["so sorry, kiddo threw up all night, can't make it today", '2'],
   maya: ["I can't make it today, something came up"],
   eli: ['YES'],
   chris: ['yes!'],
@@ -52,7 +52,7 @@ export function App() {
   const [ws, setWs] = useWorkspace();
   const api = useMemo(() => new Api(ws), [ws]);
   const [s, setS] = useState<Snapshot | null>(null);
-  const [tab, setTab] = useState<'console' | 'policy'>('console');
+  const [tab, setTab] = useState<'console' | 'policy'>(new URLSearchParams(location.search).get('tab') === 'policy' ? 'policy' : 'console');
   // ?sel=<bookingId>&phone=<clientId> preselect views (handy for screenshots and the video)
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).get('sel'));
   const [error, setError] = useState<string | null>(null);
