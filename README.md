@@ -29,6 +29,7 @@ Every booking has a money timeline: AI outputs, engine decisions, PayPal calls a
 
 - **Agent trace**: every client text is one run of the front desk agent. You see each tool call with its arguments and result, the policy check it triggered, the money gate (released automatically, refill first, or waiting for the owner's tap) and, later, the owner's tap and the PayPal call it caused.
 - **Ledger** (AG Grid): one row per booking with its money state, held / charged / refunded amounts and the PayPal authorization, capture and refund ids, plus a pinned totals row; a second view lists every PayPal API call and webhook. Quick search, column filters, CSV export. Click a row to open that booking on the schedule.
+- **Ledger → REST requests** (simulator mode): every call the simulator answers is also run through the real REST adapter (`server/src/paypal/rest.ts`) against a capturing fetch (`server/src/paypal/preview.ts`), so you can inspect the exact request it would send to `api-m.sandbox.paypal.com`: method, path, `PayPal-Request-Id`, the `PayPal-Mock-Response` negative-testing header for scripted declines, and the JSON body (no token, nothing leaves the machine).
 
 | Agent trace (prompt injection denied) | Ledger (AG Grid) |
 |---|---|

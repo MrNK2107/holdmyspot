@@ -85,3 +85,19 @@ Goal: raise the judged score without keys. An independent read-only "judge" revi
 
 ### Verified
 - `npm test` → 132 passing (16 files), peak 0.94 GB. `npm run ui-check` passes: all 13 beats, agent trace (denied create_refund, proposal + policy check), ledger (ids, totals, calls search), 390 px no sideways scroll on console/agent/ledger/booking, **axe 0 violations on 13 screens**, peak 1.01 GB. `npm run build` passes. `npm run eval`: injection money effects 0, 16 denied agent tool calls.
+
+### Later in pass 3
+- **Owner asks the front desk** ("Ask your front desk" box, `POST /api/ws/:ws/assistant`, `Engine.askAssistant`): same agent loop with `list_transactions`, `find_booking` (read) and `propose_refund`, which creates a **Refund / Keep the fee** approval card (new approval kind `refund`); only the tap calls `refund()`. Guided-demo beat 13 now goes through it (ask → card → tap). Tests `server/test/assistant.test.ts`.
+- **Agent provider outage** falls back to the fixed classify → decide pipeline (client) or an honest "nothing was changed" answer (owner). Test in `agent.test.ts`.
+- **REST request preview** (`server/src/paypal/preview.ts`): in simulator mode each gateway call is mirrored through the real `PayPalRestGateway` with a capturing fetch; `GET /api/ws/:ws/paypal-requests`; Ledger → "REST requests" view with a JSON detail panel. Proves the Orders v2 / Payments v2 / Vault v3 payloads without keys. Tests `server/test/preview.test.ts`.
+- Second independent judge review (after): Tech 7, Design 8, Impact 7, Innovation 8, Presentation 7; prize fit Agentic Commerce 7 (was 3), PayPal+AI 8 (was 6), AG Grid 6 (was 1), Render 3 (was 2), Most Impactful 6. Its fixes applied: "Claude" → "the AI" in demo beats, policy draft label, "routed by code" instead of "0 tool calls", ledger columns fit, REST request view.
+- Gotcha: switching between `AgGridReact` instances in one JSX slot reuses the component; give each a `key` or a column getter sees the other view's rows.
+
+### Verified (end of pass 3)
+- `npm test` → 141 passing (19 files), peak ~1.07 GB under memcap. `npm run ui-check` passes (13 beats, agent trace, owner refund via agent, ledger 3 views, 390 px), **axe 0 violations on 14 screens**, peak ~0.92 GB. `npm run build` passes. `npm run eval`: injection money effects 0.
+
+### Next
+1. Keys (NEEDS_INPUT): PayPal sandbox → `sandbox-smoke.ts`, then record on the real sandbox; Anthropic key → run `npm run eval` with `AI=anthropic` and check the agent_step tool choice live (only tested with injected/fake providers).
+2. User: deploy the Blueprint on Render (outward action), put the URL in DEVPOST_SUBMISSION.md.
+3. Record the video from DEMO_SCRIPT (about 2:54; trim beat 4 if long). Decide on the injection replay (NEEDS_INPUT) and PITCH.md.
+4. Optional: real-numbers cold-open stat (needs a cited source), AG Grid row grouping by day.

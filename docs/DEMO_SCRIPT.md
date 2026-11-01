@@ -52,4 +52,5 @@ The guided demo (`server/src/demo.ts`) drives the same engine methods as the HTT
 - The legend's **What do these mean?** panel for the money states.
 - `npm run eval` output: injection money effects 0.
 - Ledger → **PayPal calls**: type `capture` in the search box to filter the API-call log; **Export CSV**.
+- Ledger → **REST requests**: the capture row's request body (`final_capture: true`, `PayPal-Request-Id`) as the real adapter builds it. Strong 5-second shot for PayPal judges while the simulator caveat is on screen.
 - **Ask your front desk** → "How did this week go?": the agent answers from `list_transactions`.
