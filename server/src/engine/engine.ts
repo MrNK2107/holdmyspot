@@ -6,7 +6,7 @@ import { type ApprovedPolicy, type Decision, captureViolations, decide } from '.
 import { assertTransition, canTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
 import { slotMatches } from '../domain/waitlist.js';
-import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
+import { type HoldResult, type PaymentsGateway, type ReauthorizeResult, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
 import { type PayPalToolkitReader, TOOLKIT_MONEY_TOOLS, TOOLKIT_PACKAGE, TOOLKIT_PREFIX, TOOLKIT_VERSION } from '../paypal/toolkit.js';
 
 /** Client texts longer than this are cut before they reach the model or the audit log (an SMS thread, not a document). */
@@ -129,6 +129,8 @@ export class Engine {
   /** bookingId -> every authorization id seen for it (guards against late/duplicate events) */
   private knownAuths = new Map<string, Set<string>>();
   private holdAttempts = new Map<string, number>();
+  /** authorizations being (or already) reauthorized: their successor replaces them without a void */
+  private reauthParents = new Set<string>();
   /** late authorizations whose void failed: shown to the owner, never silently dropped */
   unreleasedAuths: Array<{ bookingId: string; authorizationId: string; error: string }> = [];
   private baseUrl: string;
@@ -423,8 +425,22 @@ export class Engine {
       }
       return;
     }
+    const prev = b.authorizationId;
     b.authorizationId = authorizationId;
     b.authorizedAt = this.now();
+    if (prev && prev !== authorizationId && !this.reauthParents.has(prev)) {
+      // a fresh hold (e.g. the re-approval after a declined reauthorization) replaces one that is still
+      // live at PayPal: release it, or the client would carry two holds and only one could ever be settled
+      try {
+        await this.gateway.void(prev, this.intentKey(b, 'void', prev));
+        this.audit.add('paypal', `void replaced authorization ${prev} (now held by ${authorizationId})`, { bookingId: b.id });
+      } catch (err) {
+        if (!(err instanceof PaymentsError && ['AUTHORIZATION_EXPIRED', 'PREVIOUSLY_VOIDED'].includes(err.issue))) {
+          this.unreleasedAuths.push({ bookingId: b.id, authorizationId: prev, error: (err as Error).message });
+          this.audit.add('paypal', `VOID FAILED for replaced authorization ${prev} (${(err as Error).message}); needs a manual release`, { bookingId: b.id });
+        }
+      }
+    }
     if (orderId) b.orderId = orderId;
     if (['BOOKED', 'VAULTED', 'HOLD_FAILED'].includes(b.state)) this.setState(b, 'HELD', `hold of $${(b.holdCents / 100).toFixed(2)} authorized (${authorizationId})`);
     else this.audit.add('engine', `hold refreshed (${authorizationId})`, { bookingId: b.id });
@@ -438,7 +454,7 @@ export class Engine {
     if (b.state === 'HELD' && b.authorizationId) {
       if (this.now() - (b.authorizedAt ?? 0) < 3 * DAY) return; // still inside the honor period
       const c = this.client(b.clientId);
-      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.intentKey(b, 'reauth', b.authorizationId), !!c.sandboxDecline);
+      const r = await this.reauthorize(b, !!c.sandboxDecline);
       this.audit.add('paypal', `reauthorize at T-72h → ${r.status}`, { bookingId: b.id, data: r });
       if (r.status === 'AUTHORIZED' && r.authorizationId) {
         b.reauthorized = true;
@@ -820,6 +836,19 @@ export class Engine {
     return this.excusals.filter((e) => e.clientId === clientId && e.at >= since).length;
   }
 
+  private async reauthorize(b: Booking, simulateDecline = false): Promise<ReauthorizeResult> {
+    const parent = b.authorizationId!;
+    this.reauthParents.add(parent);
+    try {
+      const r = await this.gateway.reauthorize(parent, b.holdCents, this.intentKey(b, 'reauth', parent), simulateDecline);
+      if (r.status !== 'AUTHORIZED') this.reauthParents.delete(parent);
+      return r;
+    } catch (err) {
+      this.reauthParents.delete(parent);
+      throw err;
+    }
+  }
+
   private async voidHold(b: Booking, why: string): Promise<void> {
     if (!b.authorizationId) return;
     try {
@@ -1100,7 +1129,7 @@ export class Engine {
     }
     if (this.now() - (b.authorizedAt ?? 0) > 3 * DAY && !b.reauthorized) {
       // PayPal allows one reauthorization per authorization; after that we capture as-is (best effort)
-      const r = await this.gateway.reauthorize(b.authorizationId, b.holdCents, this.intentKey(b, 'reauth', b.authorizationId));
+      const r = await this.reauthorize(b);
       this.audit.add('paypal', `honor period over: reauthorize first → ${r.status}`, { bookingId: b.id, data: r });
       if (r.status !== 'AUTHORIZED' || !r.authorizationId) throw new PaymentsError(r.issue ?? 'REAUTHORIZE_FAILED', 'could not refresh the hold before capture');
       b.reauthorized = true;

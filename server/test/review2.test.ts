@@ -56,4 +56,32 @@ describe('review 2026-11-02', () => {
     await e.resolveApproval(card!.id, 'charge');
     expect(b.capturedCents).toBe(1000);
   });
+
+  it('a replacement hold releases the one it replaces (declined reauthorization, then re-approval)', async () => {
+    e.holdStrategy = 'reauth';
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(10, 10) });
+    const first = b.authorizationId!;
+    expect(b.state).toBe('HELD');
+    e.clients.get('chris')!.sandboxDecline = true; // the reauthorization at T-72h is declined
+    await e.clock.advanceTo(at(7, 10, 1));
+    expect(b.state).toBe('HOLD_FAILED');
+    expect(mock.authorizationStatus(first)).toBe('CREATED'); // the original is still holding the client's funds
+    const orderId = b.orderId!;
+    mock.approve(orderId);
+    await e.completeApproval(orderId);
+    expect(b.state).toBe('HELD');
+    expect(b.authorizationId).not.toBe(first);
+    expect(mock.authorizationStatus(first)).toBe('VOIDED'); // no second, orphaned hold on the client's money
+  });
+
+  it('a reauthorization at T-72h does not void its own parent twice or drop the new hold', async () => {
+    e.holdStrategy = 'reauth';
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(10, 10) });
+    const first = b.authorizationId!;
+    await e.clock.advanceTo(at(7, 10, 1));
+    expect(b.state).toBe('HELD');
+    expect(b.authorizationId).not.toBe(first);
+    expect(mock.authorizationStatus(b.authorizationId!)).toBe('CREATED');
+    expect(e.unreleasedAuths).toEqual([]);
+  });
 });
