@@ -5,7 +5,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const GRID_START_H = 9;
 const GRID_END_H = 19;
-const ROW = 46; // px per hour
+const ROW = 58; // px per hour
 
 const MONEY_LABEL: Record<string, string> = {
   none: 'no hold',
@@ -53,7 +53,8 @@ export function App() {
   const api = useMemo(() => new Api(ws), [ws]);
   const [s, setS] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<'console' | 'policy'>('console');
-  const [selected, setSelected] = useState<string | null>(null);
+  // ?sel=<bookingId>&phone=<clientId> preselect views (handy for screenshots and the video)
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).get('sel'));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -211,11 +212,11 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
           ))}
           {i === nowDay && nowH >= 0 && nowH <= hours.length * ROW && <div className="now-line" style={{ top: nowH }} />}
           {s.bookings
-            .filter((b) => b.start >= d && b.start < d + DAY)
+            .filter((b) => b.start >= d && b.start < d + DAY && !(b.refillOfBookingId && b.state === 'CANCELLED_EARLY'))
             .map((b) => {
               const top = ((b.start - d) / HOUR - GRID_START_H) * ROW;
               const h = ((b.end - b.start) / HOUR) * ROW;
-              const overlap = s.bookings.some((o) => o.id !== b.id && o.start < b.end && b.start < o.end && o.refillOfBookingId === b.id);
+              const overlap = s.bookings.some((o) => o.refillOfBookingId === b.id && o.state !== 'CANCELLED_EARLY');
               const isRefill = !!b.refillOfBookingId;
               return (
                 <button
@@ -225,7 +226,10 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
                   onClick={() => onSelect(b.id)}
                   title={`${b.clientName} · ${b.serviceName} · ${b.state}`}
                 >
-                  <span className="ev-name">{b.clientName.split(' ')[0]}</span>
+                  <span className="ev-row">
+                    <span className="ev-name">{b.clientName.split(' ')[0]}</span>
+                    <span className="ev-time">{fmtTime(b.start)}</span>
+                  </span>
                   <span className="ev-svc">{b.serviceName}</span>
                   <span className="chip">
                     {MONEY_LABEL[b.money]}
@@ -387,7 +391,7 @@ function BookingPanel({
 }
 
 function Phone({ s, busy, onSend }: { s: Snapshot; busy: boolean; onSend: (clientId: string, text: string) => void }) {
-  const [clientId, setClientId] = useState('sam');
+  const [clientId, setClientId] = useState(new URLSearchParams(location.search).get('phone') ?? 'sam');
   const [text, setText] = useState('');
   const thread = s.messages.filter((m) => m.clientId === clientId);
   const endRef = useRef<HTMLDivElement>(null);

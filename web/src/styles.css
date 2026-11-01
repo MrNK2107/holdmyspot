@@ -306,7 +306,7 @@ textarea {
   right: 3px;
   text-align: left;
   border-radius: 8px;
-  padding: 4px 6px;
+  padding: 3px 6px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -324,6 +324,20 @@ textarea {
 }
 .event.sel {
   outline: 2px solid var(--ink);
+}
+.ev-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+.ev-time {
+  font-size: 10.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.half-left .ev-time,
+.half-right .ev-time {
+  display: none;
 }
 .ev-name {
   font-weight: 650;
@@ -459,6 +473,9 @@ textarea {
   font-size: 12px;
   padding: 5px 0;
   border-bottom: 1px solid #f0eae1;
+}
+.t-sum {
+  overflow-wrap: anywhere;
 }
 .t-time {
   color: var(--ink-2);

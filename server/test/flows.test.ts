@@ -170,6 +170,7 @@ describe('safety', () => {
   it('duplicate webhooks are ignored and logged', async () => {
     const ev = mock.delivered.find((d) => d.event_type === 'PAYMENT.AUTHORIZATION.CREATED')!;
     await mock.redeliver(ev.id);
+    await new Promise((r) => setImmediate(r));
     expect(e.audit.all().some((a) => a.summary.includes('duplicate, ignored'))).toBe(true);
   });
 

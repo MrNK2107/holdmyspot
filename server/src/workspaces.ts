@@ -45,7 +45,14 @@ export class Workspaces {
       businessName: 'Polished by Priya',
       baseUrl: this.deps.baseUrl,
     });
-    if (mock) mock.onWebhook((e) => engine.ingestWebhook(e).then(() => undefined));
+    if (mock) {
+      // Deliver simulated webhooks after the API call returns, as PayPal does.
+      mock.onWebhook((e) => {
+        setImmediate(() => {
+          engine.ingestWebhook(e).catch((err) => engine.audit.add('webhook', `${e.event_type} ${e.id}: handler error ${(err as Error).message}`));
+        });
+      });
+    }
     const ws = { engine, mock };
     this.map.set(id, ws);
     await seed(engine);
