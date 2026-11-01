@@ -74,6 +74,9 @@ Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, 
 - **No owner login.** Anyone with a workspace URL acts as its owner. Fine for a sandbox demo; a real deployment needs owner authentication before anything else.
 - The simulator approval page and the guided demo are refused outside simulator mode. Ids interpolated into the simulator page are stripped to `[A-Za-z0-9_-]`; error text on `/paypal/return` is stripped of `<>&`.
 - Fastify's default body limit (1 MiB) applies. Routes that run the model (client texts, the owner's assistant, policy compile, public booking, reset) are rate limited in process: 30 per workspace and 300 server-wide per minute (429 beyond that). New workspaces (seeded through the model, and PayPal in sandbox mode; each may evict the oldest visitor's) share one budget of 30 per minute.
+- Input shape is checked at the edge: approved policy rules (types, known reasons, excusal limit, no extra fields), booking start times (future integer), time-travel targets (now .. 400 days), reset only for an existing workspace. A malformed body answers `invalid request`, not the JS runtime message; webhook handler errors answer a plain 500.
+- Bounded waits and sizes: PayPal REST calls time out after 20 s (`TIMEOUT` / `NETWORK_ERROR`, one OAuth refresh on 401 replayed with the same PayPal-Request-Id), model calls after 60 s; at most 10 open event streams per workspace; the last 500 messages per workspace are kept.
+- Model output that reaches HTML is whitelisted: compiled-policy highlight spans must name a real rule and quote the owner's own prose.
 - State is in memory: a restart forgets workspaces (and their audit logs). Fine for the demo; a real deployment needs a database.
 
 ## 6. Dependency audit (`npm audit`, 2026-11-02)
