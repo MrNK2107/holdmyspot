@@ -368,3 +368,14 @@ describe('ledger state words follow the money outcome', () => {
     expect(bookingStateLabel({ state: 'PENDING_REFILL', money: 'pending-refill' })).toBe('pending refill');
   });
 });
+
+describe('the model budget matches routes, not raw URL text', () => {
+  it('a percent-encoded route path (/%6Dessages) is still limited', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws, rateLimit: { perWorkspacePerMin: 0, globalPerMin: 0 } });
+    for (const url of ['/api/ws/demo/%6Dessages', '/api/ws/de%6Do/messages', '/api/ws/demo/%61ssistant', '/api/workspace%73']) {
+      expect((await app.inject({ method: 'POST', url, payload: { clientId: 'sam', text: 'hi' } })).statusCode, url).toBe(429);
+    }
+  });
+});
