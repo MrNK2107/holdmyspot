@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { AuditLog } from '../audit.js';
 import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
 import { type AgentTool, MONEY_TOOLS_NOT_GIVEN, type TraceStep } from '../ai/agent.js';
@@ -96,6 +97,8 @@ export class StaleCardError extends Error {}
 
 export class Engine {
   readonly id: string;
+  /** '' with the simulator; a random tag per engine with real PayPal (see constructor) */
+  private readonly runTag: string;
   readonly clock: DemoClock;
   readonly audit: AuditLog;
   readonly frontdesk: FrontDesk;
@@ -138,6 +141,10 @@ export class Engine {
 
   constructor(o: EngineOptions) {
     this.id = o.id;
+    // Against real PayPal a workspace id outlives its engine (the fixed 'demo' id, a reset, a restart) while
+    // booking ids restart at bk_1: without a per-engine run tag, PayPal-Request-Ids and custom_ids would repeat
+    // and PayPal would replay the previous life's orders, captures and webhooks. The simulator is per-engine.
+    this.runTag = o.gateway.mode === 'sandbox' ? randomBytes(4).toString('hex') : '';
     this.clock = o.clock;
     this.audit = new AuditLog(() => this.clock.now());
     this.frontdesk = o.frontdesk(this.audit);
@@ -204,19 +211,23 @@ export class Engine {
   }
 
   private customId(b: Booking): string {
-    return `${this.id}:${b.id}`;
+    return this.runTag ? `${this.id}:${b.id}:${this.runTag}` : `${this.id}:${b.id}`;
   }
 
   /** New-intent key (each hold attempt is a distinct intent, e.g. a retry after a decline). */
   private requestId(b: Booking, op: string): string {
     const n = (this.holdAttempts.get(`${b.id}:${op}`) ?? 0) + 1;
     this.holdAttempts.set(`${b.id}:${op}`, n);
-    return `${this.id}-${b.id}-${op}-${n}`;
+    return `${this.keyScope()}-${b.id}-${op}-${n}`;
   }
 
   /** Key derived from the business intent, so a retried capture/void/reauth/refund can never act twice. */
   private intentKey(b: Booking, op: string, target: string): string {
-    return `${this.id}-${b.id}-${op}-${target}`;
+    return `${this.keyScope()}-${b.id}-${op}-${target}`;
+  }
+
+  private keyScope(): string {
+    return this.runTag ? `${this.id}.${this.runTag}` : this.id;
   }
 
   private slotLabel(b: Booking): string {
@@ -380,7 +391,7 @@ export class Engine {
     const setupFor = this.pendingSetups.get(orderId);
     if (setupFor) {
       const b = this.booking(setupFor);
-      const { vaultId } = await this.gateway.completeVaultSetup(orderId, `${this.id}-${b.id}-vaulttoken-${orderId}`);
+      const { vaultId } = await this.gateway.completeVaultSetup(orderId, `${this.keyScope()}-${b.id}-vaulttoken-${orderId}`);
       this.pendingSetups.delete(orderId);
       this.client(b.clientId).vaultId = vaultId;
       b.approvalLink = undefined;
@@ -391,7 +402,7 @@ export class Engine {
     const bookingId = this.pendingOrders.get(orderId);
     if (!bookingId) throw new Error(`no pending order ${orderId}`);
     const b = this.booking(bookingId);
-    const res = await this.gateway.authorizeApprovedOrder(orderId, `${this.id}-${b.id}-authorize-${orderId}`);
+    const res = await this.gateway.authorizeApprovedOrder(orderId, `${this.keyScope()}-${b.id}-authorize-${orderId}`);
     this.audit.add('paypal', `authorize approved order ${orderId} → ${res.status}`, { bookingId: b.id, data: res });
     this.pendingOrders.delete(orderId);
     if (res.status === 'AUTHORIZED') {
@@ -475,8 +486,10 @@ export class Engine {
       return 'duplicate';
     }
     this.seenEvents.add(e.id);
-    const bookingId = e.resource.custom_id?.split(':')[1];
-    const b = bookingId ? this.bookings.get(bookingId) : undefined;
+    const [wsId, bookingId, tag] = e.resource.custom_id?.split(':') ?? [];
+    // an event for another workspace, or for an earlier engine under the same workspace id, is not ours
+    const ours = wsId === this.id && (tag ?? '') === this.runTag;
+    const b = ours && bookingId ? this.bookings.get(bookingId) : undefined;
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
     if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);

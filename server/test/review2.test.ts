@@ -84,4 +84,35 @@ describe('review 2026-11-02', () => {
     expect(mock.authorizationStatus(b.authorizationId!)).toBe('CREATED');
     expect(e.unreleasedAuths).toEqual([]);
   });
+
+  it('a reset sandbox workspace never reuses the PayPal-Request-Ids of its previous life', async () => {
+    const sim = new MockPayPalGateway(() => DEMO_START);
+    const seen: string[] = [];
+    const customIds: string[] = [];
+    // a shared real-mode gateway (as with PayPal sandbox keys); the simulator stands in for PayPal's idempotency
+    const sandbox: PaymentsGateway = {
+      mode: 'sandbox',
+      placeHold: (r) => (seen.push(r.requestId), customIds.push(r.customId), sim.placeHold(r)),
+      authorizeApprovedOrder: (o, r) => (seen.push(r), sim.authorizeApprovedOrder(o, r)),
+      capture: (r) => (seen.push(r.requestId), sim.capture(r)),
+      void: (a, r) => (seen.push(r), sim.void(a, r)),
+      reauthorize: (a, c, r, d) => (seen.push(r), sim.reauthorize(a, c, r, d)),
+      refund: (c, a, r) => (seen.push(r), sim.refund(c, a, r)),
+      createVaultSetup: (r) => (seen.push(r.requestId), sim.createVaultSetup(r)),
+      completeVaultSetup: (s, r) => (seen.push(r), sim.completeVaultSetup(s, r)),
+    };
+    const wss = new Workspaces({ gateway: sandbox, agentToolkit: false });
+    const one = await wss.create('demo');
+    const firstAuth = [...one.engine.bookings.values()].find((x) => x.clientId === 'riley')!.authorizationId;
+    const firstIds = new Set(seen.splice(0));
+    const two = await wss.reset('demo');
+    const secondAuth = [...two.engine.bookings.values()].find((x) => x.clientId === 'riley')!.authorizationId;
+    expect(seen.filter((id) => firstIds.has(id))).toEqual([]);
+    expect(secondAuth).not.toBe(firstAuth);
+    // a late webhook from the previous life (same workspace id, same booking id) is not applied to the new booking
+    const riley2 = [...two.engine.bookings.values()].find((x) => x.clientId === 'riley')!;
+    const oldCustom = customIds[0];
+    expect(await two.engine.ingestWebhook({ id: 'WH-STALE', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: firstAuth!, custom_id: oldCustom } })).toBe('ignored');
+    expect(riley2.authorizationId).toBe(secondAuth);
+  });
 });
