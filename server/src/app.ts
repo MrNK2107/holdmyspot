@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
@@ -55,22 +56,43 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     return w;
   }
 
-  const act = async <T>(id: string, reply: FastifyReply, fn: (e: Engine, w: Workspace) => Promise<T>) => {
+  /** `client`: a booking-link route; the answer carries no studio snapshot (other clients, messages, audit). */
+  const act = async <T>(id: string, reply: FastifyReply, fn: (e: Engine, w: Workspace) => Promise<T>, opts: { client?: boolean } = {}) => {
     const w = await ws(id, reply);
     if (!w) return;
+    const state = () => (opts.client ? undefined : w.engine.snapshot());
     try {
       const result = await workspaces.run(id, () => fn(w.engine, w));
-      return { ok: true, result, state: w.engine.snapshot() };
+      return { ok: true, result, state: state() };
     } catch (err) {
       // our own refusals are plain Errors/PaymentsErrors; a JS runtime error (bad body shape) says nothing useful and leaks code
       const internal = err instanceof TypeError || err instanceof RangeError || err instanceof SyntaxError || err instanceof ReferenceError;
       if (internal) app.log.warn({ err }, 'request failed');
-      return reply.code(400).send({ ok: false, error: internal ? 'invalid request' : (err as Error).message, state: w.engine.snapshot() });
+      return reply.code(400).send({ ok: false, error: internal ? 'invalid request' : (err as Error).message, state: state() });
     }
   };
 
   const streams = new Map<string, number>();
   const maxStreams = opts.maxStreamsPerWorkspace ?? 10;
+
+  // The workspace id is the public booking link. Only these routes are reachable with it alone; every other
+  // workspace route needs the owner token (header x-owner-token; the event stream may pass ?owner= because
+  // EventSource cannot set headers). The shared `demo` workspace is an open public console.
+  const clientRoutes = ['/api/ws/:ws/public', '/api/ws/:ws/slots', '/api/ws/:ws/book', '/api/ws/:ws/sim/approve/:orderId'];
+  const sameToken = (given: unknown, want: string) => {
+    if (typeof given !== 'string') return false;
+    const a = Buffer.from(given);
+    const b = Buffer.from(want);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  app.addHook('preHandler', async (req, reply) => {
+    const route = req.routeOptions.url;
+    if (!route?.startsWith('/api/ws/:ws') || clientRoutes.includes(route)) return;
+    const w = workspaces.get((req.params as { ws?: string }).ws ?? '');
+    if (!w || w.open) return; // unknown: the route answers 404
+    const given = req.headers['x-owner-token'] ?? (route === '/api/ws/:ws/events' ? (req.query as { owner?: string }).owner : undefined);
+    if (!sameToken(given, w.ownerToken)) return reply.code(403).send({ ok: false, error: 'owner access needed: open the console from the link it was created with' });
+  });
 
   const allowModelCall = modelBudget(opts.rateLimit ?? { perWorkspacePerMin: 30, globalPerMin: 300 });
   // each of these runs the model (and, for /book, PayPal); without a budget one script could run up the bill
@@ -94,7 +116,22 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   app.post('/api/workspaces', async () => {
     const w = await workspaces.create();
-    return { id: w.engine.id };
+    return { id: w.engine.id, ownerToken: w.ownerToken };
+  });
+
+  // what the public booking page needs, and nothing about other clients
+  app.get<{ Params: { ws: string } }>('/api/ws/:ws/public', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    const s = w.engine.snapshot();
+    return {
+      workspace: s.workspace,
+      business: s.business,
+      owner: s.owner,
+      paymentsMode: s.paymentsMode,
+      services: s.services,
+      policy: { version: s.policy.version, hash: s.policy.hash, summary: s.policy.summary, rules: { holdCents: s.policy.rules.holdCents } },
+    };
   });
 
   app.get<{ Params: { ws: string } }>('/api/ws/:ws/state', async (req, reply) => {
@@ -168,7 +205,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       if (!e.freeSlots(req.body.serviceId, 12).includes(req.body.start)) throw new Error('that time is no longer free');
       const c = e.newClient(req.body.name);
       return e.createBooking({ clientId: c.id, serviceId: req.body.serviceId, start: req.body.start });
-    }),
+    }, { client: true }),
   );
 
   // simulator mode: the exact REST requests the real PayPal adapter builds for each simulated call
@@ -246,7 +283,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       if (!w.mock) throw new Error('simulator approval is only available in mock mode');
       w.mock.approve(req.params.orderId);
       return e.completeApproval(req.params.orderId);
-    }),
+    }, { client: true }),
   );
 
   app.get<{ Params: { ws: string; orderId: string } }>('/sim/:ws/paypal/approve/:orderId', async (req, reply) => {

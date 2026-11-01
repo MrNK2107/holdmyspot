@@ -120,14 +120,14 @@ export function Ledger({ s, api, onSelect }: { s: Snapshot; api: Api; onSelect: 
 
   useEffect(() => {
     if (view !== 'rest') return;
-    fetch(`/api/ws/${s.workspace}/paypal-requests`)
-      .then((r) => r.json())
-      .then((x: RestRequest[]) => {
+    api
+      .paypalRequests<RestRequest>()
+      .then((x) => {
         setRest(Array.isArray(x) ? x : []);
         setPicked((p) => p ?? (Array.isArray(x) ? (x.find((r) => r.op === 'capture') ?? x[0] ?? null) : null));
       })
       .catch(() => setRest([]));
-  }, [view, s.workspace, s.now, s.bookings]);
+  }, [view, api, s.workspace, s.now, s.bookings]);
 
   const restCols = useMemo<ColDef<RestRequest>[]>(
     () => [

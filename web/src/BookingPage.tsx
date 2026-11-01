@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { type PublicInfo, fmtDay, fmtTime, usd } from './api';
 
 /** The link in the owner's Instagram bio. Mobile-first. */
 export function BookingPage({ ws }: { ws: string }) {
-  const [s, setS] = useState<Snapshot | null>(null);
+  const [s, setS] = useState<PublicInfo | null>(null);
   const [service, setService] = useState('gel');
   const [slots, setSlots] = useState<number[]>([]);
   const [start, setStart] = useState<number | null>(null);
@@ -16,7 +16,7 @@ export function BookingPage({ ws }: { ws: string }) {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/ws/${ws}/state`)
+    fetch(`/api/ws/${ws}/public`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
         return r.json();

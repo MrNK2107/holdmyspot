@@ -33,6 +33,12 @@ export interface Workspace {
   preview?: RequestPreview;
   /** beats of the guided demo already played (see demo.ts) */
   demoStep?: number;
+  /**
+   * Owner capability, separate from the workspace id (which is the public booking link). Owner routes
+   * need it unless the workspace is open (the shared public `demo` console).
+   */
+  ownerToken: string;
+  open: boolean;
 }
 
 /** Per-visitor demo workspaces (design §12.1): each has its own bookings, clock and audit log. */
@@ -50,7 +56,7 @@ export class Workspaces {
   maxWorkspaces = 100;
 
   // visitor workspace ids carry 48 random bits so one visitor cannot guess and drive another's workspace
-  async create(id = `ws${++this.seq}-${randomBytes(6).toString('hex')}`): Promise<Workspace> {
+  async create(id = `ws${++this.seq}-${randomBytes(6).toString('hex')}`, ownerToken = randomBytes(24).toString('base64url')): Promise<Workspace> {
     while (this.map.size >= this.maxWorkspaces) {
       const oldest = [...this.map.keys()].find((k) => k !== 'demo');
       if (!oldest) break;
@@ -97,7 +103,7 @@ export class Workspaces {
         });
       });
     }
-    const ws = { engine, mock, preview };
+    const ws: Workspace = { engine, mock, preview, ownerToken, open: id === 'demo' };
     this.map.set(id, ws);
     await seed(engine);
     return ws;
@@ -122,8 +128,9 @@ export class Workspaces {
   }
 
   async reset(id: string): Promise<Workspace> {
+    const token = this.map.get(id)?.ownerToken;
     this.map.delete(id);
-    return this.create(id);
+    return this.create(id, token);
   }
 
   /** Finds the workspace waiting on a PayPal approval (order id or vault setup token). */

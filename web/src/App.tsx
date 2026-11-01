@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
-import { Api, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { Api, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
 
 // AG Grid is only loaded when the ledger tab opens
 const Ledger = lazy(() => import('./Ledger').then((m) => ({ default: m.Ledger })));
@@ -67,6 +67,12 @@ const QUICK: Record<string, string[]> = {
 
 function useWorkspace(): [string, (id: string) => void] {
   const initial = new URLSearchParams(location.search).get('ws') ?? 'demo';
+  // a console link may carry the owner token once in the fragment: keep it, then drop it from the address bar
+  const fromHash = new URLSearchParams(location.hash.slice(1)).get('owner');
+  if (fromHash) {
+    rememberOwnerToken(initial, fromHash);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   const [ws, setWs] = useState(initial);
   const set = (id: string) => {
     const u = new URL(location.href);
@@ -107,7 +113,8 @@ export function App() {
 
   useEffect(() => {
     refresh();
-    const es = new EventSource(`/api/ws/${ws}/events`);
+    const token = ownerToken(ws);
+    const es = new EventSource(`/api/ws/${ws}/events${token ? `?owner=${encodeURIComponent(token)}` : ''}`);
     es.addEventListener('change', () => refresh());
     return () => es.close();
   }, [ws, refresh]);
@@ -233,6 +240,7 @@ export function App() {
           className="ghost"
           onClick={async () => {
             const r = await fetch('/api/workspaces', { method: 'POST' }).then((x) => x.json());
+            rememberOwnerToken(r.id, r.ownerToken);
             setWs(r.id);
           }}
         >

@@ -245,7 +245,7 @@ describe('model-backed routes are rate limited', () => {
     const ids = [(await ws.create('a')).engine.id, (await ws.create('b')).engine.id, (await ws.create('c')).engine.id];
     const app = await buildApp({ workspaces: ws, rateLimit: { perWorkspacePerMin: 5, globalPerMin: 4 } });
     const codes: number[] = [];
-    for (const id of ids) for (let i = 0; i < 2; i++) codes.push((await app.inject({ method: 'POST', url: `/api/ws/${id}/messages`, payload: { clientId: 'sam', text: 'hi' } })).statusCode);
+    for (const id of ids) for (let i = 0; i < 2; i++) codes.push((await app.inject({ method: 'POST', url: `/api/ws/${id}/messages`, headers: { 'x-owner-token': ws.get(id)!.ownerToken }, payload: { clientId: 'sam', text: 'hi' } })).statusCode);
     expect(codes.filter((c) => c === 429).length).toBe(2);
   });
 });

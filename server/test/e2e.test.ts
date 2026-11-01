@@ -10,6 +10,7 @@ import { Workspaces } from '../src/workspaces.js';
 let app: FastifyInstance;
 let base: string;
 let ws: string;
+let owner: string;
 const at = (day: number, hour: number, min = 0) => Date.UTC(2026, 10, day, hour, min);
 
 beforeAll(async () => {
@@ -19,13 +20,15 @@ beforeAll(async () => {
 });
 afterAll(async () => app.close());
 beforeEach(async () => {
-  ws = (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()).id;
+  const created = await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json();
+  ws = created.id;
+  owner = created.ownerToken;
 });
 
 async function call(method: string, path: string, body?: unknown): Promise<any> {
   const r = await fetch(`${base}${path.startsWith('/') ? path : `/api/ws/${ws}/${path}`}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), 'x-owner-token': owner },
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json();
@@ -121,7 +124,8 @@ describe('e2e over HTTP: hero flows on the PayPal simulator', () => {
     const page = await fetch(`${base}${jordan.approvalLink}`);
     expect(page.status).toBe(200);
     expect(await page.text()).toContain('Sandbox simulator: no real money');
-    s = (await post(`sim/approve/${token}`)).state;
+    await post(`sim/approve/${token}`);
+    s = await get('state');
     expect(booking(s, 'jordan').money).toBe('held');
   });
 
@@ -139,7 +143,7 @@ describe('e2e over HTTP: hero flows on the PayPal simulator', () => {
 
   it('server-sent events announce changes', async () => {
     const ctrl = new AbortController();
-    const res = await fetch(`${base}/api/ws/${ws}/events`, { signal: ctrl.signal });
+    const res = await fetch(`${base}/api/ws/${ws}/events?owner=${encodeURIComponent(owner)}`, { signal: ctrl.signal });
     const reader = res.body!.getReader();
     const seen: string[] = [];
     const reading = (async () => {

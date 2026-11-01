@@ -29,9 +29,9 @@ describe('HTTP API', () => {
   });
 
   it('creates isolated per-visitor workspaces', async () => {
-    const { id } = (await post('/api/workspaces')).json();
+    const { id, ownerToken } = (await post('/api/workspaces')).json();
     expect(id).toMatch(/^ws\d+/);
-    expect((await app.inject(`/api/ws/${id}/state`)).json().workspace).toBe(id);
+    expect((await app.inject({ url: `/api/ws/${id}/state`, headers: { 'x-owner-token': ownerToken } })).json().workspace).toBe(id);
   });
 
   it('time travel + message + approval drives hero 1 end to end', async () => {

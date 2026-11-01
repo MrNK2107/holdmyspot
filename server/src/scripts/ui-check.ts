@@ -57,14 +57,21 @@ mkdirSync(shots, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
 try {
-  const newWs = async () => (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()).id as string;
+  // the owner token reaches the console once, in the URL fragment (the workspace id alone is the booking link)
+  const tokens = new Map<string, string>();
+  const newWs = async () => {
+    const j = (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()) as { id: string; ownerToken: string };
+    tokens.set(j.id, j.ownerToken);
+    return j.id;
+  };
+  const owner = (ws: string) => `#owner=${tokens.get(ws)}`;
 
   // ---- desktop console + guided demo ----
   const desk = await browser.newPage({ viewport: { width: 1680, height: 1000 } });
   desk.on('pageerror', (e) => failures.push(`page error: ${e.message} ${(e.stack ?? '').split('\n').slice(0, 4).join(' <- ')}`));
   desk.on('console', (m) => m.type() === 'error' && report.push(`console: ${m.text()}`));
   const ws1 = await newWs();
-  await desk.goto(`${base}/?ws=${ws1}&demo=1`);
+  await desk.goto(`${base}/?ws=${ws1}&demo=1${owner(ws1)}`);
   await desk.getByRole('button', { name: /^Start:/ }).waitFor();
   await axe(desk, 'console desktop (start)');
   await shot(desk, 'console-main.png');
@@ -146,14 +153,15 @@ try {
 
   // ---- phone-width console ----
   const mob = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await mob.goto(`${base}/?ws=${ws1}&sel=${(await (await fetch(`${base}/api/ws/${ws1}/demo`)).json()).bookingIds.maya}&phone=maya`);
+  const demoIds = (await (await fetch(`${base}/api/ws/${ws1}/demo`, { headers: { 'x-owner-token': tokens.get(ws1)! } })).json()).bookingIds;
+  await mob.goto(`${base}/?ws=${ws1}&sel=${demoIds.maya}&phone=maya${owner(ws1)}`);
   await mob.locator('.strip').waitFor();
   const overflow = await mob.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(overflow <= 0, `console at 390px has no sideways page scroll (overflow ${overflow}px)`);
   await axe(mob, 'console 390px');
   await shot(mob, 'console-mobile.png');
   for (const tab of ['agent', 'ledger']) {
-    await mob.goto(`${base}/?ws=${ws1}&tab=${tab}`);
+    await mob.goto(`${base}/?ws=${ws1}&tab=${tab}${owner(ws1)}`);
     await mob.locator(tab === 'agent' ? '.trace-detail' : '.ag-row').first().waitFor({ timeout: 10000 });
     const o = await mob.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(o <= 0, `${tab} tab at 390px has no sideways page scroll (overflow ${o}px)`);

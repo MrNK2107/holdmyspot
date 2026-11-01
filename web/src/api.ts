@@ -110,6 +110,16 @@ export interface Snapshot {
   jobs: Array<{ id: string; at: number; name: string }>;
 }
 
+/** GET /api/ws/:ws/public: what the booking link may see (no other clients, messages or audit). */
+export interface PublicInfo {
+  workspace: string;
+  business: string;
+  owner: string;
+  paymentsMode: 'mock' | 'sandbox';
+  services: Snapshot['services'];
+  policy: { version: number; hash: string; summary: string; rules: { holdCents: number } };
+}
+
 export interface Ambiguity {
   id: string;
   question: string;
@@ -124,13 +134,38 @@ export interface DemoStatus {
   bookingIds: Record<string, string>;
 }
 
+/**
+ * The owner token of a private workspace (the workspace id alone is the public booking link). It arrives
+ * from POST /api/workspaces or once in the URL fragment (#owner=...), and is kept in this browser.
+ */
+export function ownerToken(ws: string): string | undefined {
+  try {
+    return localStorage.getItem(`hms-owner:${ws}`) ?? undefined;
+  } catch {
+    return memTokens.get(ws);
+  }
+}
+const memTokens = new Map<string, string>();
+export function rememberOwnerToken(ws: string, token: string) {
+  memTokens.set(ws, token);
+  try {
+    localStorage.setItem(`hms-owner:${ws}`, token);
+  } catch {
+    /* private window: kept for this page only */
+  }
+}
+
 export class Api {
   constructor(public ws: string) {}
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const token = ownerToken(this.ws) ?? memTokens.get(this.ws);
+    const headers: Record<string, string> = {};
+    if (body) headers['Content-Type'] = 'application/json';
+    if (token) headers['x-owner-token'] = token;
     const r = await fetch(`/api/ws/${this.ws}${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     const j = await r.json();
@@ -152,6 +187,7 @@ export class Api {
   approvePolicy = (rules: PolicyRules, prose: string) => this.req<{ state: Snapshot }>('POST', '/policy/approve', { rules, prose });
   simApprove = (orderId: string) => this.req<{ state: Snapshot }>('POST', `/sim/approve/${orderId}`);
   demo = () => this.req<DemoStatus>('GET', '/demo');
+  paypalRequests = <T>() => this.req<T[]>('GET', '/paypal-requests');
   demoNext = () => this.req<{ state: Snapshot; result: DemoStatus }>('POST', '/demo/next');
 }
 

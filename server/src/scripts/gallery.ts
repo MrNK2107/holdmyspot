@@ -57,18 +57,20 @@ async function frame(browser: Browser, rawPath: string, file: string, n: string,
 
 const browser = await chromium.launch({ headless: true });
 try {
-  const ws = (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()).id as string;
-  const demo = async () => (await (await fetch(`${base}/api/ws/${ws}/demo`)).json()) as { step: number; bookingIds: Record<string, string> };
+  const created = (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()) as { id: string; ownerToken: string };
+  const ws = created.id;
+  const headers = { 'x-owner-token': created.ownerToken };
+  const demo = async () => (await (await fetch(`${base}/api/ws/${ws}/demo`, { headers })).json()) as { step: number; bookingIds: Record<string, string> };
   const next = async (to: number) => {
     while ((await demo()).step < to) {
-      const r = await fetch(`${base}/api/ws/${ws}/demo/next`, { method: 'POST' });
+      const r = await fetch(`${base}/api/ws/${ws}/demo/next`, { method: 'POST', headers });
       if (!r.ok) throw new Error(`demo/next failed: ${r.status} ${await r.text()}`);
     }
   };
   const page: Page = await browser.newPage({ viewport: { width: APP_W, height: APP_H }, deviceScaleFactor: 1.25 });
   page.on('pageerror', (e) => console.error('page error', e.message));
   const open = async (q: string, ready: string) => {
-    await page.goto(`${base}/?ws=${ws}${q}`);
+    await page.goto(`${base}/?ws=${ws}${q}#owner=${created.ownerToken}`);
     await page.locator(ready).first().waitFor({ timeout: 10000 });
     // the gallery shows the product, not the demo's time-travel controls
     await page.addStyleTag({ content: 'nav.travel{display:none!important}' });
