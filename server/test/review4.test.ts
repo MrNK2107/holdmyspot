@@ -115,3 +115,15 @@ describe('POST /bookings validates the start time', () => {
     expect(e.bookings.size).toBe(n);
   });
 });
+
+describe('POST /reset only resets an existing workspace', () => {
+  it('404s for an unknown id instead of creating a workspace with a chosen id', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws });
+    const r = await app.inject({ method: 'POST', url: '/api/ws/attacker-chosen/reset', payload: {} });
+    expect(r.statusCode).toBe(404);
+    expect(ws.get('attacker-chosen')).toBeUndefined();
+    expect((await app.inject({ method: 'POST', url: '/api/ws/demo/reset', payload: {} })).statusCode).toBe(200);
+  });
+});

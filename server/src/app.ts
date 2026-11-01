@@ -163,7 +163,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }),
   );
 
-  app.post<{ Params: { ws: string } }>('/api/ws/:ws/reset', async (req) => {
+  app.post<{ Params: { ws: string } }>('/api/ws/:ws/reset', async (req, reply) => {
+    // only an existing workspace: otherwise any caller could mint workspaces with ids of its choosing
+    if (!(await ws(req.params.ws, reply))) return;
     const w = await workspaces.reset(req.params.ws);
     return { ok: true, state: w.engine.snapshot() };
   });
