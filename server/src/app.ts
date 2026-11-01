@@ -17,6 +17,8 @@ export interface AppOptions {
   webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
   /** Budget for routes that call the model (client texts, the owner's assistant, policy compile, booking). */
   rateLimit?: { perWorkspacePerMin: number; globalPerMin: number };
+  /** Open event streams allowed per workspace (each is a live engine listener). Default 10. */
+  maxStreamsPerWorkspace?: number;
 }
 
 /** Sliding one-minute windows: per workspace and for the whole server (visitors can create many workspaces). */
@@ -67,6 +69,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   };
 
+  const streams = new Map<string, number>();
+  const maxStreams = opts.maxStreamsPerWorkspace ?? 10;
+
   const allowModelCall = modelBudget(opts.rateLimit ?? { perWorkspacePerMin: 30, globalPerMin: 300 });
   // each of these runs the model (and, for /book, PayPal); without a budget one script could run up the bill
   app.addHook('preHandler', async (req, reply) => {
@@ -106,6 +111,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   app.get<{ Params: { ws: string } }>('/api/ws/:ws/events', async (req, reply) => {
     const w = await ws(req.params.ws, reply);
     if (!w) return;
+    // each stream is a live listener and timer: cap them so one script cannot hold thousands open
+    const id = req.params.ws;
+    if ((streams.get(id) ?? 0) >= maxStreams) return reply.code(429).send({ error: 'too many open event streams for this workspace' });
+    streams.set(id, (streams.get(id) ?? 0) + 1);
+    req.raw.on('close', () => {
+      const n = (streams.get(id) ?? 1) - 1;
+      if (n > 0) streams.set(id, n);
+      else streams.delete(id);
+    });
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     reply.raw.write(`event: hello\ndata: {}\n\n`);
     let pending = false;

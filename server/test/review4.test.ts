@@ -379,3 +379,36 @@ describe('the model budget matches routes, not raw URL text', () => {
     }
   });
 });
+
+describe('event streams are capped per workspace', () => {
+  it('opening many SSE streams on one workspace gets 429 past the cap, and a closed stream frees its slot', async () => {
+    const http = await import('node:http');
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws, maxStreamsPerWorkspace: 3 });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as { port: number }).port;
+    const all: import('node:http').ClientRequest[] = [];
+    const open = () =>
+      new Promise<{ status: number; req: import('node:http').ClientRequest }>((resolve, reject) => {
+        const req = http.get({ host: '127.0.0.1', port, path: '/api/ws/demo/events' }, (res) => {
+          res.resume();
+          resolve({ status: res.statusCode ?? 0, req });
+        });
+        req.on('error', reject);
+        all.push(req);
+      });
+    try {
+      const streams = [];
+      for (let i = 0; i < 5; i++) streams.push(await open());
+      expect(streams.map((s) => s.status)).toEqual([200, 200, 200, 429, 429]);
+      streams[0].req.destroy();
+      await new Promise((r) => setTimeout(r, 100));
+      const again = await open();
+      expect(again.status).toBe(200);
+    } finally {
+      for (const r of all) r.destroy();
+      await app.close();
+    }
+  });
+});
