@@ -1,5 +1,6 @@
 import { AuditLog } from '../audit.js';
 import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
+import { type AgentTool, MONEY_TOOLS_NOT_GIVEN, type TraceStep } from '../ai/agent.js';
 import { FrontDesk } from '../ai/frontdesk.js';
 import { type ApprovedPolicy, type Decision, captureViolations, decide } from '../domain/policy.js';
 import { assertTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
@@ -51,6 +52,20 @@ export interface EngineOptions {
   baseUrl?: string;
 }
 
+/** One inspectable run of the front desk on an inbound client text: tool calls, policy decision, money gate. */
+export interface AgentRun {
+  id: string;
+  at: number;
+  clientId: string;
+  clientName: string;
+  text: string;
+  bookingId?: string;
+  provider: string;
+  steps: TraceStep[];
+  /** where money stands after the run */
+  gate: { kind: 'none' | 'auto_release' | 'owner_approval' | 'refill' | 'code'; summary: string; approvalId?: string; resolved?: string };
+}
+
 export type EngineEvent = { type: 'audit' | 'state' | 'message' | 'approval'; at: number };
 
 const HOLD_LEAD = 72 * HOUR;
@@ -79,6 +94,7 @@ export class Engine {
   waitlist: WaitlistEntry[] = [];
   messages: ChatMessage[] = [];
   approvals: Approval[] = [];
+  agentRuns: AgentRun[] = [];
   offers: RefillOffer[] = [];
   excusals: Array<{ clientId: string; at: number }> = [];
   private seenEvents = new Set<string>();
@@ -442,7 +458,13 @@ export class Engine {
     this.emit('message');
 
     const offer = this.offers.filter((o) => o.offeredTo.includes(clientId) && o.status !== 'closed').at(-1);
-    if (offer && YES.test(text)) return { claimed: await this.claim(offer, clientId) };
+    if (offer && YES.test(text)) {
+      const run = this.startRun(clientId, text, offer.slotBookingId);
+      run.steps.push({ n: 1, kind: 'code', name: 'route: YES to an open refill offer', result: 'claim handled by code, no AI: the slot is theirs only once their own PayPal hold authorizes' });
+      const claimed = await this.traced(run, () => this.claim(offer, clientId));
+      run.gate = { kind: 'code', summary: claimed ? 'claim started: the slot fills when their PayPal hold authorizes' : 'claim rejected: the offer is no longer open' };
+      return { claimed };
+    }
 
     const rebook = this.rebookOffers.get(clientId);
     const pick = text.trim().match(/^([1-3])(?!\d)/);
@@ -454,20 +476,139 @@ export class Engine {
         return {};
       }
       this.rebookOffers.delete(clientId);
-      const nb = await this.createBooking({ clientId, serviceId: rebook.serviceId, start });
-      await this.reply(nb, 'rebooked');
+      const run = this.startRun(clientId, text);
+      run.steps.push({ n: 1, kind: 'code', name: `route: picked rebook option ${pick[1]}`, result: 'new booking created by code, no AI' });
+      const nb = await this.traced(run, async () => {
+        const x = await this.createBooking({ clientId, serviceId: rebook.serviceId, start });
+        await this.reply(x, 'rebooked');
+        return x;
+      });
+      run.bookingId = nb.id;
+      run.gate = { kind: 'code', summary: 'rebooked; the new visit gets its own hold' };
       return { rebooked: nb.id };
     }
 
     const b = this.activeBookingFor(clientId);
+    const run = this.startRun(clientId, text, b?.id);
+    let label: MessageLabel | undefined;
+    let decision: Decision | undefined;
+    const approvalsBefore = new Set(this.approvals.map((a) => a.id));
+    // The agent's whole toolset. Nothing here can authorize, capture, void or refund.
+    const tools: AgentTool[] = [
+      {
+        name: 'get_booking',
+        access: 'read',
+        description: "The client's next active booking: id, service, time, hold state, hours until start.",
+        run: async () =>
+          b
+            ? {
+                bookingId: b.id,
+                service: this.services.get(b.serviceId)?.name,
+                when: this.slotLabel(b),
+                hold: b.authorizationId ? 'authorized' : b.state === 'VAULTED' ? 'wallet saved' : 'none',
+                hoursUntilStart: Math.round((b.start - this.now()) / HOUR),
+              }
+            : { bookingId: null },
+      },
+      {
+        name: 'get_policy',
+        access: 'read',
+        description: 'The owner-approved cancellation policy: version, hash, free-cancel window, excused reasons.',
+        run: async () => ({
+          version: this.policy.version,
+          hash: this.policy.hash,
+          freeCancelHours: this.policy.rules.freeCancelHours,
+          excusedReasons: this.policy.rules.excusedReasons,
+          minConfidence: this.policy.rules.minConfidence,
+        }),
+      },
+      {
+        name: 'classify_message',
+        access: 'model',
+        description: 'Constrained model call: label intent, reason, confidence and the evidence words. Returns a label only.',
+        run: async () => {
+          if (!b) return { error: 'no booking' };
+          const l = await this.frontdesk.classifyMessage(text, c.name, this.slotLabel(b), b.id);
+          return { intent: l.intent, reason: l.reason, confidence: l.confidence, evidenceSpan: l.evidenceSpan, ...(l.proposedTime ? { proposedTime: l.proposedTime } : {}) };
+        },
+      },
+      {
+        name: 'propose_settlement',
+        access: 'propose',
+        description: 'Hand a label to the deterministic policy engine. The engine decides; any charge waits for the owner. Once per message.',
+        run: async (args) => {
+          if (!b || args.bookingId !== b.id) return { error: "bookingId must be this client's active booking" };
+          if (decision) return { error: 'already proposed for this message' };
+          label = this.frontdesk.sanitizeLabel(args);
+          b.lastLabel = label;
+          decision = await this.requestSettlement(b, label);
+          return { outcome: decision.outcome, why: decision.why };
+        },
+      },
+      { name: 'finish', access: 'end', description: 'End the turn.', run: async () => ({}) },
+    ];
+    await this.traced(run, () =>
+      this.frontdesk.agent.run({ trigger: 'client_text', clientName: c.name, text }, tools, (st) => run.steps.push({ ...st, n: run.steps.length + 1 }), b?.id),
+    );
+
     if (!b) {
       this.say(clientId, `Thanks, ${c.name.split(' ')[0]}! ${this.ownerName} will get back to you.`);
+      run.gate = { kind: 'none', summary: 'no upcoming visit: handed to the owner, no money involved' };
       return {};
     }
-    const label = await this.frontdesk.classifyMessage(text, c.name, this.slotLabel(b), b.id);
-    b.lastLabel = label;
-    const decision = await this.requestSettlement(b, label);
-    return { label, decision };
+    if (!decision) {
+      // the agent stopped without proposing: run the fixed pipeline rather than drop the message
+      run.steps.push({ n: run.steps.length + 1, kind: 'code', name: 'fallback: agent made no proposal', result: 'classify + policy engine run by code' });
+      await this.traced(run, async () => {
+        label = await this.frontdesk.classifyMessage(text, c.name, this.slotLabel(b), b.id);
+        b.lastLabel = label;
+        decision = await this.requestSettlement(b, label);
+      });
+    }
+    const d = decision as unknown as Decision;
+    const card = this.approvals.find((a) => !approvalsBefore.has(a.id) && a.bookingId === b.id);
+    run.gate = card
+      ? { kind: 'owner_approval', summary: `waiting for ${this.ownerName}'s tap: ${card.options.join(' / ')}`, approvalId: card.id }
+      : b.state === 'PENDING_REFILL'
+        ? { kind: 'refill', summary: 'slot offered to the waitlist first; any fee later needs an owner tap' }
+        : ['EXCUSED', 'CANCELLED_EARLY'].includes(b.state)
+          ? { kind: 'auto_release', summary: 'released automatically: voiding a hold returns money, it never charges' }
+          : { kind: 'none', summary: `no money moved (${d.outcome})` };
+    return { label, decision: d };
+  }
+
+  private startRun(clientId: string, text: string, bookingId?: string): AgentRun {
+    const run: AgentRun = {
+      id: this.nextId('run'),
+      at: this.now(),
+      clientId,
+      clientName: this.client(clientId).name,
+      text,
+      ...(bookingId ? { bookingId } : {}),
+      provider: this.frontdesk.providerName,
+      steps: [],
+      gate: { kind: 'none', summary: '' },
+    };
+    this.agentRuns.push(run);
+    if (this.agentRuns.length > 60) this.agentRuns.shift();
+    return run;
+  }
+
+  /** Record what the policy engine and PayPal did while fn ran, as effect/gate steps of the run. */
+  private async traced<T>(run: AgentRun, fn: () => Promise<T>): Promise<T> {
+    const push = (s: Omit<TraceStep, 'n'>) => run.steps.push({ ...s, n: run.steps.length + 1 });
+    const off = this.audit.subscribe((e) => {
+      if (e.kind === 'paypal') push({ kind: 'effect', name: 'PayPal call (by the engine)', result: e.summary });
+      else if (e.kind !== 'engine') return;
+      else if (e.summary.startsWith('decide →')) push({ kind: 'effect', name: 'policy check', result: e.summary.replace(/^decide → /, '') });
+      else if (e.summary.startsWith('approval card:')) push({ kind: 'gate', name: 'owner approval required', result: e.summary.replace(/^approval card: /, '') });
+      else if (/^[A-Z_]+ → [A-Z_]+:/.test(e.summary)) push({ kind: 'effect', name: 'booking state', result: e.summary });
+    });
+    try {
+      return await fn();
+    } finally {
+      off();
+    }
   }
 
   /** The AI's only lever on money: it proposes a label; the engine decides and acts. */
@@ -744,8 +885,10 @@ export class Engine {
     if (!(a.options as string[]).includes(choice)) throw new Error(`invalid choice ${choice}`);
     const b = this.booking(a.bookingId);
     this.audit.add('owner', `${this.ownerName} tapped "${choice}" on: ${a.prompt}`, { bookingId: b.id });
+    const run = this.agentRuns.find((r) => r.gate.approvalId === a.id);
+    if (run) run.steps.push({ n: run.steps.length + 1, kind: 'owner', name: `${this.ownerName} tapped "${choice}"`, result: 'the engine acts on the tap' });
     try {
-      await this.applyApproval(a, b, choice);
+      await (run ? this.traced(run, () => this.applyApproval(a, b, choice)) : this.applyApproval(a, b, choice));
     } catch (err) {
       // keep the card open so the owner can retry or choose differently
       this.audit.add('engine', `"${choice}" failed, card kept open: ${(err as Error).message}`, { bookingId: b.id });
@@ -753,6 +896,7 @@ export class Engine {
       throw err;
     }
     a.resolved = choice;
+    if (run) run.gate = { ...run.gate, resolved: choice };
     this.emit('approval');
     return b;
   }
@@ -845,6 +989,8 @@ export class Engine {
       bookings: [...this.bookings.values()].sort((a, b) => a.start - b.start).map(view),
       waitlist: this.waitlist,
       approvals: this.openApprovals(),
+      agentRuns: this.agentRuns.slice(-30).reverse(),
+      agentToolsNotGiven: MONEY_TOOLS_NOT_GIVEN,
       unreleasedAuths: this.unreleasedAuths,
       offers: this.offers,
       messages: this.messages,

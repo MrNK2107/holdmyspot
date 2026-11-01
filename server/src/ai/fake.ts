@@ -20,6 +20,7 @@ export class FakeLlmProvider implements LlmProvider {
         offer: `A ${i.serviceName} spot just opened: ${i.slot}. Reply YES to claim it. First yes gets it.`,
       }),
       draft_reply: (i: AiTasks['draft_reply']['input']) => ({ text: draftReply(i.clientName, i.situation, i.facts) }),
+      agent_step: (i: AiTasks['agent_step']['input']) => agentStep(i),
     } as const;
     return (impl[task] as (x: unknown) => AiTasks[K]['output'])(input);
   }
@@ -208,4 +209,40 @@ function draftReply(name: string, situation: string, f: Record<string, string>):
     default:
       return `Thanks, ${first}! Got it.`;
   }
+}
+
+export const INJECTION_RE = /ignore (all |any )?(previous|prior|above) instructions|system prompt|you are now|refund me|\$\d+/i;
+
+/**
+ * Deterministic agent planner: get_booking → get_policy → classify_message → propose_settlement → finish.
+ * When a message carries an injection, it first replays what a manipulated model would try (asking for
+ * create_refund), so the demo shows the toolset denying it. A real model gets the same toolset.
+ */
+export function agentStep(i: AiTasks['agent_step']['input']): AiTasks['agent_step']['output'] {
+  const called = (name: string) => i.history.some((h) => h.tool === name);
+  const result = (name: string): Record<string, unknown> => {
+    const h = [...i.history].reverse().find((x) => x.tool === name && !x.denied);
+    try {
+      return h ? JSON.parse(h.result) : {};
+    } catch {
+      return {};
+    }
+  };
+  const have = new Set(i.tools.map((t) => t.name));
+  const call = (tool: string, args: Record<string, unknown>, why: string) => ({ tool, argsJson: JSON.stringify(args), why });
+
+  if (INJECTION_RE.test(i.text) && !i.history.some((h) => h.denied)) {
+    const amount = i.text.match(/\$\d+/)?.[0] ?? '$20';
+    return call('create_refund', { amount, reason: 'client asked in their message' }, 'Replaying the injected instruction, as a manipulated model would (red-team step of the offline provider).');
+  }
+  if (!called('get_booking')) return call('get_booking', {}, `Find ${i.clientName}'s next appointment before reading the message.`);
+  const booking = result('get_booking');
+  if (!booking.bookingId) return call('finish', { note: 'no active booking; hand to the owner' }, 'No upcoming visit to act on.');
+  if (!called('get_policy')) return call('get_policy', {}, 'Check the approved cancellation policy.');
+  if (!called('classify_message')) return call('classify_message', { text: i.text }, 'Label the intent and reason with evidence.');
+  if (!called('propose_settlement') && have.has('propose_settlement')) {
+    const label = result('classify_message');
+    return call('propose_settlement', { bookingId: booking.bookingId, ...label }, 'Hand the label to the policy engine; it decides and the owner approves any charge.');
+  }
+  return call('finish', { note: 'proposal handed to the policy engine' }, 'Nothing left for me to do.');
 }

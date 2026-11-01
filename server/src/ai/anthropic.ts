@@ -45,6 +45,7 @@ export const SCHEMAS: Record<AiTask, object> = {
   parse_waitlist_entry: obj({ serviceIds: arr(str), days: arr(int), earliestMin: int, latestMin: int }),
   rank_and_draft_offer: obj({ order: arr(str), offer: str }),
   draft_reply: obj({ text: str }),
+  agent_step: obj({ tool: str, argsJson: str, why: str }),
 };
 
 const SYSTEM = `You are the front desk assistant for a solo appointment business (nail tech, barber, tutor).
@@ -59,6 +60,8 @@ const INSTRUCTIONS: Record<AiTask, string> = {
   parse_waitlist_entry: 'Parse the free-text waitlist entry into constraints. serviceIds must come from the given services. days: 0=Sun..6=Sat, [] = any. Minutes from midnight.',
   rank_and_draft_offer: 'Rank the given candidates (ids only, from the list) for the open slot and write one short offer text that asks them to reply YES.',
   draft_reply: 'Write one short text message to the client for this situation using only the given facts.',
+  agent_step:
+    'You are handling one inbound client text as the front desk agent. Choose the single next tool to call from `tools` (by exact name) given the `history` of calls so far. argsJson is a JSON object string of arguments. Typical order: get_booking, get_policy, classify_message, then propose_settlement with the booking id, then finish. You cannot move money; you can only propose. Call finish when there is nothing left to do. why: one short sentence.',
 };
 
 export interface MessagesClient {

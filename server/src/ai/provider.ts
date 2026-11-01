@@ -35,6 +35,24 @@ export interface AiTasks {
     input: { clientName: string; situation: string; facts: Record<string, string> };
     output: { text: string };
   };
+  /** One step of the front-desk agent loop: pick the next tool from the given toolset. */
+  agent_step: {
+    input: {
+      trigger: string;
+      clientName: string;
+      text: string;
+      tools: Array<{ name: string; access: string; description: string }>;
+      history: AgentHistoryItem[];
+    };
+    output: { tool: string; argsJson: string; why: string };
+  };
+}
+
+export interface AgentHistoryItem {
+  tool: string;
+  argsJson: string;
+  result: string;
+  denied?: boolean;
 }
 
 export type AiTask = keyof AiTasks;

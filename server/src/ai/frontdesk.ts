@@ -1,6 +1,7 @@
 import type { AuditLog } from '../audit.js';
 import { validateRules, type PolicyRules } from '../domain/policy.js';
 import type { CancelReason, MessageIntent, MessageLabel, Service, WaitlistConstraints } from '../domain/types.js';
+import { FrontDeskAgent } from './agent.js';
 import type { AiTasks, Ambiguity, LlmProvider } from './provider.js';
 
 const INTENTS: MessageIntent[] = ['cancel', 'reschedule', 'running_late', 'confirm', 'question', 'other'];
@@ -25,21 +26,31 @@ export class FrontDesk {
   constructor(
     private llm: LlmProvider,
     private audit: AuditLog,
-  ) {}
+  ) {
+    this.agent = new FrontDeskAgent(llm, audit);
+  }
 
   get providerName(): string {
     return this.llm.name;
   }
 
-  async classifyMessage(text: string, clientName: string, appointment: string, bookingId?: string): Promise<MessageLabel> {
-    const raw = await this.llm.run('classify_message', { text, clientName, appointment });
-    const label: MessageLabel = {
-      intent: INTENTS.includes(raw.intent) ? raw.intent : 'other',
-      reason: REASONS.includes(raw.reason) ? raw.reason : 'none',
+  /** The tool-calling loop over the same provider. Its toolset is supplied by the engine per run. */
+  readonly agent: FrontDeskAgent;
+
+  /** Whitelist a label from any AI source (classifier output or an agent's proposal arguments). */
+  sanitizeLabel(raw: Partial<Record<keyof MessageLabel, unknown>>): MessageLabel {
+    return {
+      intent: INTENTS.includes(raw.intent as MessageIntent) ? (raw.intent as MessageIntent) : 'other',
+      reason: REASONS.includes(raw.reason as CancelReason) ? (raw.reason as CancelReason) : 'none',
       confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
       evidenceSpan: String(raw.evidenceSpan ?? '').slice(0, 200),
       ...(raw.proposedTime ? { proposedTime: String(raw.proposedTime).slice(0, 60) } : {}),
     };
+  }
+
+  async classifyMessage(text: string, clientName: string, appointment: string, bookingId?: string): Promise<MessageLabel> {
+    const raw = await this.llm.run('classify_message', { text, clientName, appointment });
+    const label = this.sanitizeLabel(raw);
     this.audit.add('ai', `classify_message → ${label.intent}/${label.reason} (${label.confidence.toFixed(2)})`, { bookingId, data: label });
     return label;
   }
