@@ -220,3 +220,17 @@ describe('vault-first booking (more than 72h out, no saved wallet)', () => {
     expect(ben.state).toBe('HELD');
   });
 });
+
+describe('hero 1 continued: reschedule from the offered slots', () => {
+  it('excused client replies "2" and gets a new held booking', async () => {
+    e.mode = 'autopilot';
+    await e.clock.advanceTo(at(4, 9));
+    await e.receiveMessage('sam', "kiddo threw up, can't make it");
+    expect(lastMessageTo('sam')).toContain('Reply 1, 2 or 3');
+    const r = await e.receiveMessage('sam', '2');
+    expect(r.rebooked).toBeTruthy();
+    const nb = e.booking(r.rebooked!);
+    expect(['HELD', 'VAULTED']).toContain(nb.state);
+    expect(lastMessageTo('sam')).toContain("You're booked");
+  });
+});

@@ -169,7 +169,11 @@ function draftReply(name: string, situation: string, f: Record<string, string>):
   const first = name.split(' ')[0];
   switch (situation) {
     case 'excused':
-      return `So sorry, ${first}. No charge, your hold is released. Want one of these instead: ${f.slots ?? 'any time next week'}?`;
+      return `So sorry, ${first}. No charge, your hold is released. Want to rebook? ${f.slots ?? 'Any time next week works.'}`;
+    case 'rebooked':
+      return `Done! You're booked for ${f.appointment}. Same deal as before: a hold, not a charge.`;
+    case 'approve_hold':
+      return `Hi ${first}, your visit is in 3 days. Please approve the PayPal hold to keep your spot: ${f.link ?? ''}`;
     case 'cancelled_early':
       return `No problem, ${first}. You cancelled in time, so your hold is released. Hope to see you soon!`;
     case 'pending_refill':

@@ -86,6 +86,8 @@ export class Engine {
   private listeners = new Set<(e: EngineEvent) => void>();
   /** orderId -> bookingId for buyer-present approvals */
   private pendingOrders = new Map<string, string>();
+  /** clientId -> slots offered after an excused cancellation */
+  private rebookOffers = new Map<string, { serviceId: string; slots: number[] }>();
   /** setupTokenId -> bookingId for Vault v3 approvals */
   private pendingSetups = new Map<string, string>();
   private holdAttempts = new Map<string, number>();
@@ -364,7 +366,8 @@ export class Engine {
       else await this.onHoldDeclined(b, r.issue ?? 'DECLINED');
       return;
     }
-    await this.placeHold(b);
+    const res = await this.placeHold(b);
+    if (res.status === 'PAYER_ACTION_REQUIRED') await this.reply(b, 'approve_hold', { link: res.approvalUrl });
   }
 
   // ---------- webhooks ----------
@@ -391,7 +394,7 @@ export class Engine {
       .sort((a, b) => a.start - b.start)[0];
   }
 
-  async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean }> {
+  async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
     const c = this.client(clientId);
     this.messages.push({ id: this.nextId('msg'), at: this.now(), clientId, from: 'client', text });
     this.audit.add('message', `← ${c.name}: ${text}`);
@@ -399,6 +402,21 @@ export class Engine {
 
     const offer = this.offers.filter((o) => o.offeredTo.includes(clientId) && o.status !== 'closed').at(-1);
     if (offer && YES.test(text)) return { claimed: await this.claim(offer, clientId) };
+
+    const rebook = this.rebookOffers.get(clientId);
+    const pick = text.trim().match(/^([1-3])(?!\d)/);
+    if (rebook && pick) {
+      const start = rebook.slots[Number(pick[1]) - 1];
+      const stillFree = start !== undefined && this.freeSlots(rebook.serviceId, 12).includes(start);
+      if (!stillFree) {
+        this.say(clientId, 'Sorry, that time was just taken. Want me to send new options?');
+        return {};
+      }
+      this.rebookOffers.delete(clientId);
+      const nb = await this.createBooking({ clientId, serviceId: rebook.serviceId, start });
+      await this.reply(nb, 'rebooked');
+      return { rebooked: nb.id };
+    }
 
     const b = this.activeBookingFor(clientId);
     if (!b) {
@@ -472,7 +490,10 @@ export class Engine {
     await this.voidHold(b, why);
     this.setState(b, 'EXCUSED', why);
     this.excusals.push({ clientId: b.clientId, at: this.now() });
-    await this.reply(b, 'excused', { slots: this.suggestSlots(b).join(', ') });
+    const free = this.freeSlots(b.serviceId, 3);
+    this.rebookOffers.set(b.clientId, { serviceId: b.serviceId, slots: free });
+    const list = free.map((t, i) => `${i + 1}) ${this.slotLabel({ ...b, start: t })}`).join('  ');
+    await this.reply(b, 'excused', { slots: free.length ? `Reply 1, 2 or 3: ${list}` : '' });
   }
 
   /** Free slots of the same service in the next 7 days, on the hour, 10:00-18:00 UTC. */
