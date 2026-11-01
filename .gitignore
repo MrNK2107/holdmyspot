@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+dist/
+build/
+coverage/
+*.log
+*.sqlite
+*.db
+.vite/
+screenshots/tmp/
