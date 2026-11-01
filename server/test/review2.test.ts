@@ -207,6 +207,15 @@ describe('review 2026-11-02', () => {
     expect(sam.state).toBe('EXCUSED');
     expect(e.unreleasedAuths.map((u) => u.authorizationId)).toContain(sam.authorizationId);
   });
+
+  it('a reauthorization PayPal refuses outright (expired authorization) is handled like a decline, not a crashed clock', async () => {
+    e.holdStrategy = 'reauth';
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(2, 10) + 34 * 24 * 3600_000 });
+    expect(b.state).toBe('HELD');
+    await expect(e.clock.advanceTo(b.start - 72 * 3600_000 + 60_000)).resolves.toBeDefined();
+    expect(b.state).toBe('HOLD_FAILED');
+    expect(b.approvalLink).toBeTruthy();
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

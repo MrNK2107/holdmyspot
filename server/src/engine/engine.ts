@@ -475,7 +475,12 @@ export class Engine {
     if (b.state === 'HELD' && b.authorizationId) {
       if (this.now() - (b.authorizedAt ?? 0) < 3 * DAY) return; // still inside the honor period
       const c = this.client(b.clientId);
-      const r = await this.reauthorize(b, !!c.sandboxDecline);
+      // A refusal (expired authorization, limit reached, PayPal error) leaves no usable hold: treat it as a
+      // decline so the client gets a re-approval link, instead of an exception that aborts the clock run.
+      const r: ReauthorizeResult = await this.reauthorize(b, !!c.sandboxDecline).catch((err: Error) => ({
+        status: 'DECLINED' as const,
+        issue: err instanceof PaymentsError ? err.issue : 'REAUTHORIZE_FAILED',
+      }));
       this.audit.add('paypal', `reauthorize at T-72h → ${r.status}`, { bookingId: b.id, data: r });
       if (r.status === 'AUTHORIZED' && r.authorizationId) {
         b.reauthorized = true;
