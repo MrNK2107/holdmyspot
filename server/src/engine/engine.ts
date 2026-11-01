@@ -246,7 +246,16 @@ export class Engine {
 
   private async reply(b: Booking, situation: string, facts: Record<string, string> = {}): Promise<void> {
     const c = this.client(b.clientId);
-    const text = await this.frontdesk.draftReply(c.name, situation, { owner: this.ownerName, appointment: this.slotLabel(b), ...facts }, b.id);
+    const all = { owner: this.ownerName, appointment: this.slotLabel(b), ...facts };
+    let text: string;
+    try {
+      text = await this.frontdesk.draftReply(c.name, situation, all, b.id);
+    } catch (err) {
+      // Replies come after the money step. A model failure here must not surface as a failed settlement,
+      // or the caller's retry would run the money logic a second time (e.g. a second refill offer).
+      this.audit.add('ai', `draft_reply (${situation}) failed: ${(err as Error).message}; sent a fixed reply`, { bookingId: b.id });
+      text = `Hi ${c.name.split(' ')[0]}, thanks for your message about ${all.appointment}. ${this.ownerName} will follow up shortly.${all.link ? ` ${all.link}` : ''}`;
+    }
     this.say(c.id, text);
   }
 

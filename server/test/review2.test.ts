@@ -204,3 +204,26 @@ describe('review 2026-11-02: what the owner reads before a money tap', () => {
     expect(w.engine.bookings.get(samId)!.lastLabel!.evidenceSpan).not.toBe('my daughter was rushed to the ER');
   });
 });
+
+describe('review 2026-11-02: a model failure after money logic ran', () => {
+  async function flaky(failTask: string, situation?: string) {
+    const { FakeLlmProvider } = await import('../src/ai/fake.js');
+    class Flaky extends FakeLlmProvider {
+      async run(task: any, input: any): Promise<any> {
+        if (task === failTask && (!situation || input.situation === situation)) throw new Error('LLM provider overloaded');
+        return super.run(task, input);
+      }
+    }
+    const w = await new Workspaces({ llm: () => new Flaky() }).create('t4');
+    return w.engine;
+  }
+
+  it('a failed reply draft does not re-run the settlement (one refill offer, not two)', async () => {
+    const eng = await flaky('draft_reply', 'pending_refill');
+    await eng.clock.advanceTo(at(5, 9));
+    const maya = [...eng.bookings.values()].find((x) => x.clientId === 'maya')!;
+    await eng.receiveMessage('maya', "I can't make it today, something came up").catch(() => undefined);
+    expect(maya.state).toBe('PENDING_REFILL');
+    expect(eng.offers.filter((o) => o.slotBookingId === maya.id)).toHaveLength(1);
+  });
+});
