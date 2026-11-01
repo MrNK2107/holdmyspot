@@ -39,4 +39,21 @@ describe('review 2026-11-02', () => {
     await e.resolveApproval(capture!.id, 'charge');
     expect(alex.state).toBe('CHARGED');
   });
+
+  it('fees come from the policy version the client booked under, not a later one', async () => {
+    const v2 = approve(e.policy, { ...e.policy.rules, noShowFeeCents: 1000, lateCancelFeeCents: 1000 }, 'v2', e.now());
+    e.setPolicy(v2);
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    expect(b.state).toBe('HELD');
+    expect(b.policyVersion).toBe(v2.version);
+    e.setPolicy(approve(e.policy, { ...e.policy.rules, noShowFeeCents: 2000, lateCancelFeeCents: 2000 }, 'v3', e.now()));
+
+    await e.clock.advanceTo(at(3, 18, 10));
+    const att = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'attendance')!;
+    await e.resolveApproval(att.id, 'no_show');
+    const card = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'capture');
+    expect(card && card.kind === 'capture' && card.feeCents).toBe(1000);
+    await e.resolveApproval(card!.id, 'charge');
+    expect(b.capturedCents).toBe(1000);
+  });
 });

@@ -116,6 +116,8 @@ export class Engine {
   offers: RefillOffer[] = [];
   excusals: Array<{ clientId: string; at: number }> = [];
   private seenEvents = new Set<string>();
+  /** every approved policy version: a booking is settled under the version the client booked under */
+  private policies = new Map<number, ApprovedPolicy>();
   private seq = 0;
   private listeners = new Set<(e: EngineEvent) => void>();
   /** orderId -> bookingId for buyer-present approvals */
@@ -139,6 +141,7 @@ export class Engine {
     this.frontdesk = o.frontdesk(this.audit);
     this.gateway = o.gateway;
     this.policy = o.policy;
+    this.policies.set(o.policy.version, o.policy);
     this.mode = o.mode ?? 'ask';
     this.holdStrategy = o.holdStrategy ?? 'mit';
     this.ownerName = o.ownerName;
@@ -261,6 +264,7 @@ export class Engine {
 
   setPolicy(p: ApprovedPolicy): void {
     this.policy = p;
+    this.policies.set(p.version, p);
     this.audit.add('owner', `policy v${p.version} approved (${p.hash})`);
     this.emit('state');
   }
@@ -749,7 +753,7 @@ export class Engine {
 
   /** The AI's only lever on money: it proposes a label; the engine decides and acts. */
   async requestSettlement(b: Booking, label: MessageLabel): Promise<Decision> {
-    const d = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'cancel', label, priorExcusals: this.priorExcusals(b.clientId) });
+    const d = decide({ booking: b, rules: this.rulesFor(b), now: this.now(), kind: 'cancel', label, priorExcusals: this.priorExcusals(b.clientId) });
     this.audit.add('engine', `decide → ${d.outcome}: ${d.why}`, { bookingId: b.id, data: d });
     if (!b.authorizationId && d.outcome !== 'CLARIFY' && d.outcome !== 'NO_ACTION') {
       // No hold was ever placed (wallet not approved yet, or the T-72h hold is still to come).
@@ -802,6 +806,13 @@ export class Engine {
         break;
     }
     return d;
+  }
+
+  /** The rules the client accepted at booking (the capture note cites that version); current rules if unknown. */
+  private rulesFor(b: Booking) {
+    if (b.policyVersion === this.policy.version) return this.policy.rules;
+    const p = this.policies.get(b.policyVersion);
+    return p && p.hash === b.policyHash ? p.rules : this.policy.rules;
   }
 
   private priorExcusals(clientId: string): number {
@@ -975,9 +986,9 @@ export class Engine {
       );
       return;
     }
-    const fee = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'no_show', priorExcusals: 0 });
+    const fee = decide({ booking: b, rules: this.rulesFor(b), now: this.now(), kind: 'no_show', priorExcusals: 0 });
     const feeCents = fee.outcome === 'PENDING_REFILL' || fee.outcome === 'OWNER_REVIEW' ? fee.feeCents : b.holdCents;
-    const lateFee = Math.min(this.policy.rules.lateCancelFeeCents, b.holdCents);
+    const lateFee = Math.min(this.rulesFor(b).lateCancelFeeCents, b.holdCents);
     this.addApproval({
       kind: 'capture',
       bookingId: b.id,
@@ -1082,7 +1093,7 @@ export class Engine {
   /** Every capture path ends here, after an owner tap. */
   private async capture(b: Booking, feeCents: number): Promise<void> {
     if (!b.authorizationId) throw new Error('no authorization to capture');
-    const violations = captureViolations({ amountCents: feeCents, authorizedCents: b.holdCents, rules: this.policy.rules, label: b.cancelledAt ? b.lastLabel : undefined, ownerApproved: true });
+    const violations = captureViolations({ amountCents: feeCents, authorizedCents: b.holdCents, rules: this.rulesFor(b), label: b.cancelledAt ? b.lastLabel : undefined, ownerApproved: true });
     if (violations.length) {
       this.audit.add('engine', `capture blocked: ${violations.join('; ')}`, { bookingId: b.id });
       throw new PaymentsError('ENGINE_INVARIANT', violations.join('; '));
