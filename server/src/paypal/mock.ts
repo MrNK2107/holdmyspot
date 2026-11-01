@@ -44,7 +44,8 @@ export class MockPayPalGateway implements PaymentsGateway {
   private orders = new Map<string, Order>();
   private auths = new Map<string, Auth>();
   private reauthorizedRoots = new Set<string>();
-  private captures = new Map<string, { id: string; authId: string; amountCents: number; refundedCents: number }>();
+  private captures = new Map<string, { id: string; authId: string; amountCents: number; refundedCents: number; createdAt: number }>();
+  private refunds = new Map<string, { id: string; captureId: string; amountCents: number; createdAt: number }>();
   private idem = new Map<string, unknown>();
   private listeners = new Set<(e: WebhookEvent) => void | Promise<void>>();
   readonly calls: Array<{ op: string; requestId: string }> = [];
@@ -202,7 +203,7 @@ export class MockPayPalGateway implements PaymentsGateway {
       const captureId = this.id('CAPTURE');
       a.capturedCents += req.amountCents;
       a.status = req.finalCapture || a.capturedCents === a.amountCents ? 'CAPTURED' : 'PARTIALLY_CAPTURED';
-      this.captures.set(captureId, { id: captureId, authId: a.id, amountCents: req.amountCents, refundedCents: 0 });
+      this.captures.set(captureId, { id: captureId, authId: a.id, amountCents: req.amountCents, refundedCents: 0, createdAt: this.now() });
       await this.emit('PAYMENT.CAPTURE.COMPLETED', {
         id: captureId,
         custom_id: a.customId,
@@ -267,6 +268,7 @@ export class MockPayPalGateway implements PaymentsGateway {
       if (amountCents <= 0 || c.refundedCents + amountCents > c.amountCents) throw new PaymentsError('REFUND_AMOUNT_EXCEEDED');
       c.refundedCents += amountCents;
       const refundId = this.id('REFUND');
+      this.refunds.set(refundId, { id: refundId, captureId, amountCents, createdAt: this.now() });
       const a = this.auths.get(c.authId)!;
       await this.emit('PAYMENT.CAPTURE.REFUNDED', {
         id: refundId,
@@ -276,6 +278,24 @@ export class MockPayPalGateway implements PaymentsGateway {
       });
       return { status: 'COMPLETED', refundId, amountCents } as const;
     });
+  }
+
+  /**
+   * Read-only copy of the simulator's PayPal objects, for the reporting endpoints the Agent Toolkit's
+   * read tools call (see paypal/toolkit.ts). Copies, so a reader can never change simulator state.
+   */
+  readView(): {
+    orders: Array<{ id: string; customId: string; description: string; amountCents: number; approved: boolean }>;
+    authorizations: Array<Omit<Auth, never>>;
+    captures: Array<{ id: string; authId: string; amountCents: number; refundedCents: number; createdAt: number }>;
+    refunds: Array<{ id: string; captureId: string; amountCents: number; createdAt: number }>;
+  } {
+    return {
+      orders: [...this.orders.values()].map((o) => ({ id: o.id, customId: o.req.customId, description: o.req.description, amountCents: o.req.amountCents, approved: o.approved })),
+      authorizations: [...this.auths.keys()].map((id) => ({ ...this.liveAuth(id) })),
+      captures: [...this.captures.values()].map((c) => ({ ...c })),
+      refunds: [...this.refunds.values()].map((r) => ({ ...r })),
+    };
   }
 
   authorizationStatus(id: string): Auth['status'] {
