@@ -13,3 +13,4 @@ coverage/
 .vite/
 screenshots/tmp/
 ui-check-fail-*.png
+docs/gallery/.raw/

@@ -79,6 +79,12 @@ const YES = /^\s*(yes|yep|yeah|y|i'?ll take it|claim|me!?)\b/i;
  * Deterministic policy engine and the only caller of the payments gateway.
  * One instance per demo workspace.
  */
+/** Plain-language reason a client text left the money untouched (agent trace gate line). */
+export const NO_MONEY_SUMMARY: Partial<Record<Decision['outcome'], string>> = {
+  CLARIFY: 'not sure what the client meant, so it asked them to clarify; the hold stays as it is',
+  NO_ACTION: 'not a cancellation, so there is nothing to settle; the hold stays as it is',
+};
+
 export class Engine {
   readonly id: string;
   readonly clock: DemoClock;
@@ -586,7 +592,7 @@ export class Engine {
         ? { kind: 'refill', summary: 'slot offered to the waitlist first; any fee later needs an owner tap' }
         : ['EXCUSED', 'CANCELLED_EARLY'].includes(b.state)
           ? { kind: 'auto_release', summary: 'released automatically: voiding a hold returns money, it never charges' }
-          : { kind: 'none', summary: `no money moved (${d.outcome})` };
+          : { kind: 'none', summary: NO_MONEY_SUMMARY[d.outcome] ?? `nothing to settle (${d.outcome})` };
     return { label, decision: d };
   }
 
@@ -1087,12 +1093,20 @@ export class Engine {
   // ---------- views ----------
 
   snapshot() {
+    const feeDecisionPending = new Set(this.approvals.filter((a) => a.kind === 'capture' && !a.resolved).map((a) => a.bookingId));
     const view = (b: Booking) => ({
       ...b,
       clientName: this.client(b.clientId).name,
       serviceName: this.services.get(b.serviceId)?.name,
       // a booking that never had an authorization has no money at stake, whatever its state
-      money: b.refundId ? 'refunded' : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state) ? 'none' : moneyState(b.state, !!b.captureId),
+      money: b.refundId
+        ? 'refunded'
+        : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state)
+          ? 'none'
+          : // refill window over and the fee card is waiting: the hold is simply held until the owner decides
+            b.state === 'PENDING_REFILL' && feeDecisionPending.has(b.id)
+            ? 'held'
+            : moneyState(b.state, !!b.captureId),
     });
     return {
       workspace: this.id,

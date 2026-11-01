@@ -10,6 +10,7 @@
     "start": "npm start -w server",
     "eval": "npm run eval -w server",
     "demo": "npm run build -w web && npm start -w server",
-    "ui-check": "npm run ui-check -w server"
+    "ui-check": "npm run ui-check -w server",
+    "gallery": "npm run gallery -w server"
   }
 }
