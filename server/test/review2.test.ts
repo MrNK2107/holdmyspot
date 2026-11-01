@@ -135,6 +135,24 @@ describe('review 2026-11-02', () => {
     expect(maya.state).toBe('REFILLED');
     expect(e.unreleasedAuths.map((u) => u.authorizationId)).toContain(maya.authorizationId);
   });
+  it('an authorization that turns up after the fee was captured is released, not adopted', async () => {
+    e.waitlist = [];
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = bk('alex');
+    const att = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!;
+    await e.resolveApproval(att.id, 'no_show');
+    const card = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!;
+    await e.resolveApproval(card.id, 'charge');
+    expect(alex.state).toBe('CHARGED');
+    const captured = alex.authorizationId;
+    // a stray authorization for the same booking (e.g. a duplicate approval) reaches the engine by webhook
+    const stray = await mock.placeHold({ requestId: 'stray', amountCents: 2000, customId: `t2:${alex.id}`, description: 'stray', vaultId: e.clients.get('alex')!.vaultId });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(stray.status).toBe('AUTHORIZED');
+    expect(alex.authorizationId).toBe(captured);
+    expect(mock.authorizationStatus(stray.status === 'AUTHORIZED' ? stray.authorizationId : '')).toBe('VOIDED');
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

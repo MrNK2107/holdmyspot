@@ -423,7 +423,7 @@ export class Engine {
     this.knownAuths.set(b.id, known);
     if (known.has(authorizationId)) return; // duplicate, or an older auth arriving late
     known.add(authorizationId);
-    if ((isTerminal(b.state) && b.state !== 'CHARGED') || (b.state === 'PENDING_REFILL' && !b.authorizationId)) {
+    if (isTerminal(b.state) || (b.state === 'PENDING_REFILL' && !b.authorizationId)) {
       // e.g. an approval that arrives after the booking was cancelled: release it right away
       try {
         await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId));
