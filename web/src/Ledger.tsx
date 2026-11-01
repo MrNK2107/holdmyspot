@@ -16,7 +16,7 @@ import {
 import { AgGridReact } from 'ag-grid-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Api, type AuditEntry, type BookingView, type Snapshot, fmtDay, fmtTime, usd } from './api';
-import { MONEY_TEXT, ledgerAmounts } from './money';
+import { MONEY_TEXT, bookingStateLabel, ledgerAmounts } from './money';
 
 ModuleRegistry.registerModules([
   ClientSideRowModelModule,
@@ -57,13 +57,6 @@ interface Row {
   refundId: string;
   policy: string;
   refill: string;
-}
-
-/** Booking state in words; the money outcome wins where the raw state would contradict it. */
-function bookingStateLabel(b: BookingView): string {
-  if (b.refundId) return 'refunded';
-  if (b.refillOfBookingId && b.state === 'CANCELLED_EARLY' && !b.authorizationId) return 'claim closed (no hold)';
-  return b.state.replace(/_/g, ' ').toLowerCase();
 }
 
 function toRow(b: BookingView, s: Snapshot): Row {

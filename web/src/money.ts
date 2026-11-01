@@ -21,3 +21,12 @@ export function ledgerAmounts(b: { money: string; holdCents: number; captureId?:
     keptCents: b.refundId ? 0 : charged,
   };
 }
+
+/** Booking state in words; the money outcome wins where the raw state would contradict it. */
+export function bookingStateLabel(b: { state: string; money: string; refundId?: string; refillOfBookingId?: string; authorizationId?: string }): string {
+  if (b.refundId) return 'refunded';
+  if (b.money === 'reversed') return 'charge reversed';
+  if (b.money === 'voided' && (b.state === 'HELD' || b.state === 'PENDING_REFILL')) return 'hold voided at PayPal';
+  if (b.refillOfBookingId && b.state === 'CANCELLED_EARLY' && !b.authorizationId) return 'claim closed (no hold)';
+  return b.state.replace(/_/g, ' ').toLowerCase();
+}

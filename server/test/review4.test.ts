@@ -355,3 +355,16 @@ describe('workspace eviction', () => {
     expect((ws as unknown as { tails: Map<string, unknown> }).tails.size).toBeLessThanOrEqual(2);
   });
 });
+
+describe('ledger state words follow the money outcome', () => {
+  it('a reversed capture does not read "charged", and a hold voided at PayPal does not read "held"', async () => {
+    const { bookingStateLabel } = await import('../../web/src/money.js');
+    const base = { state: 'CHARGED', money: 'reversed', holdCents: 2000, captureId: 'C1' };
+    expect(bookingStateLabel(base)).toBe('charge reversed');
+    expect(bookingStateLabel({ ...base, state: 'HELD', money: 'voided', captureId: undefined })).toBe('hold voided at PayPal');
+    expect(bookingStateLabel({ ...base, money: 'captured' })).toBe('charged');
+    expect(bookingStateLabel({ ...base, money: 'refunded', refundId: 'R1' })).toBe('refunded');
+    expect(bookingStateLabel({ state: 'CANCELLED_EARLY', money: 'none', holdCents: 0, refillOfBookingId: 'bk_1' })).toBe('claim closed (no hold)');
+    expect(bookingStateLabel({ state: 'PENDING_REFILL', money: 'pending-refill', holdCents: 0 })).toBe('pending refill');
+  });
+});
