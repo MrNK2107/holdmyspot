@@ -90,6 +90,15 @@ try {
       await axe(desk, 'console desktop (hero 2 refilled)');
       await shot(desk, 'console-hero2-refilled.png');
     }
+    if (i === 5) await shot(desk, 'console-agent-card.png');
+    if (i === 10) {
+      await desk.locator('.trace-detail').waitFor();
+      const trace = (await desk.locator('.trace-detail').textContent()) ?? '';
+      check(/create_refund/.test(trace) && /not in the front desk's toolset/.test(trace), 'agent trace shows the injected create_refund call denied');
+      check(/propose_settlement/.test(trace) && /policy check/.test(trace), 'agent trace shows the proposal and the policy check');
+      await axe(desk, 'agent trace tab');
+      await shot(desk, 'agent-trace-injection.png');
+    }
     if (i === 12) await shot(desk, 'console-hero3-charged.png');
   }
   check(/^held \$20/.test(beats[4]), `beat 4 Jordan re-approved → ${beats[4]}`);
@@ -102,6 +111,22 @@ try {
   await shot(desk, 'console-demo-end.png');
   check((await desk.getByRole('button', { name: /Replay from the start/ }).count()) === 1, 'demo ends with a replay button');
 
+  // ---- AG Grid ledger ----
+  await desk.getByRole('button', { name: /^Ledger/ }).click();
+  await desk.locator('.ag-row').first().waitFor({ timeout: 10000 });
+  const ledgerText = (await desk.locator('.ledger-grid').textContent()) ?? '';
+  check(/refunded/.test(ledgerText) && /charged/.test(ledgerText) && /AUTH/.test(ledgerText), 'ledger grid lists money states and PayPal ids');
+  check(/Total/.test(ledgerText), 'ledger grid has a totals row');
+  await axe(desk, 'ledger (AG Grid)');
+  await shot(desk, 'ledger.png');
+  await desk.getByRole('button', { name: 'PayPal calls' }).click();
+  await desk.getByRole('searchbox').fill('capture');
+  await desk.getByText(/capture \$20\.00 \(final_capture\)/).first().waitFor({ timeout: 10000 }).catch(() => undefined);
+  check(/final_capture/.test((await desk.locator('.ledger-grid').textContent()) ?? ''), 'ledger PayPal-calls view finds the capture by search');
+  await shot(desk, 'ledger-paypal-calls.png');
+  await desk.getByRole('searchbox').fill('');
+  await axe(desk, 'ledger PayPal calls');
+
   // ---- phone-width console ----
   const mob = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await mob.goto(`${base}/?ws=${ws1}&sel=${(await (await fetch(`${base}/api/ws/${ws1}/demo`)).json()).bookingIds.maya}&phone=maya`);
@@ -110,6 +135,13 @@ try {
   check(overflow <= 0, `console at 390px has no sideways page scroll (overflow ${overflow}px)`);
   await axe(mob, 'console 390px');
   await shot(mob, 'console-mobile.png');
+  for (const tab of ['agent', 'ledger']) {
+    await mob.goto(`${base}/?ws=${ws1}&tab=${tab}`);
+    await mob.locator(tab === 'agent' ? '.trace-detail' : '.ag-row').first().waitFor({ timeout: 10000 });
+    const o = await mob.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check(o <= 0, `${tab} tab at 390px has no sideways page scroll (overflow ${o}px)`);
+    await axe(mob, `${tab} tab 390px`);
+  }
 
   // ---- booking page (390px): book + approve the hold ----
   const ws2 = await newWs();
@@ -130,6 +162,7 @@ try {
   await book.getByRole('heading', { name: "You're booked" }).waitFor();
   const doneText = (await book.locator('.book-card.done').textContent()) ?? '';
   check(/not a charge/.test(doneText), 'booking page confirms the hold is not a charge');
+  check(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \w+ \d+ at \d/.test(doneText), `booking confirmation shows the date and time (${doneText.slice(0, 80)})`);
   await shot(book, 'booking-page-booked.png');
 
   // ---- error state: unknown workspace ----

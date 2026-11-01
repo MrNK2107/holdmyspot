@@ -50,7 +50,8 @@ export class FrontDeskAgent {
   async run(
     input: { trigger: string; clientName: string; text: string },
     tools: AgentTool[],
-    onStep: (s: Omit<TraceStep, 'n'>) => void,
+    /** records a step; may return the stored step so its result can be filled in after the tool runs */
+    onStep: (s: Omit<TraceStep, 'n'>) => TraceStep | void,
     bookingId?: string,
   ): Promise<{ history: AgentHistoryItem[]; finished: boolean }> {
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -84,14 +85,16 @@ export class FrontDeskAgent {
         onStep({ kind: 'tool', name, access: 'end', why, args, result: 'done' });
         return { history, finished: true };
       }
+      // record the call before it runs, so what the tool triggers (policy check, owner gate) is listed after it
+      this.audit.add('ai', `agent → ${name}`, { bookingId, data: { args, why } });
+      const rec = onStep({ kind: 'tool', name, access: tool.access, why, args });
       let result: unknown;
       try {
         result = await tool.run(args);
       } catch (err) {
         result = { error: (err as Error).message };
       }
-      this.audit.add('ai', `agent → ${name}`, { bookingId, data: { args, why } });
-      onStep({ kind: 'tool', name, access: tool.access, why, args, result: short(result) });
+      if (rec) rec.result = short(result);
       history.push({ tool: name, argsJson: JSON.stringify(args), result: short(result) });
     }
     return { history, finished: false };

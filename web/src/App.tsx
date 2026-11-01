@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AgentTraceCard, AgentTraceView } from './AgentTrace';
 import { Api, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
+
+// AG Grid is only loaded when the ledger tab opens
+const Ledger = lazy(() => import('./Ledger').then((m) => ({ default: m.Ledger })));
+
+type Tab = 'console' | 'policy' | 'agent' | 'ledger';
+const TABS: Tab[] = ['console', 'policy', 'agent', 'ledger'];
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -72,7 +79,10 @@ export function App() {
   const [ws, setWs] = useWorkspace();
   const api = useMemo(() => new Api(ws), [ws]);
   const [s, setS] = useState<Snapshot | null>(null);
-  const [tab, setTab] = useState<'console' | 'policy'>(new URLSearchParams(location.search).get('tab') === 'policy' ? 'policy' : 'console');
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = new URLSearchParams(location.search).get('tab') as Tab | null;
+    return t && TABS.includes(t) ? t : 'console';
+  });
   // ?sel=<bookingId>&phone=<clientId> preselect views (handy for screenshots and the video)
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).get('sel'));
   const [phone, setPhone] = useState(new URLSearchParams(location.search).get('phone') ?? 'sam');
@@ -115,7 +125,7 @@ export function App() {
     }
   };
 
-  const applyView = (v: { tab?: 'console' | 'policy'; sel?: string; phone?: string }, ids: Record<string, string>) => {
+  const applyView = (v: { tab?: Tab; sel?: string; phone?: string }, ids: Record<string, string>) => {
     if (v.tab) setTab(v.tab);
     if (v.sel) setSelected(ids[v.sel] ?? null);
     if (v.phone) setPhone(v.phone);
@@ -160,6 +170,12 @@ export function App() {
           <button className={tab === 'policy' ? 'on' : ''} onClick={() => setTab('policy')}>
             Policy <span className="pill">v{s.policy.version}</span>
           </button>
+          <button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>
+            Agent trace <span className="pill">{s.agentRuns?.length ?? 0}</span>
+          </button>
+          <button className={tab === 'ledger' ? 'on' : ''} onClick={() => setTab('ledger')}>
+            Ledger
+          </button>
         </nav>
         <div className="clock">
           <div className="clock-label">Demo clock</div>
@@ -172,7 +188,9 @@ export function App() {
         </a>
         <div className="badges">
           <span className={`badge ${s.paymentsMode}`}>{s.paymentsMode === 'mock' ? 'PayPal simulator' : 'PayPal sandbox'}</span>
-          <span className="badge ai">AI: {s.aiProvider}</span>
+          <span className="badge ai" title={s.aiProvider === 'fake' ? 'Deterministic offline provider: same tools and schemas as Claude, no API key needed' : undefined}>
+            AI: {s.aiProvider === 'fake' ? 'offline provider' : s.aiProvider}
+          </span>
         </div>
       </header>
 
@@ -238,6 +256,7 @@ export function App() {
           </section>
           <aside className="side" aria-label="Approvals and booking details">
             <Approvals s={s} busy={busy} onResolve={(id, c) => run(() => api.resolve(id, c))} onSelect={setSelected} />
+            <AgentTraceCard s={s} selected={selected} onOpen={() => setTab('agent')} />
             {sel ? (
               <BookingPanel b={sel} s={s} api={api} busy={busy} onRefund={() => run(() => api.refund(sel.id))} onApprove={(o) => run(() => api.simApprove(o))} />
             ) : (
@@ -248,8 +267,27 @@ export function App() {
             <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
           </aside>
         </main>
-      ) : (
+      ) : tab === 'policy' ? (
         <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} />
+      ) : tab === 'agent' ? (
+        <AgentTraceView s={s} />
+      ) : (
+        <Suspense
+          fallback={
+            <div className="loading" role="status">
+              <span className="spinner" aria-hidden /> Loading the ledger…
+            </div>
+          }
+        >
+          <Ledger
+            s={s}
+            api={api}
+            onSelect={(id) => {
+              setSelected(id);
+              setTab('console');
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

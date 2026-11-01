@@ -50,6 +50,28 @@ export interface AuditEntry {
   summary: string;
 }
 
+export interface TraceStep {
+  n: number;
+  kind: 'tool' | 'denied' | 'code' | 'effect' | 'gate' | 'owner';
+  name: string;
+  access?: 'read' | 'model' | 'propose' | 'end';
+  why?: string;
+  args?: Record<string, unknown>;
+  result?: string;
+}
+
+export interface AgentRun {
+  id: string;
+  at: number;
+  clientId: string;
+  clientName: string;
+  text: string;
+  bookingId?: string;
+  provider: string;
+  steps: TraceStep[];
+  gate: { kind: 'none' | 'auto_release' | 'owner_approval' | 'refill' | 'code'; summary: string; approvalId?: string; resolved?: string };
+}
+
 export interface PolicyRules {
   holdCents: number;
   freeCancelHours: number;
@@ -78,6 +100,8 @@ export interface Snapshot {
   approvals: Approval[];
   unreleasedAuths?: Array<{ bookingId: string; authorizationId: string; error: string }>;
   messages: ChatMessage[];
+  agentRuns?: AgentRun[];
+  agentToolsNotGiven?: string[];
   jobs: Array<{ id: string; at: number; name: string }>;
 }
 
@@ -91,7 +115,7 @@ export interface Ambiguity {
 export interface DemoStatus {
   step: number;
   total: number;
-  beats: Array<{ id: string; title: string; say: string; view: { tab?: 'console' | 'policy'; sel?: string; phone?: string }; done: boolean }>;
+  beats: Array<{ id: string; title: string; say: string; view: { tab?: 'console' | 'policy' | 'agent' | 'ledger'; sel?: string; phone?: string }; done: boolean }>;
   bookingIds: Record<string, string>;
 }
 

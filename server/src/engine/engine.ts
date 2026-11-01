@@ -548,7 +548,11 @@ export class Engine {
       { name: 'finish', access: 'end', description: 'End the turn.', run: async () => ({}) },
     ];
     await this.traced(run, () =>
-      this.frontdesk.agent.run({ trigger: 'client_text', clientName: c.name, text }, tools, (st) => run.steps.push({ ...st, n: run.steps.length + 1 }), b?.id),
+      this.frontdesk.agent.run({ trigger: 'client_text', clientName: c.name, text }, tools, (st) => {
+        const rec = { ...st, n: run.steps.length + 1 };
+        run.steps.push(rec);
+        return rec;
+      }, b?.id),
     );
 
     if (!b) {

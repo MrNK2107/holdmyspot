@@ -43,6 +43,12 @@ describe('front desk agent: tool calls are traced', () => {
     expect(run.steps.some((s) => s.kind === 'effect' && s.name === 'policy check' && /EXCUSE/.test(s.result ?? ''))).toBe(true);
     expect(run.steps.some((s) => s.kind === 'gate')).toBe(true);
     expect(run.gate.kind).toBe('owner_approval');
+    // the trace reads in causal order: proposal, then the policy check it triggered, then the money gate
+    const idx = (f: (x: (typeof run.steps)[number]) => boolean) => run.steps.findIndex(f);
+    const proposal = idx((x) => x.name === 'propose_settlement');
+    expect(proposal).toBeLessThan(idx((x) => x.name === 'policy check'));
+    expect(idx((x) => x.name === 'policy check')).toBeLessThan(idx((x) => x.kind === 'gate'));
+    expect(run.steps[proposal].result).toMatch(/EXCUSE/);
     // no PayPal call happened during the agent's turn
     expect(run.steps.some((s) => s.name.startsWith('PayPal'))).toBe(false);
 
