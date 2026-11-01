@@ -1160,8 +1160,9 @@ export class Engine {
       : a.kind === 'review' ? (choice === 'excuse' ? 'EXCUSED' : 'PENDING_REFILL')
       : a.kind === 'capture' ? (choice === 'charge' ? 'CHARGED' : 'EXCUSED')
       : undefined;
-    if (target && (b.state === target || !canTransition(b.state, target))) {
-      throw new StaleCardError(`this card is out of date: the booking is already ${b.state}; nothing was changed`);
+    const refundGone = a.kind === 'refund' && choice === 'refund' && (b.state !== 'CHARGED' || !!b.refundId);
+    if (refundGone || (target && (b.state === target || !canTransition(b.state, target)))) {
+      throw new StaleCardError(`this card is out of date: the booking is already ${b.refundId ? "refunded" : b.state}; nothing was changed`);
     }
     if (a.kind === 'attendance') {
       if (choice === 'arrived') {

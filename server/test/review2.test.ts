@@ -216,6 +216,22 @@ describe('review 2026-11-02', () => {
     expect(b.state).toBe('HOLD_FAILED');
     expect(b.approvalLink).toBeTruthy();
   });
+  it('a refund card whose fee was already refunded another way is closed as stale, not left failing', async () => {
+    e.waitlist = [];
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = bk('alex');
+    const att = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!;
+    await e.resolveApproval(att.id, 'no_show');
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!.id, 'charge');
+    await e.askAssistant('Alex apologised, please refund her no-show fee.');
+    const card = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'refund')!;
+    expect(card).toBeTruthy();
+    await e.refund(alex.id);
+    const refundsBefore = mock.calls.filter((c) => c.op === 'refund').length;
+    await expect(e.resolveApproval(card.id, 'refund')).rejects.toThrow(/out of date/);
+    expect(e.openApprovals().some((a) => a.id === card.id)).toBe(false);
+    expect(mock.calls.filter((c) => c.op === 'refund').length).toBe(refundsBefore);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {
