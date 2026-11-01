@@ -152,7 +152,9 @@ export class PayPalRestGateway implements PaymentsGateway {
   private holdFromOrder(json: any): HoldResult {
     const auth = json?.purchase_units?.[0]?.payments?.authorizations?.[0];
     if (!auth) throw new PaymentsError('UNEXPECTED_RESPONSE', `order ${json?.id} has no authorization`);
-    if (auth.status !== 'CREATED' && auth.status !== 'PENDING') {
+    // PENDING (under review) holds nothing yet; it becomes a hold when PayPal reports it CREATED
+    if (auth.status === 'PENDING') return { status: 'PENDING', orderId: json.id, authorizationId: auth.id, reason: auth.status_details?.reason ?? 'PENDING' };
+    if (auth.status !== 'CREATED') {
       return { status: 'DECLINED', orderId: json.id, issue: auth.status_details?.reason ?? auth.status };
     }
     const created = auth.create_time ? Date.parse(auth.create_time) : this.now();

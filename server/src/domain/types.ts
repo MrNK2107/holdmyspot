@@ -41,6 +41,8 @@ export interface Booking {
   policyHash: string;
   orderId?: string;
   authorizationId?: string;
+  /** an authorization PayPal created as PENDING (under review): not a hold until it is reported CREATED */
+  pendingAuthorizationId?: string;
   authorizedAt?: number;
   captureId?: string;
   /** set once the fee is refunded in full (by HoldMySpot or in the PayPal dashboard) */

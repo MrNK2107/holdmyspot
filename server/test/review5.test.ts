@@ -267,3 +267,58 @@ describe('a refund made in the PayPal dashboard (PAYMENT.CAPTURE.REFUNDED) is re
     expect(view().money).toBe('part-refunded');
   });
 });
+
+describe('a PENDING authorization (under review at PayPal) is not a hold yet', () => {
+  const at = (day: number, hour: number, min = 0) => Date.UTC(2026, 10, day, hour, min);
+
+  it('the REST adapter reports PENDING, not AUTHORIZED', async () => {
+    const { PayPalRestGateway } = await import('../src/paypal/rest.js');
+    const tokenRes = { status: 200, json: async () => ({}), text: async () => JSON.stringify({ access_token: 'T', expires_in: 32400 }) };
+    const order = {
+      id: 'ORDER1',
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { authorizations: [{ id: 'AUTHP', status: 'PENDING', status_details: { reason: 'PENDING_REVIEW' }, amount: { currency_code: 'USD', value: '20.00' } }] } }],
+    };
+    const g = new PayPalRestGateway({
+      clientId: 'id',
+      clientSecret: 's',
+      returnUrl: 'r',
+      cancelUrl: 'c',
+      now: () => 0,
+      fetch: async (url) => (url.endsWith('/v1/oauth2/token') ? tokenRes : { status: 201, json: async () => ({}), text: async () => JSON.stringify(order) }),
+    });
+    expect(await g.authorizeApprovedOrder('ORDER1', 'rq1')).toEqual({ status: 'PENDING', orderId: 'ORDER1', authorizationId: 'AUTHP', reason: 'PENDING_REVIEW' });
+  });
+
+  it('no held money and no charge card until PayPal confirms the authorization (CREATED)', async () => {
+    const w = await new Workspaces().create('pend');
+    const e = w.engine;
+    let n = 0;
+    w.mock!.placeHold = async () => ({ status: 'PENDING', orderId: `OP${++n}`, authorizationId: `AUTHPENDING${n}`, reason: 'PENDING_REVIEW' }) as never;
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    const view = () => e.snapshot().bookings.find((x) => x.id === b.id)!;
+    expect(b.state).not.toBe('HELD');
+    expect(b.authorizationId).toBeUndefined();
+    expect(view().money).not.toBe('held');
+    // the PENDING authorization's own CREATED webhook (status still PENDING) does not attach it
+    await e.ingestWebhook({ id: 'WH-p1', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: 'AUTHPENDING1', status: 'PENDING', custom_id: e.customIdFor(b.id) } });
+    expect(b.authorizationId).toBeUndefined();
+    // no-show: no charge card (nothing is held)
+    await e.clock.advanceTo(at(3, 18, 10));
+    const att = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'attendance');
+    if (att) await e.resolveApproval(att.id, 'no_show');
+    expect(e.openApprovals().some((a) => a.bookingId === b.id && a.kind === 'capture')).toBe(false);
+  });
+
+  it('once PayPal reports the authorization CREATED, it becomes the hold', async () => {
+    const w = await new Workspaces().create('pend2');
+    const e = w.engine;
+    w.mock!.placeHold = async () => ({ status: 'PENDING', orderId: 'OP1', authorizationId: 'AUTHPENDING1', reason: 'PENDING_REVIEW' }) as never;
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    expect(b.pendingAuthorizationId).toBe('AUTHPENDING1');
+    await e.ingestWebhook({ id: 'WH-c1', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: 'AUTHPENDING1', status: 'CREATED', custom_id: e.customIdFor(b.id) } });
+    expect(b.authorizationId).toBe('AUTHPENDING1');
+    expect(b.state).toBe('HELD');
+    expect(b.pendingAuthorizationId).toBeUndefined();
+  });
+});

@@ -29,6 +29,8 @@ export type HoldResult =
       vaultId?: string;
     }
   | { status: 'PAYER_ACTION_REQUIRED'; orderId: string; approvalUrl: string }
+  /** authorization status PENDING (e.g. PENDING_REVIEW): not a hold until PayPal reports it CREATED */
+  | { status: 'PENDING'; orderId: string; authorizationId: string; reason: string }
   | { status: 'DECLINED'; orderId?: string; issue: string };
 
 export interface CaptureRequest {

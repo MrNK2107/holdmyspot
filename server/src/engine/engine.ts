@@ -243,6 +243,11 @@ export class Engine {
     return c;
   }
 
+  /** the custom_id this engine puts on a booking's PayPal objects (webhook routing) */
+  customIdFor(bookingId: string): string {
+    return this.customId(this.booking(bookingId));
+  }
+
   private customId(b: Booking): string {
     return this.runTag ? `${this.id}:${b.id}:${this.runTag}` : `${this.id}:${b.id}`;
   }
@@ -390,6 +395,8 @@ export class Engine {
       b.orderId = res.orderId;
       b.approvalLink = res.approvalUrl;
       this.pendingOrders.set(res.orderId, b.id);
+    } else if (res.status === 'PENDING') {
+      this.onHoldPending(b, res);
     } else {
       await this.onHoldDeclined(b, res.issue);
     }
@@ -460,10 +467,24 @@ export class Engine {
       c.sandboxDecline = false; // the fresh approval succeeded
       b.approvalLink = undefined;
       await this.onAuthorized(b, res.authorizationId, res.orderId);
+    } else if (res.status === 'PENDING') {
+      b.approvalLink = undefined;
+      this.onHoldPending(b, res);
     } else if (res.status === 'DECLINED') {
       await this.onHoldDeclined(b, res.issue);
     }
     return b;
+  }
+
+  /**
+   * PayPal created the authorization as PENDING (under review). Nothing is held yet, so no held money and no
+   * charge card; it becomes the hold when PayPal reports it CREATED (PAYMENT.AUTHORIZATION.CREATED).
+   */
+  private onHoldPending(b: Booking, res: { orderId: string; authorizationId: string; reason: string }): void {
+    b.orderId = res.orderId;
+    b.pendingAuthorizationId = res.authorizationId;
+    this.audit.add('paypal', `authorization ${res.authorizationId} is PENDING at PayPal (${res.reason}): not held until PayPal confirms it`, { bookingId: b.id });
+    this.emit('state');
   }
 
   /** Idempotent: called from the synchronous API result and from the PAYMENT.AUTHORIZATION.CREATED webhook. */
@@ -488,6 +509,7 @@ export class Engine {
     }
     const prev = b.authorizationId;
     b.authorizationId = authorizationId;
+    if (b.pendingAuthorizationId === authorizationId) b.pendingAuthorizationId = undefined;
     b.authorizedAt = this.now();
     b.holdVoided = undefined; // a fresh hold replaces one PayPal voided
     // PayPal authorizations are valid 29 days; a reauthorization keeps its parent's expiry
@@ -563,7 +585,9 @@ export class Engine {
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
     try {
-      if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
+      if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED' && e.resource.status === 'PENDING') {
+        if (!b.authorizationId) b.pendingAuthorizationId ??= e.resource.id;
+      } else if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
       else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
       else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
       else if (e.event_type === 'PAYMENT.CAPTURE.REFUNDED') this.onCaptureRefunded(b, e);
@@ -1141,7 +1165,10 @@ export class Engine {
    */
   async releaseAllHolds(why: string): Promise<Array<{ bookingId: string; authorizationId: string; error: string }>> {
     const targets: Array<[Booking, string]> = [];
-    for (const b of this.bookings.values()) if (b.authorizationId && !b.holdVoided && !b.captureId) targets.push([b, b.authorizationId]);
+    for (const b of this.bookings.values()) {
+      if (b.authorizationId && !b.holdVoided && !b.captureId) targets.push([b, b.authorizationId]);
+      if (b.pendingAuthorizationId) targets.push([b, b.pendingAuthorizationId]);
+    }
     for (const u of this.unreleasedAuths) {
       const b = this.bookings.get(u.bookingId);
       if (b) targets.push([b, u.authorizationId]);
