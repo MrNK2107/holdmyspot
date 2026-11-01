@@ -339,6 +339,7 @@ describe('audit retention', () => {
     const { configFromEnv } = await import('../src/config.js');
     expect(configFromEnv({ AUDIT_MAX_ENTRIES: '150' }).deps.auditMax).toBe(150);
     expect(() => configFromEnv({ AUDIT_MAX_ENTRIES: 'lots' })).toThrow(/AUDIT_MAX_ENTRIES/);
+    expect(configFromEnv({ AUDIT_MAX_ENTRIES: '' }).deps.auditMax).toBeUndefined(); // empty line in .env = default
     const w = await new Workspaces({ auditMax: 50 }).create('au');
     for (let i = 0; i < 200; i++) w.engine.audit.add('system', `x${i}`);
     expect(w.engine.audit.all()).toHaveLength(50);

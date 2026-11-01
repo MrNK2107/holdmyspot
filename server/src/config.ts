@@ -28,7 +28,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     }
     deps.timeZone = env.STUDIO_TIMEZONE;
   }
-  if (env.AUDIT_MAX_ENTRIES !== undefined) {
+  if (env.AUDIT_MAX_ENTRIES) {
     // audit retention per workspace (the shared demo is never evicted); default DEFAULT_AUDIT_MAX
     const n = Number(env.AUDIT_MAX_ENTRIES);
     if (!Number.isSafeInteger(n) || n < 100) throw new Error(`AUDIT_MAX_ENTRIES must be a whole number >= 100 (got ${env.AUDIT_MAX_ENTRIES})`);
