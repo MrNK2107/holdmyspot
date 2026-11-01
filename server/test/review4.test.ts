@@ -342,3 +342,16 @@ describe('REST capture response without an amount', () => {
     expect(await g.capture({ requestId: 'r1', authorizationId: 'A1', amountCents: 1500, finalCapture: true })).toEqual({ status: 'COMPLETED', captureId: 'CAP9', amountCents: 1500 });
   });
 });
+
+describe('workspace eviction', () => {
+  it('drops the evicted workspace\'s lock queue too (no unbounded growth on a busy hosted demo)', async () => {
+    const ws = new Workspaces();
+    ws.maxWorkspaces = 2;
+    for (let i = 0; i < 6; i++) {
+      const w = await ws.create();
+      await ws.run(w.engine.id, async () => undefined);
+    }
+    expect(ws.ids().length).toBe(2);
+    expect((ws as unknown as { tails: Map<string, unknown> }).tails.size).toBeLessThanOrEqual(2);
+  });
+});

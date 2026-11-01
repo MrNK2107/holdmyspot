@@ -55,6 +55,7 @@ export class Workspaces {
       const oldest = [...this.map.keys()].find((k) => k !== 'demo');
       if (!oldest) break;
       this.map.delete(oldest);
+      this.tails.delete(oldest);
     }
     const clock = new DemoClock(DEMO_START);
     let mock: MockPayPalGateway | undefined;
