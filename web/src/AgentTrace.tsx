@@ -182,7 +182,8 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
         <p className="muted">
           {s.agentToolkit && (
             <>
-              PayPal reads go through PayPal’s official Agent Toolkit (<code>{s.agentToolkit.package}</code>), limited to five read tools; any other toolkit call, and any non-GET request, is refused before it
+              PayPal reads go through PayPal’s official Agent Toolkit (<code>{s.agentToolkit.package}</code>
+              {s.agentToolkit.via === 'mcp' ? ', served by its MCP server' : ''}), limited to five read tools; any other toolkit call, and any non-GET request, is refused before it
               leaves the server.{' '}
             </>
           )}

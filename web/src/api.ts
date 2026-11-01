@@ -106,7 +106,7 @@ export interface Snapshot {
   agentRuns?: AgentRun[];
   agentToolsNotGiven?: string[];
   /** PayPal Agent Toolkit read tools in the owner's agent (null when PAYPAL_AGENT_TOOLKIT=off) */
-  agentToolkit?: { package: string; tools: string[]; notGiven: string[]; http: Array<{ method: string; path: string; status: number; blocked?: boolean }> } | null;
+  agentToolkit?: { package: string; via?: 'functions' | 'mcp'; tools: string[]; notGiven: string[]; http: Array<{ method: string; path: string; status: number; blocked?: boolean }> } | null;
   jobs: Array<{ id: string; at: number; name: string }>;
 }
 

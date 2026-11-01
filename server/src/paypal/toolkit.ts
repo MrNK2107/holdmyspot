@@ -210,13 +210,61 @@ export interface ToolkitReadToolDef {
   run(args: Record<string, unknown>): Promise<unknown>;
 }
 
+/**
+ * How the agent's calls reach the toolkit:
+ *  - 'functions': the toolkit's function-calling surface (getTools / handleToolCall).
+ *  - 'mcp': PayPal's MCP server class from the same package (`@paypal/agent-toolkit/mcp`, what
+ *    `npx @paypal/mcp --tools=...` runs), connected in-process over an in-memory MCP transport.
+ *    Only the allow-listed tools are registered, so the MCP layer itself rejects any other name.
+ *    Its tool schemas validate PayPal id formats, which the simulator's short ids (ORDER-000001)
+ *    do not match: get_order / get_refund return a validation error in simulator + mcp mode.
+ */
+export type ToolkitVia = 'functions' | 'mcp';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type McpClient = { callTool(p: { name: string; arguments: Record<string, unknown> }): Promise<any>; listTools(): Promise<{ tools: Array<{ name: string }> }>; close(): Promise<void> };
+
 export class PayPalToolkitReader {
   private tk?: PayPalAgentToolkit;
+  private mcp?: { client: Promise<McpClient>; at: number };
   /** every HTTP request the toolkit made (or tried) for this workspace */
   readonly http: ToolkitHttpCall[] = [];
   private seq = 0;
 
-  constructor(private backend: Backend & { clientId?: string; clientSecret?: string }) {}
+  constructor(
+    private backend: Backend & { clientId?: string; clientSecret?: string },
+    readonly via: ToolkitVia = 'functions',
+  ) {}
+
+  /** PayPal's MCP server (toolkit build) with our allow-list, and an MCP client wired to it in memory. */
+  private mcpClient(): Promise<McpClient> {
+    // sandbox access tokens live 3-8 h; reconnect with a fresh one every hour
+    if (this.mcp && Date.now() - this.mcp.at < 3600_000) return this.mcp.client;
+    const client = (async () => {
+      installHttpGate();
+      const accessToken =
+        this.backend.kind === 'live' ? await als.run({ backend: this.backend, log: this.http }, () => this.toolkit.client.getAccessToken()) : 'SIMULATOR-ACCESS-TOKEN';
+      const { PayPalAgentToolkit: McpServerToolkit } = require('@paypal/agent-toolkit/mcp') as typeof import('@paypal/agent-toolkit/mcp');
+      const server = new McpServerToolkit({ accessToken, configuration: { actions: TOOLKIT_READ_ACTIONS, context: { sandbox: true } } });
+      const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverSide);
+      const c = new Client({ name: 'holdmyspot-front-desk', version: '1.0.0' });
+      await c.connect(clientSide);
+      return c as unknown as McpClient;
+    })();
+    this.mcp = { client, at: Date.now() };
+    client.catch(() => {
+      this.mcp = undefined;
+    });
+    return client;
+  }
+
+  /** MCP tools/list from PayPal's MCP server as configured here */
+  async mcpTools(): Promise<string[]> {
+    return (await (await this.mcpClient()).listTools()).tools.map((t) => t.name);
+  }
 
   private get toolkit(): PayPalAgentToolkit {
     if (!this.tk) {
@@ -231,12 +279,12 @@ export class PayPalToolkitReader {
     return this.tk;
   }
 
-  static simulator(sim: MockPayPalGateway): PayPalToolkitReader {
-    return new PayPalToolkitReader({ kind: 'simulator', sim });
+  static simulator(sim: MockPayPalGateway, via: ToolkitVia = 'functions'): PayPalToolkitReader {
+    return new PayPalToolkitReader({ kind: 'simulator', sim }, via);
   }
 
-  static sandbox(clientId: string, clientSecret: string): PayPalToolkitReader {
-    return new PayPalToolkitReader({ kind: 'live', clientId, clientSecret });
+  static sandbox(clientId: string, clientSecret: string, via: ToolkitVia = 'functions'): PayPalToolkitReader {
+    return new PayPalToolkitReader({ kind: 'live', clientId, clientSecret }, via);
   }
 
   /** what the toolkit advertises with our configuration (OpenAI function schemas from the toolkit) */
@@ -258,16 +306,25 @@ export class PayPalToolkitReader {
     }
     if (this.http.length > 200) this.http.splice(0, this.http.length - 200);
     const before = this.http.length;
-    const msg = await als.run({ backend: this.backend, log: this.http }, () =>
-      this.toolkit.handleToolCall({ id: `call_${++this.seq}`, type: 'function', function: { name, arguments: JSON.stringify(clean) } }),
-    );
-    let result: unknown = msg.content;
+    let text: string;
+    if (this.via === 'mcp') {
+      const client = await this.mcpClient();
+      const out = await als.run({ backend: this.backend, log: this.http }, () => client.callTool({ name, arguments: clean }));
+      text = (out.content ?? []).map((c: { text?: string }) => c.text ?? '').join('');
+      if (out.isError) text = JSON.stringify({ error: text.slice(0, 400) });
+    } else {
+      const msg = await als.run({ backend: this.backend, log: this.http }, () =>
+        this.toolkit.handleToolCall({ id: `call_${++this.seq}`, type: 'function', function: { name, arguments: JSON.stringify(clean) } }),
+      );
+      text = String(msg.content);
+    }
+    let result: unknown = text;
     try {
-      result = JSON.parse(String(msg.content));
+      result = JSON.parse(text);
     } catch {
       /* keep text */
     }
-    return { result, http: this.http.slice(before).map((h) => `${h.method} ${h.path} → ${h.status}${h.blocked ? ' (blocked)' : ''}`) };
+    return { via: this.via, result, http: this.http.slice(before).map((h) => `${h.method} ${h.path} → ${h.status}${h.blocked ? ' (blocked)' : ''}`) };
   }
 
   tools(): ToolkitReadToolDef[] {
@@ -277,6 +334,12 @@ export class PayPalToolkitReader {
       source: 'paypal-agent-toolkit' as const,
       run: (args) => this.call(name, args),
     }));
+  }
+
+  /** Test hook: what PayPal's MCP server answers to a name we would never pass. */
+  async rawMcpCallForTest(name: string, args: Record<string, unknown>): Promise<unknown> {
+    const client = await this.mcpClient();
+    return als.run({ backend: this.backend, log: this.http }, () => client.callTool({ name, arguments: args }));
   }
 
   /** Test hook: what the raw toolkit does with a name we would never pass (proves the HTTP gate). */

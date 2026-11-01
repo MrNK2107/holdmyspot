@@ -6,7 +6,7 @@ import { Engine } from './engine/engine.js';
 import type { PaymentsGateway, WebhookEvent } from './paypal/gateway.js';
 import { MockPayPalGateway } from './paypal/mock.js';
 import { RequestPreview } from './paypal/preview.js';
-import { PayPalToolkitReader } from './paypal/toolkit.js';
+import { PayPalToolkitReader, type ToolkitVia } from './paypal/toolkit.js';
 import { DEMO_START, SEED_POLICY, seed } from './seed.js';
 
 export interface WorkspaceDeps {
@@ -19,7 +19,7 @@ export interface WorkspaceDeps {
    * toolkit's HTTP calls are answered from the workspace's simulator; with a real gateway it needs
    * toolkitCredentials and calls api.sandbox.paypal.com (GET only).
    */
-  agentToolkit?: boolean;
+  agentToolkit?: boolean | ToolkitVia;
   toolkitCredentials?: { clientId: string; clientSecret: string };
 }
 
@@ -62,8 +62,11 @@ export class Workspaces {
     const llm = this.deps.llm ?? (() => new FakeLlmProvider());
     let paypalReader: PayPalToolkitReader | undefined;
     if (this.deps.agentToolkit !== false) {
-      if (mock) paypalReader = PayPalToolkitReader.simulator(mock);
-      else if (this.deps.toolkitCredentials) paypalReader = this.toolkitShared ??= PayPalToolkitReader.sandbox(this.deps.toolkitCredentials.clientId, this.deps.toolkitCredentials.clientSecret);
+      const via: ToolkitVia = this.deps.agentToolkit === 'mcp' ? 'mcp' : 'functions';
+      if (mock) paypalReader = PayPalToolkitReader.simulator(mock, via);
+      else if (this.deps.toolkitCredentials) {
+        paypalReader = this.toolkitShared ??= PayPalToolkitReader.sandbox(this.deps.toolkitCredentials.clientId, this.deps.toolkitCredentials.clientSecret, via);
+      }
     }
     const engine = new Engine({
       id,

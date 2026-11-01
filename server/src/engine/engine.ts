@@ -1136,6 +1136,7 @@ export class Engine {
       agentToolkit: this.paypalReader
         ? {
             package: `${TOOLKIT_PACKAGE}@${TOOLKIT_VERSION}`,
+            via: this.paypalReader.via,
             tools: this.paypalReader.tools().map((t) => t.name),
             notGiven: TOOLKIT_MONEY_TOOLS.map((n) => `${TOOLKIT_PREFIX}${n}`),
             http: this.paypalReader.http.slice(-20),

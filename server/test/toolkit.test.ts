@@ -166,3 +166,46 @@ describe('PayPal Agent Toolkit in the owner agent', () => {
     expect(e.snapshot().agentToolkit).toBeNull();
   });
 });
+
+describe("PayPal Agent Toolkit over MCP (PayPal's MCP server class, in-process)", () => {
+  it('tools/list from the MCP server, built with our actions, is exactly the five read tools', async () => {
+    const r = PayPalToolkitReader.simulator(new MockPayPalGateway(() => 0), 'mcp');
+    expect((await r.mcpTools()).sort()).toEqual([...TOOLKIT_READ_TOOLS].sort());
+  });
+
+  it('the MCP layer itself rejects money tools (not registered); nothing is sent', async () => {
+    const { mock, captureId } = await chargedAlex();
+    const before = moneyOps(mock);
+    const r = PayPalToolkitReader.simulator(mock, 'mcp');
+    for (const name of TOOLKIT_MONEY_TOOLS) {
+      const out = (await r.rawMcpCallForTest(name, { capture_id: captureId, id: 'ORDER0000000000000001' })) as { isError?: boolean; content: Array<{ text: string }> };
+      expect(out.isError).toBe(true);
+      expect(out.content[0].text).toMatch(/not found/i);
+    }
+    expect(r.http).toEqual([]);
+    expect(moneyOps(mock)).toBe(before);
+  });
+
+  it('a read tool answers through MCP from the simulator, and the GET passes the HTTP gate', async () => {
+    const { mock, captureId } = await chargedAlex();
+    const r = PayPalToolkitReader.simulator(mock, 'mcp');
+    const tx = (await r.call('list_transactions', { transaction_id: captureId })) as { via: string; result: { found: boolean }; http: string[] };
+    expect(tx.via).toBe('mcp');
+    expect(tx.result.found).toBe(true);
+    expect(tx.http[0]).toMatch(/^GET \/v1\/reporting\/transactions/);
+  });
+
+  it('PAYPAL_AGENT_TOOLKIT=mcp: the owner agent reads PayPal through the MCP server', async () => {
+    const w = await new Workspaces({ agentToolkit: 'mcp' }).create('tk3');
+    const e = w.engine;
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!.id, 'no_show');
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!.id, 'charge');
+    const { answer, run } = await e.askAssistant('How did this week go?');
+    const step = run.steps.find((s) => s.name === 'paypal.list_transactions')!;
+    expect(step.result).toMatch(/"via":"mcp"/);
+    expect(answer).toMatch(/PayPal's report shows 1 settled transaction/);
+    expect(e.snapshot().agentToolkit?.via).toBe('mcp');
+  });
+});

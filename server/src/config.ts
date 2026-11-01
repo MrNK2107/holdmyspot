@@ -15,8 +15,10 @@ export function configFromEnv(env: Record<string, string | undefined>): {
 } {
   // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
   const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
-  // PAYPAL_AGENT_TOOLKIT=off removes the PayPal Agent Toolkit read tools from the owner's agent
-  const deps: WorkspaceDeps = { baseUrl, agentToolkit: env.PAYPAL_AGENT_TOOLKIT !== 'off' };
+  // PayPal Agent Toolkit read tools for the owner's agent: default = the toolkit's function-calling
+  // surface; PAYPAL_AGENT_TOOLKIT=mcp = PayPal's MCP server class in-process; =off removes them
+  const tk = env.PAYPAL_AGENT_TOOLKIT;
+  const deps: WorkspaceDeps = { baseUrl, agentToolkit: tk === 'off' ? false : tk === 'mcp' ? 'mcp' : 'functions' };
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {
