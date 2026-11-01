@@ -155,6 +155,10 @@ export function rememberOwnerToken(ws: string, token: string) {
   }
 }
 
+/** `/api/ws/<ws><rest>` with the workspace id encoded: a crafted ?ws= must not reach another route. */
+export const wsPath = (ws: string, rest = '') => `/api/ws/${encodeURIComponent(ws)}${rest}`;
+const enc = encodeURIComponent;
+
 export class Api {
   constructor(public ws: string) {}
 
@@ -163,7 +167,7 @@ export class Api {
     const headers: Record<string, string> = {};
     if (body) headers['Content-Type'] = 'application/json';
     if (token) headers['x-owner-token'] = token;
-    const r = await fetch(`/api/ws/${this.ws}${path}`, {
+    const r = await fetch(wsPath(this.ws, path), {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -174,18 +178,18 @@ export class Api {
   }
 
   state = () => this.req<Snapshot>('GET', '/state');
-  audit = (bookingId?: string) => this.req<AuditEntry[]>('GET', `/audit${bookingId ? `?booking=${bookingId}` : ''}`);
+  audit = (bookingId?: string) => this.req<AuditEntry[]>('GET', `/audit${bookingId ? `?booking=${enc(bookingId)}` : ''}`);
   send = (clientId: string, text: string) => this.req<{ state: Snapshot }>('POST', '/messages', { clientId, text });
-  resolve = (id: string, choice: string) => this.req<{ state: Snapshot }>('POST', `/approvals/${id}`, { choice });
+  resolve = (id: string, choice: string) => this.req<{ state: Snapshot }>('POST', `/approvals/${enc(id)}`, { choice });
   travel = (to: number) => this.req<{ state: Snapshot; result: string[] }>('POST', '/time', { to });
   mode = (mode: 'ask' | 'autopilot') => this.req<{ state: Snapshot }>('POST', '/mode', { mode });
   ask = (text: string) => this.req<{ state: Snapshot; result: { answer: string; runId: string } }>('POST', '/assistant', { text });
-  refund = (id: string) => this.req<{ state: Snapshot }>('POST', `/bookings/${id}/refund`);
+  refund = (id: string) => this.req<{ state: Snapshot }>('POST', `/bookings/${enc(id)}/refund`);
   reset = () => this.req<{ state: Snapshot }>('POST', '/reset');
   compile = (prose: string) =>
     this.req<{ result: { rules: PolicyRules; ambiguities: Ambiguity[]; spans: Array<{ field: string; text: string }>; errors: string[] } }>('POST', '/policy/compile', { prose });
   approvePolicy = (rules: PolicyRules, prose: string) => this.req<{ state: Snapshot }>('POST', '/policy/approve', { rules, prose });
-  simApprove = (orderId: string) => this.req<{ state: Snapshot }>('POST', `/sim/approve/${orderId}`);
+  simApprove = (orderId: string) => this.req<{ state: Snapshot }>('POST', `/sim/approve/${enc(orderId)}`);
   demo = () => this.req<DemoStatus>('GET', '/demo');
   paypalRequests = <T>() => this.req<T[]>('GET', '/paypal-requests');
   demoNext = () => this.req<{ state: Snapshot; result: DemoStatus }>('POST', '/demo/next');

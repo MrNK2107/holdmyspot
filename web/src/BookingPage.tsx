@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type PublicInfo, fmtDay, fmtTime, usd } from './api';
+import { type PublicInfo, wsPath, fmtDay, fmtTime, usd } from './api';
 
 /** The link in the owner's Instagram bio. Mobile-first. */
 export function BookingPage({ ws }: { ws: string }) {
@@ -16,7 +16,7 @@ export function BookingPage({ ws }: { ws: string }) {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/ws/${ws}/public`)
+    fetch(wsPath(ws, '/public'))
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
         return r.json();
@@ -27,7 +27,7 @@ export function BookingPage({ ws }: { ws: string }) {
   useEffect(() => {
     setStart(null);
     setSlotsLoading(true);
-    fetch(`/api/ws/${ws}/slots?service=${service}&n=6`)
+    fetch(wsPath(ws, `/slots?service=${encodeURIComponent(service)}&n=6`))
       .then((r) => r.json())
       .then((x) => setSlots(Array.isArray(x) ? x : []))
       .catch(() => setSlots([]))
@@ -65,10 +65,10 @@ export function BookingPage({ ws }: { ws: string }) {
       setSending(false);
     }
   };
-  const book = () => post(`/api/ws/${ws}/book`, { name, serviceId: service, start });
+  const book = () => post(wsPath(ws, '/book'), { name, serviceId: service, start });
   const approve = () => {
     const token = booked?.approvalLink?.split('/').at(-1);
-    if (token) return post(`/api/ws/${ws}/sim/approve/${token}`);
+    if (token) return post(wsPath(ws, `/sim/approve/${encodeURIComponent(token)}`));
   };
 
   return (

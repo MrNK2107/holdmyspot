@@ -166,3 +166,33 @@ describe('live PayPal toolkit reads time out like the REST adapter (20 s policy)
     }
   });
 });
+
+describe('the ?ws= value is encoded into API paths (web client)', () => {
+  it('a crafted workspace id cannot aim a request at another route', async () => {
+    const { Api, wsPath } = await import('../../web/src/api.js');
+    const evil = 'demo/bookings/b1/refund?x=#';
+    expect(wsPath(evil, '/state')).toBe('/api/ws/demo%2Fbookings%2Fb1%2Frefund%3Fx%3D%23/state');
+    const urls: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (u: string) => {
+      urls.push(u);
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+    try {
+      const api = new Api(evil);
+      await api.state();
+      await api.resolve('a/../../x', 'ok');
+      await api.refund('b?1');
+      await api.audit('b&x=1');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    const enc = encodeURIComponent(evil);
+    expect(urls).toEqual([
+      `/api/ws/${enc}/state`,
+      `/api/ws/${enc}/approvals/a%2F..%2F..%2Fx`,
+      `/api/ws/${enc}/bookings/b%3F1/refund`,
+      `/api/ws/${enc}/audit?booking=b%26x%3D1`,
+    ]);
+  });
+});

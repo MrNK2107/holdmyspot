@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
-import { Api, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
 
 // AG Grid is only loaded when the ledger tab opens
 const Ledger = lazy(() => import('./Ledger').then((m) => ({ default: m.Ledger })));
@@ -114,7 +114,7 @@ export function App() {
   useEffect(() => {
     refresh();
     const token = ownerToken(ws);
-    const es = new EventSource(`/api/ws/${ws}/events${token ? `?owner=${encodeURIComponent(token)}` : ''}`);
+    const es = new EventSource(`${wsPath(ws, '/events')}${token ? `?owner=${encodeURIComponent(token)}` : ''}`);
     es.addEventListener('change', () => refresh());
     return () => es.close();
   }, [ws, refresh]);
@@ -192,7 +192,7 @@ export function App() {
             {fmtDay(s.now)} · {fmtTime(s.now)}
           </div>
         </div>
-        <a className="booklink" href={`/book?ws=${ws}`} target="_blank" rel="noreferrer">
+        <a className="booklink" href={`/book?ws=${encodeURIComponent(ws)}`} target="_blank" rel="noreferrer">
           Client booking page ↗
         </a>
         <div className="badges">
