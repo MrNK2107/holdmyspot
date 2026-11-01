@@ -145,3 +145,28 @@ Goal: the judge's remaining weak point, Agentic Commerce without the PayPal Agen
 2. Check the Devpost "Best Use of Agentic Commerce" wording; optionally add one DEMO_SCRIPT line for beat 13 ("checks PayPal through the Agent Toolkit").
 3. `npm audit` shows advisories in toolkit deps (`@langchain/core`, `@ai-sdk/provider-utils`) that our entry points do not load; revisit when the toolkit updates.
 4. Simulator ids fail the toolkit's MCP schema regexes for get_order/get_refund (documented); padding simulator ids would fix it but touches many tests/screenshots.
+
+## 2026-11-02 pass 6 (01:24-01:55 IST, same branch, local only)
+
+Goal: close pass-5 loose ends and harden for submission. PITCH.md and the create_refund replay untouched.
+
+### Done
+- **PayPal-shaped simulator ids** (`server/src/paypal/ids.ts`, used by `mock.ts`): orders, authorizations, captures, refunds and Vault setup tokens are 17 upper-case alphanumerics; webhook events `WH-<17>-<17>`; Vault payment tokens 7 lower-case chars (seeded clients too). Deterministic (counter through a 32-bit bijection, so unique and repeatable). The toolkit's MCP schemas (order `^[A-Z0-9]{17,32}$`, refund/capture `^[A-Za-z0-9_-]{15,32}$`) now accept them: `get_order` / `get_refund` work in both modes. `toolkit.test.ts`: id-format test, uniqueness test, and the read-tool test runs once per mode (`describe.each(['functions','mcp'])`). Tests that matched `VSETUP-` / `REFUND-` / `VAULT-` and ui-check's `/CAPTURE-/` updated. Ledger id columns widened (172 px) so ids are not cut; gallery 06 shows authorization + capture ids in full.
+- **DEMO_SCRIPT**: beat 13 line cut to 24 words ("Alex apologises. Priya asks her front desk; it checks the capture with PayPal's Agent Toolkit and prepares the refund. Only her tap sends it."), Ledger shot moved to "Shots to cut in". Whole storyboard retimed so every slot is at least its line at 2.5 words/s (cold open and beat 10 also overran before): total **2:52**. Guided-demo beat 13 `say` (`server/src/demo.ts`) matches.
+- **npm audit**: traced which packages the running server resolves (module hook; serve web app, all 13 beats, owner question in functions and MCP mode). Loaded and flagged: `@fastify/static`, `glob`/`minimatch`, `zod`, `mathjs`, `@paypal/agent-toolkit`. Not loaded: `@langchain/core`, `langsmith`, `ai`, `@ai-sdk/*`, `jsondiffpatch`, `uuid`, `openai`, vitest chain. Fixed: `@fastify/static` 8.3.0 -> 10.1.6 (exact; 10.1.7/10.1.8 were < 2 weeks old), `vitest` 3.2 -> 4.1.12 (dev). 18 advisories (2 critical) -> 15 (0 critical). A root `overrides` for mathjs 15.2 did not apply with npm 11.6 and was dropped; mathjs is only used for `round()` in toolkit `create_order` (not allow-listed). Documented in **`docs/SECURITY.md`** (threat model: injection, money gate, webhook verification, secrets, HTTP surface, audit table).
+- **Hardening found while writing SECURITY.md**: visitor workspace ids were sequential (`ws1`, guessable, anyone could drive another visitor's workspace) -> `ws<n>-<12 hex>`; client texts capped at 1000 chars (`MAX_MESSAGE_CHARS`) before model/audit; webhook verification now sends PayPal the **raw request bytes** (route-scoped raw-body JSON parser in `app.ts`, `RawJson` in `rest.ts`), non-JSON body -> 400. Tests: `server/test/security.test.ts`, `restPaypal.test.ts`, `app.test.ts`.
+- **Fresh-clone rehearsal** (scratch clone of the branch, deleted afterwards): `npm ci`, `npm test` (163 then), `npm run demo` (health, `/?demo=1`, all 13 beats over HTTP, `..%2f` traversal probes return the SPA, killed), `npm run build`, `npm run eval`: all clean, no tracked files changed. Doc gaps fixed in README: Node version (20/22/24+), `npm ci` instead of `npm install` (also DEMO_SCRIPT, Devpost draft), `PORT` / Ctrl+C, audit note -> SECURITY.md, `npx playwright-core install chromium-headless-shell` for `ui-check`/`gallery` on machines without the browser cache.
+
+### Verified (end of pass 6)
+- `npm test` -> **164 passing** (20 files), peak 1.21-1.55 GB under the 2 GB cap. `npm run ui-check` passes (axe 0 violations), peak 1.13 GB. `npm run build` passes, 0.85 GB. `npm run gallery` 0.85 GB (re-shot: 01, 03, 06 changed). `npm run eval`: injection money effects 0.
+- No long-lived processes left (the rehearsal's `npm run demo` tree was killed by PID).
+
+### Next
+1. Keys (NEEDS_INPUT): sandbox smoke, then owner questions with `PAYMENTS=sandbox` in both toolkit modes; first real webhook confirms the raw-body verification.
+2. Revisit the audit when `@paypal/agent-toolkit` moves to zod 4 / mathjs 15; `@fastify/static` 10.1.8 once it is two weeks old.
+3. `docs/screenshots/ledger-*.png` now change on every ui-check run (random workspace id in the REST request view); harmless, commit or ignore.
+
+### Gotchas (new)
+- `npm run gallery` and `ui-check` serve `web/dist`: run `npm run build -w web` first after a UI change, or the images show the old UI.
+- npm 11 `overrides` did not re-resolve a nested dep (mathjs) even after deleting it from the lock; deleting the lock entry left the package missing. Restore the lock from a backup if you try again.
+- tsx's parser chokes on some regex literals in an `--import` hook file; write such helpers without regex or load them before tsx.
