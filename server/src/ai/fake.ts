@@ -141,7 +141,7 @@ const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 export function parseWaitlist(raw: string, services: Service[]): WaitlistConstraints {
   const t = raw.toLowerCase();
-  const serviceIds = services.filter((s) => s.name.toLowerCase().split(/\s+/).some((w) => w.length > 3 && t.includes(w))).map((s) => s.id);
+  const serviceIds = services.filter((s) => s.name.toLowerCase().split(/\s+/).some((w) => w.length >= 3 && t.includes(w))).map((s) => s.id);
   let days: number[] = [];
   if (/weekday/.test(t)) days = [1, 2, 3, 4, 5];
   else if (/weekend/.test(t)) days = [0, 6];
