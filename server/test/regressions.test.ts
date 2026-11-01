@@ -21,7 +21,7 @@ describe('review regressions', () => {
     const ben = bk('ben');
     expect(ben.authorizationId).toBeUndefined();
     await e.receiveMessage('ben', "I can't make it today, something came up");
-    expect(ben.state).toBe('CANCELLED_EARLY');
+    expect(ben.state).toBe('PENDING_REFILL'); // late cancel: offered to the waitlist, fee waived if unfilled (see noHoldRefill.test.ts)
     expect(ben.approvalLink).toBeUndefined();
   });
 

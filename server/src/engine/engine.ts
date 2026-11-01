@@ -368,7 +368,7 @@ export class Engine {
     this.knownAuths.set(b.id, known);
     if (known.has(authorizationId)) return; // duplicate, or an older auth arriving late
     known.add(authorizationId);
-    if (isTerminal(b.state) && b.state !== 'CHARGED') {
+    if ((isTerminal(b.state) && b.state !== 'CHARGED') || (b.state === 'PENDING_REFILL' && !b.authorizationId)) {
       // e.g. an approval that arrives after the booking was cancelled: release it right away
       await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId)).catch(() => undefined);
       this.audit.add('paypal', `void late authorization ${authorizationId}: booking is ${b.state}`, { bookingId: b.id });
@@ -466,7 +466,15 @@ export class Engine {
     const d = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'cancel', label, priorExcusals: this.priorExcusals(b.clientId) });
     this.audit.add('engine', `decide → ${d.outcome}: ${d.why}`, { bookingId: b.id, data: d });
     if (!b.authorizationId && d.outcome !== 'CLARIFY' && d.outcome !== 'NO_ACTION') {
-      // No hold was ever placed (wallet not approved yet): nothing to settle, just free the slot.
+      // No hold was ever placed (wallet not approved yet, or the T-72h hold is still to come).
+      // Nothing can be charged, and a hold must never appear after the client cancelled.
+      this.dropPendingApprovals(b);
+      if (d.outcome === 'PENDING_REFILL' || d.outcome === 'OWNER_REVIEW') {
+        // Late cancel: same refill-then-settle path as a held booking; the settle step is an automatic waiver.
+        b.cancelledAt = this.now();
+        await this.startRefill(b, `${d.why}; no hold in place, so no fee is possible`);
+        return d;
+      }
       this.setState(b, 'CANCELLED_EARLY', `cancelled with no hold in place (${d.outcome} by policy)`);
       await this.reply(b, 'cancelled_early');
       return d;
@@ -668,6 +676,12 @@ export class Engine {
       }
       o.status = 'closed';
     }
+    if (!b.authorizationId) {
+      // Late cancel with no hold in place: nothing to capture, so the fee is waived automatically.
+      this.setState(b, 'EXCUSED', 'not refilled; no hold was in place, so the fee is waived');
+      this.say(b.clientId, `Hi ${this.client(b.clientId).name.split(' ')[0]}, we couldn't refill your spot, but there's no fee this time because no hold was in place.`);
+      return;
+    }
     const fee = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'no_show', priorExcusals: 0 });
     const feeCents = fee.outcome === 'PENDING_REFILL' || fee.outcome === 'OWNER_REVIEW' ? fee.feeCents : b.holdCents;
     const lateFee = Math.min(this.policy.rules.lateCancelFeeCents, b.holdCents);
@@ -798,7 +812,7 @@ export class Engine {
       ...b,
       clientName: this.client(b.clientId).name,
       serviceName: this.services.get(b.serviceId)?.name,
-      money: b.refundId ? 'refunded' : moneyState(b.state, !!b.captureId),
+      money: b.refundId ? 'refunded' : !b.authorizationId && !['BOOKED', 'VAULTED', 'HOLD_FAILED', 'PENDING_REFILL'].includes(b.state) ? 'none' : moneyState(b.state, !!b.captureId),
     });
     return {
       workspace: this.id,

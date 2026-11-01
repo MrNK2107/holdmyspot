@@ -15,7 +15,8 @@ describe('booking state machine', () => {
   it('rejects illegal transitions', () => {
     expect(() => assertTransition('BOOKED', 'CHARGED')).toThrow(IllegalTransition);
     expect(() => assertTransition('CHARGED', 'HELD')).toThrow(IllegalTransition);
-    expect(() => assertTransition('VAULTED', 'PENDING_REFILL')).toThrow(IllegalTransition);
+    expect(() => assertTransition('VAULTED', 'CHARGED')).toThrow(IllegalTransition);
+    expect(() => assertTransition('BOOKED', 'EXCUSED')).toThrow(IllegalTransition);
   });
 
   it('terminal states have no exits', () => {
