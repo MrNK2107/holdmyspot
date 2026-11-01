@@ -55,8 +55,15 @@ The folder was not a git repo: initialised, initial commit on `master`, all work
 - **Bug found by the UI run:** `useEffect(() => el.scrollIntoView())` returned a Promise in Chrome 156, React called it as a cleanup and the console crashed on tab switch. Fixed (and the thread now scrolls itself instead of the page).
 - **Docs:** `docs/DEMO_SCRIPT.md` (2:52 storyboard, what to press/say, honesty line about the simulator), `docs/DEVPOST_SUBMISSION.md` (draft with [TODO]s; not submitted), README run section.
 
+- **Second money review** (independent read-only reviewer, 8 findings, nothing high): fixed: PENDING_REFILL without a hold showed "$20 refilling" (now `none`); a failed void of a late authorization was swallowed and logged as released (now `unreleasedAuths` + red banner in "Needs you"); approval links are dropped on every move into PENDING_REFILL (covers the reauth-strategy HOLD_FAILED case); `freeCancelHours` capped at 72 in `validateRules` (a longer fee window could never be charged); the demo only marks seeded regulars as arrived (a judge's own booking is left for a real tap); OWNER_REVIEW on a no-hold cancel leaves an audit note; no-hold clients get honest replies (`refilled_no_hold`). Tests strengthened (simulator VOIDED status, off-script demo leaves money unchanged, HOLD_FAILED path, claim timeout on a no-hold slot).
+
 ### Verified
-- `npm test` → 111 passing (13 files), peak 0.97 GB under memcap. `npm run ui-check` passes, peak 0.8 GB.
+- `npm test` → 118 passing (13 files), peak 0.95 GB under memcap. `npm run ui-check` passes (axe 0 violations on 8 screens), peak 0.88 GB. `npm run build` passes.
+
+### Next
+1. Keys (see NEEDS_INPUT): run `sandbox-smoke.ts`, then record the video on the real sandbox (the guided demo is simulator-only; walk the same beats with the time-travel buttons).
+2. Record the video from `docs/DEMO_SCRIPT.md`; resolve the [TODO]s in `docs/DEVPOST_SUBMISSION.md`.
+3. Decide on `PITCH.md` (stale Casefile text), Bryntum, Render deploy.
 
 ### Gotchas (new)
 - Python patching on Windows: set `PYTHONUTF8=1` and write with `newline=''`, or CRLF files get rewritten. The repo mixes LF and CRLF files.
