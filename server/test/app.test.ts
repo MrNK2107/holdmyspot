@@ -80,6 +80,14 @@ describe('HTTP API', () => {
     const strict = await buildApp({ workspaces: ws, webhookVerifier: async () => false });
     expect((await strict.inject({ method: 'POST', url: '/api/paypal/webhook', payload: ev })).statusCode).toBe(401);
     await strict.close();
+    // the verifier gets the exact bytes PayPal sent; a body that is not JSON is a 400
+    let gotRaw: string | undefined;
+    const rawApp = await buildApp({ workspaces: ws, webhookVerifier: async (_h, _e, raw) => ((gotRaw = raw), false) });
+    const rawText = '{"id":"WH-9",  "event_type":"PAYMENT.AUTHORIZATION.CREATED","resource":{"id":"FAKE","custom_id":"demo:bk_1","n":1.50}}';
+    await rawApp.inject({ method: 'POST', url: '/api/paypal/webhook', payload: rawText, headers: { 'content-type': 'application/json' } });
+    expect(gotRaw).toBe(rawText);
+    expect((await rawApp.inject({ method: 'POST', url: '/api/paypal/webhook', payload: '{nope', headers: { 'content-type': 'application/json' } })).statusCode).toBe(400);
+    await rawApp.close();
   });
 
   it('webhook endpoint routes by custom_id and dedupes', async () => {

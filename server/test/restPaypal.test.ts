@@ -103,6 +103,23 @@ describe('PayPalRestGateway (recorded HTTP)', () => {
     expect(ok).toBe(true);
   });
 
+  it('webhook verification embeds the raw event bytes PayPal signed (no re-serialising)', async () => {
+    const raw = '{ "id": "WH-1", "resource": { "amount": { "value": 20.0 } } }';
+    let sent = '';
+    const { g } = gw([
+      TOKEN,
+      { method: 'POST', path: '/v1/notifications/verify-webhook-signature', status: 200, body: { verification_status: 'SUCCESS' } },
+    ]);
+    const orig = (g as unknown as { fetch: FetchLike }).fetch;
+    (g as unknown as { fetch: FetchLike }).fetch = async (url, init) => {
+      if (url.endsWith('verify-webhook-signature')) sent = init.body ?? '';
+      return orig(url, init);
+    };
+    expect(await g.verifyWebhook({ 'paypal-transmission-id': 't1' }, JSON.parse(raw), 'WHID', raw)).toBe(true);
+    expect(sent.endsWith(`"webhook_event":${raw}}`)).toBe(true); // 20.0 kept, spacing kept
+    expect(JSON.parse(sent)).toMatchObject({ transmission_id: 't1', webhook_id: 'WHID', webhook_event: { id: 'WH-1' } });
+  });
+
   it('gets an OAuth token once and reuses it', async () => {
     const { g, seen } = gw([
       { ...TOKEN, check: (r) => expect(r.headers.Authorization).toBe(`Basic ${Buffer.from('id:secret').toString('base64')}`) },

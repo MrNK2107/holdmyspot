@@ -35,6 +35,20 @@ const DECLINE_HEADER = JSON.stringify({ mock_application_codes: 'INSTRUMENT_DECL
  * Real PayPal adapter: Orders v2 (intent=AUTHORIZE) + Payments v2 against the sandbox.
  * Only exercised in tests through recorded HTTP; a live smoke script runs once keys exist.
  */
+/** A request body that is already JSON text and must be sent byte for byte. */
+class RawJson {
+  constructor(readonly text: string) {}
+}
+
+function isJsonObject(text: string): boolean {
+  try {
+    const v = JSON.parse(text);
+    return v !== null && typeof v === 'object' && !Array.isArray(v);
+  } catch {
+    return false;
+  }
+}
+
 export class PayPalRestGateway implements PaymentsGateway {
   readonly mode = 'sandbox' as const;
   private token?: { value: string; expiresAt: number };
@@ -76,7 +90,8 @@ export class PayPalRestGateway implements PaymentsGateway {
       ...extra,
     };
     if (requestId) headers['PayPal-Request-Id'] = requestId;
-    const res = await this.fetch(`${this.base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const payload = body === undefined ? undefined : body instanceof RawJson ? body.text : JSON.stringify(body);
+    const res = await this.fetch(`${this.base}${path}`, { method, headers, body: payload });
     const text = await res.text();
     const json = text ? JSON.parse(text) : {};
     return { status: res.status, json };
@@ -210,17 +225,22 @@ export class PayPalRestGateway implements PaymentsGateway {
   }
 
   /** POST /v1/notifications/verify-webhook-signature. Headers are the PAYPAL-* transmission headers. */
-  async verifyWebhook(headers: Record<string, string | undefined>, event: unknown, webhookId: string): Promise<boolean> {
+  /**
+   * PayPal signs the exact bytes it sent, so when the raw request body is available it is embedded
+   * verbatim as `webhook_event` (re-serialising the parsed JSON can change number formats or key order).
+   */
+  async verifyWebhook(headers: Record<string, string | undefined>, event: unknown, webhookId: string, rawEvent?: string): Promise<boolean> {
     const h = (k: string) => headers[k] ?? headers[k.toLowerCase()];
-    const r = await this.call('POST', '/v1/notifications/verify-webhook-signature', undefined, {
+    const fields = {
       auth_algo: h('PAYPAL-AUTH-ALGO'),
       cert_url: h('PAYPAL-CERT-URL'),
       transmission_id: h('PAYPAL-TRANSMISSION-ID'),
       transmission_sig: h('PAYPAL-TRANSMISSION-SIG'),
       transmission_time: h('PAYPAL-TRANSMISSION-TIME'),
       webhook_id: webhookId,
-      webhook_event: event,
-    });
+    };
+    const body = rawEvent !== undefined && isJsonObject(rawEvent) ? new RawJson(`${JSON.stringify(fields).slice(0, -1)},"webhook_event":${rawEvent}}`) : { ...fields, webhook_event: event };
+    const r = await this.call('POST', '/v1/notifications/verify-webhook-signature', undefined, body);
     return r.status === 200 && r.json.verification_status === 'SUCCESS';
   }
 

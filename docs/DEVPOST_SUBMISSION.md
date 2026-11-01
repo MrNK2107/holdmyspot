@@ -43,7 +43,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 - **AI front desk** behind a provider interface: Claude through the Anthropic API with structured outputs, plus a deterministic offline provider for tests and keyless demos. The agent loop (`server/src/ai/agent.ts`) gets its tools from the engine per message as plain functions; a test fails the build if any AI module imports the payments or engine code, and agent tests check that a model asking only for money tools moves no money.
 - **Ledger:** AG Grid Community (`ag-grid-react`), lazy-loaded so the console stays light.
 - **Hosting:** a Render Blueprint (`render.yaml`, one free web service, keyless by default; a test checks it against the real scripts and health route).
-- **Testing:** 163 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
+- **Testing:** 164 automated tests, including end-to-end tests that drive a real HTTP server through all three hero flows and both failure paths, and a headless-browser check (`npm run ui-check`) that plays the guided demo, runs axe accessibility checks (0 violations on 14 screens, including the agent trace and the AG Grid ledger at 390 px) and refreshes the screenshots.
 - **Guided demo:** `npm run demo` starts a seeded studio with a scripted clock; 13 beats show the whole week in under three minutes.
 
 ## PayPal APIs used

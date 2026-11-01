@@ -14,7 +14,7 @@ export interface AppOptions {
   webDist?: string;
   logger?: boolean;
   /** Verifies real PayPal webhook signatures. Without it the webhook endpoint refuses every event. */
-  webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>;
+  webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
 }
 
 /** Serializes engine operations per workspace so concurrent requests never interleave money logic. */
@@ -227,11 +227,23 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 
   // Real PayPal webhooks, verified with POST /v1/notifications/verify-webhook-signature.
   // Unverified events could fake an authorization, so without a verifier nothing is accepted.
-  app.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req, reply) => {
-    if (!opts.webhookVerifier) return reply.code(403).send({ error: 'webhook verification not configured' });
-    const ok = await opts.webhookVerifier(req.headers as Record<string, string | undefined>, req.body).catch(() => false);
-    if (!ok) return reply.code(401).send({ error: 'invalid webhook signature' });
-    return { result: await workspaces.routeWebhook(req.body) };
+  // The raw body is kept (in this route's scope only) because PayPal verifies the exact bytes it signed.
+  await app.register(async (scope) => {
+    scope.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+      try {
+        (req as unknown as { rawBody?: string }).rawBody = body as string;
+        done(null, JSON.parse(body as string));
+      } catch {
+        done(Object.assign(new Error('invalid JSON'), { statusCode: 400 }), undefined);
+      }
+    });
+    scope.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req, reply) => {
+      if (!opts.webhookVerifier) return reply.code(403).send({ error: 'webhook verification not configured' });
+      const raw = (req as unknown as { rawBody?: string }).rawBody;
+      const ok = await opts.webhookVerifier(req.headers as Record<string, string | undefined>, req.body, raw).catch(() => false);
+      if (!ok) return reply.code(401).send({ error: 'invalid webhook signature' });
+      return { result: await workspaces.routeWebhook(req.body) };
+    });
   });
 
   const dist = opts.webDist;

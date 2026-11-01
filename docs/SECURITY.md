@@ -47,9 +47,9 @@ Tests: `server/test/regressions.test.ts` (11 money-engine review findings), `ser
 
 - `POST /api/paypal/webhook` **refuses every event (403) unless `PAYPAL_WEBHOOK_ID` is configured**, because an unverified `PAYMENT.AUTHORIZATION.CREATED` could fake a hold. With it, each event is checked with PayPal's `POST /v1/notifications/verify-webhook-signature` (`PayPalRestGateway.verifyWebhook` in `server/src/paypal/rest.ts`); anything but `SUCCESS` gets 401.
 - Events are **deduplicated** by event id and routed by `custom_id` (`<workspace>:<booking>`); an event for another workspace is ignored. Stale events (for a booking that already moved on) do not revive it.
-- Open point: verification posts the parsed JSON event back to PayPal. PayPal's docs note that re-serialising can change the payload; if verification fails on real traffic, switch to the raw request body. Not tested against live PayPal (no keys yet).
+- The webhook route keeps the **raw request body** (a JSON parser scoped to that route only) and embeds it byte for byte as `webhook_event` in the verification call, because PayPal verifies the exact bytes it signed and re-serialising parsed JSON can change them (`20.0` → `20`, spacing, key order). A body that is not JSON is a 400. Not yet run against live PayPal (no keys).
 
-Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, duplicate event, unknown workspace), `server/test/security.test.ts` (workspace ids, message cap), `server/test/regressions.test.ts` (replayed and stale webhooks).
+Tests: `server/test/app.test.ts` (403 without verifier, 401 on a bad signature, the verifier receives the exact raw bytes, 400 on non-JSON, duplicate event, unknown workspace), `server/test/restPaypal.test.ts` (raw event embedded verbatim), `server/test/security.test.ts` (workspace ids, message cap), `server/test/regressions.test.ts` (replayed and stale webhooks).
 
 ## 4. Secrets handling
 

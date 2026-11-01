@@ -11,7 +11,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   deps: WorkspaceDeps;
   paymentsMode: string;
   aiMode: string;
-  webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>;
+  webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
 } {
   // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
   const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
@@ -20,7 +20,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   const tk = env.PAYPAL_AGENT_TOOLKIT;
   const deps: WorkspaceDeps = { baseUrl, agentToolkit: tk === 'off' ? false : tk === 'mcp' ? 'mcp' : 'functions' };
   let paymentsMode = 'mock';
-  let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>) | undefined;
+  let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {
     if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET) throw new Error('PAYMENTS=sandbox needs PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET');
     const gw = new PayPalRestGateway({
@@ -33,7 +33,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     deps.toolkitCredentials = { clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET };
     paymentsMode = 'sandbox';
     const webhookId = env.PAYPAL_WEBHOOK_ID;
-    if (webhookId) webhookVerifier = (headers, event) => gw.verifyWebhook(headers, event, webhookId);
+    if (webhookId) webhookVerifier = (headers, event, rawBody) => gw.verifyWebhook(headers, event, webhookId, rawBody);
   }
   let aiMode = 'fake';
   if (env.AI === 'anthropic') {
