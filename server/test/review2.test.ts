@@ -180,6 +180,18 @@ describe('review 2026-11-02', () => {
     expect([...e.bookings.values()].filter((x) => x.refillOfBookingId === maya.id && x.clientId === 'chris')).toEqual([]);
     expect((await e.receiveMessage('chris', 'Yes!')).claimed).toBe(true);
   });
+  it('the no-show fee card never asks for more than the no-show fee, whatever decide() returns', async () => {
+    // a compiled policy may list "none" as excused; decide() then says EXCUSE for a silent no-show
+    const v2 = approve(e.policy, { ...e.policy.rules, noShowFeeCents: 1000, excusedReasons: [...e.policy.rules.excusedReasons, 'none'] }, 'v2', e.now());
+    e.setPolicy(v2);
+    e.waitlist = [];
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    await e.clock.advanceTo(at(3, 18, 10));
+    const att = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'attendance')!;
+    await e.resolveApproval(att.id, 'no_show');
+    const card = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'capture');
+    expect(card && card.kind === 'capture' && card.feeCents).toBe(1000);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

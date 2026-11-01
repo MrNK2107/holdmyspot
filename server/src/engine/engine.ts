@@ -1074,7 +1074,8 @@ export class Engine {
       return;
     }
     const fee = decide({ booking: b, rules: this.rulesFor(b), now: this.now(), kind: 'no_show', priorExcusals: 0 });
-    const feeCents = fee.outcome === 'PENDING_REFILL' || fee.outcome === 'OWNER_REVIEW' ? fee.feeCents : b.holdCents;
+    // the card is the no-show fee: never more than the policy's no-show fee, even if decide() had nothing to charge
+    const feeCents = fee.outcome === 'PENDING_REFILL' || fee.outcome === 'OWNER_REVIEW' ? fee.feeCents : Math.min(this.rulesFor(b).noShowFeeCents, b.holdCents);
     const lateFee = Math.min(this.rulesFor(b).lateCancelFeeCents, b.holdCents);
     this.addApproval({
       kind: 'capture',
