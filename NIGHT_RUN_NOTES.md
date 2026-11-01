@@ -269,6 +269,7 @@ Second independent adversarial review, on what the money review did not cover: H
 14. **Evicted workspaces kept their lock-queue entry** (`workspaces.ts`): deleted on eviction.
 15. **Ledger state words contradicted the money chip** (`money.ts` `bookingStateLabel`): a reversed capture read "charged", a hold voided at PayPal read "held". Slip: the test passed extra fields and broke `tsc` for one commit (`b89db83`, fixed in `8d50d90`).
 16. **Rate limit bypass via percent-encoding** (my own fix 9): the limiter matched the raw URL, so `/api/ws/demo/%6Dessages` (routed to `/messages`) skipped it. Now matches `req.routeOptions.url` + `req.params.ws`.
+17. **Unbounded event streams** (`app.ts` `/events`): each SSE stream is an engine listener + timer; now 10 per workspace (429 beyond), slot freed on close. Tested with a real listening server.
 
 ### Suspected / not fixed (need a product call or live keys)
 - `workspaces.ts:53-58,123-126`: evicting or resetting a sandbox-mode workspace drops its live holds without voiding them (sandbox wallets stay held up to 29 days; later webhooks go to `unknown_workspace`). Needs a "release all" on evict/reset; product call for the hosted demo.
@@ -279,4 +280,6 @@ Second independent adversarial review, on what the money review did not cover: H
 - `app.ts` webhook route: a handler error answers Fastify's default 500 body with the error message (PayPal is the only verified caller).
 - `/policy/approve` `prose` is not type/size checked (owner-only; stored in the policy).
 - `/audit` exposes the full audit including `placeHold` results with vault ids to anyone holding the workspace id (merchant-side tokens; same capability as the console).
+- **Design: the public booking link is the owner's capability.** `App.tsx:188` shares `/book?ws=<id>` with clients, and `BookingPage.tsx:19` reads `/api/ws/<id>/state` (every client's name, messages, bookings, audit-adjacent data). Anyone holding a booking link can call every owner route of that workspace (approvals, refunds, policy, mode, time, reset). Fine for per-visitor demo workspaces; a real deployment needs a separate public booking id and owner auth.
+- `rest.ts` `holdFromOrder`: an authorization in `PENDING` (under review) is treated as AUTHORIZED; capturing it would fail until PayPal clears it.
 - Live-mode `paypal.get_order` results (payer name/email) go into the owner's trace and the model context (owner-only, clipped to 800/6000 chars).
