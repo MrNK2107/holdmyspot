@@ -12,6 +12,8 @@ import { type PayPalToolkitReader, TOOLKIT_MONEY_TOOLS, TOOLKIT_PACKAGE, TOOLKIT
 
 /** Client texts longer than this are cut before they reach the model or the audit log (an SMS thread, not a document). */
 export const MAX_MESSAGE_CHARS = 1000;
+/** texts kept per workspace (oldest dropped): every action returns the snapshot, and the shared demo is never evicted */
+export const MAX_MESSAGES = 500;
 
 export type OwnerMode = 'ask' | 'autopilot';
 
@@ -268,8 +270,13 @@ export class Engine {
     return `${day} ${time}`;
   }
 
+  private pushMessage(m: ChatMessage): void {
+    this.messages.push(m);
+    if (this.messages.length > MAX_MESSAGES) this.messages.splice(0, this.messages.length - MAX_MESSAGES);
+  }
+
   private say(clientId: string, text: string): void {
-    this.messages.push({ id: this.nextId('msg'), at: this.now(), clientId, from: 'frontdesk', text });
+    this.pushMessage({ id: this.nextId('msg'), at: this.now(), clientId, from: 'frontdesk', text });
     this.audit.add('message', `→ ${this.client(clientId).name}: ${text}`);
     this.emit('message');
   }
@@ -699,7 +706,7 @@ export class Engine {
   async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
     const c = this.client(clientId);
     text = String(text ?? '').slice(0, MAX_MESSAGE_CHARS); // bounded model input and audit log
-    this.messages.push({ id: this.nextId('msg'), at: this.now(), clientId, from: 'client', text });
+    this.pushMessage({ id: this.nextId('msg'), at: this.now(), clientId, from: 'client', text });
     this.audit.add('message', `← ${c.name}: ${text}`);
     this.emit('message');
 

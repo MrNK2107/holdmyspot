@@ -270,6 +270,7 @@ Second independent adversarial review, on what the money review did not cover: H
 15. **Ledger state words contradicted the money chip** (`money.ts` `bookingStateLabel`): a reversed capture read "charged", a hold voided at PayPal read "held". Slip: the test passed extra fields and broke `tsc` for one commit (`b89db83`, fixed in `8d50d90`).
 16. **Rate limit bypass via percent-encoding** (my own fix 9): the limiter matched the raw URL, so `/api/ws/demo/%6Dessages` (routed to `/messages`) skipped it. Now matches `req.routeOptions.url` + `req.params.ws`.
 17. **Unbounded event streams** (`app.ts` `/events`): each SSE stream is an engine listener + timer; now 10 per workspace (429 beyond), slot freed on close. Tested with a real listening server.
+18. **Unbounded message history** (`engine.ts` `MAX_MESSAGES` = 500, oldest dropped): every action returns the snapshot with all messages, and the shared `demo` workspace is never evicted.
 
 ### Suspected / not fixed (need a product call or live keys)
 - `workspaces.ts:53-58,123-126`: evicting or resetting a sandbox-mode workspace drops its live holds without voiding them (sandbox wallets stay held up to 29 days; later webhooks go to `unknown_workspace`). Needs a "release all" on evict/reset; product call for the hosted demo.
@@ -281,10 +282,10 @@ Second independent adversarial review, on what the money review did not cover: H
 - `/policy/approve` `prose` is not type/size checked (owner-only; stored in the policy).
 - `/audit` exposes the full audit including `placeHold` results with vault ids to anyone holding the workspace id (merchant-side tokens; same capability as the console).
 - **Design: the public booking link is the owner's capability.** `App.tsx:188` shares `/book?ws=<id>` with clients, and `BookingPage.tsx:19` reads `/api/ws/<id>/state` (every client's name, messages, bookings, audit-adjacent data). Anyone holding a booking link can call every owner route of that workspace (approvals, refunds, policy, mode, time, reset). Fine for per-visitor demo workspaces; a real deployment needs a separate public booking id and owner auth.
-- `engine.ts:272,702` messages and `audit.ts:21` entries grow without bound per workspace, and every action returns the full snapshot (all messages). The shared `demo` workspace is never evicted: at the new 30/min budget a script can still grow it by ~43k texts a day until each response is megabytes. Cap messages (keep recent N per client) and decide an audit retention policy.
+- `audit.ts:21` entries grow without bound per workspace (messages are now capped, fix 18). The shared `demo` workspace is never evicted; decide an audit retention policy (the audit endpoint returns everything).
 - `PAYMENT.CAPTURE.REFUNDED` / `PAYMENT.CAPTURE.COMPLETED` are only logged: a refund made in the PayPal dashboard leaves the booking "charged / kept" and the refund button then fails at PayPal. Needs the refund resource shape confirmed with live keys.
 - `rest.ts` `holdFromOrder`: an authorization in `PENDING` (under review) is treated as AUTHORIZED; capturing it would fail until PayPal clears it.
 - Live-mode `paypal.get_order` results (payer name/email) go into the owner's trace and the model context (owner-only, clipped to 800/6000 chars).
 
 ### Verified (review round 2)
-- `npm test` **251 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.
+- `npm test` **252 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.

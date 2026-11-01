@@ -412,3 +412,14 @@ describe('event streams are capped per workspace', () => {
     }
   });
 });
+
+describe('message history is bounded', () => {
+  it('keeps the most recent MAX_MESSAGES texts so the shared demo snapshot cannot grow without bound', async () => {
+    const { MAX_MESSAGES } = await import('../src/engine/engine.js');
+    const e = (await new Workspaces().create('mx')).engine;
+    for (let i = 0; i < MAX_MESSAGES + 50; i++) await e.receiveMessage('sam', `what time is my visit? #${i}`);
+    expect(e.messages.length).toBeLessThanOrEqual(MAX_MESSAGES);
+    expect(e.messages.at(-1)!.from).toBe('frontdesk');
+    expect(e.messages.some((m) => m.text.endsWith(`#${MAX_MESSAGES + 49}`))).toBe(true);
+  });
+});
