@@ -322,3 +322,26 @@ describe('a PENDING authorization (under review at PayPal) is not a hold yet', (
     expect(b.pendingAuthorizationId).toBeUndefined();
   });
 });
+
+describe('audit retention', () => {
+  it('keeps the most recent `max` entries; seq stays monotonic and per-booking reads use what is kept', async () => {
+    const { AuditLog, DEFAULT_AUDIT_MAX } = await import('../src/audit.js');
+    expect(DEFAULT_AUDIT_MAX).toBeGreaterThan(0);
+    const log = new AuditLog(() => 0, { max: 3 });
+    for (let i = 1; i <= 5; i++) log.add('engine', `e${i}`, { bookingId: i % 2 ? 'odd' : 'even' });
+    expect(log.all().map((e) => e.summary)).toEqual(['e3', 'e4', 'e5']);
+    expect(log.all().map((e) => e.seq)).toEqual([3, 4, 5]);
+    expect(log.forBooking('odd').map((e) => e.summary)).toEqual(['e3', 'e5']);
+    expect(log.dropped).toBe(2);
+  });
+
+  it('the limit is configurable per server (AUDIT_MAX_ENTRIES) and reaches each workspace', async () => {
+    const { configFromEnv } = await import('../src/config.js');
+    expect(configFromEnv({ AUDIT_MAX_ENTRIES: '150' }).deps.auditMax).toBe(150);
+    expect(() => configFromEnv({ AUDIT_MAX_ENTRIES: 'lots' })).toThrow(/AUDIT_MAX_ENTRIES/);
+    const w = await new Workspaces({ auditMax: 50 }).create('au');
+    for (let i = 0; i < 200; i++) w.engine.audit.add('system', `x${i}`);
+    expect(w.engine.audit.all()).toHaveLength(50);
+    expect(w.engine.audit.all().at(-1)!.summary).toBe('x199');
+  });
+});

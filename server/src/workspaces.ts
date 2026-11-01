@@ -24,6 +24,8 @@ export interface WorkspaceDeps {
   toolkitCredentials?: { clientId: string; clientSecret: string };
   /** the studio's IANA time zone (STUDIO_TIMEZONE); default UTC, as the demo */
   timeZone?: string;
+  /** audit entries kept per workspace (AUDIT_MAX_ENTRIES) */
+  auditMax?: number;
 }
 
 export interface Workspace {
@@ -103,6 +105,7 @@ export class Workspaces {
       baseUrl: this.deps.baseUrl,
       paypalReader,
       timeZone: this.deps.timeZone,
+      auditMax: this.deps.auditMax,
     });
     if (mock) {
       // Deliver simulated webhooks after the API call returns, as PayPal does.

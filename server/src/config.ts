@@ -28,6 +28,12 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     }
     deps.timeZone = env.STUDIO_TIMEZONE;
   }
+  if (env.AUDIT_MAX_ENTRIES !== undefined) {
+    // audit retention per workspace (the shared demo is never evicted); default DEFAULT_AUDIT_MAX
+    const n = Number(env.AUDIT_MAX_ENTRIES);
+    if (!Number.isSafeInteger(n) || n < 100) throw new Error(`AUDIT_MAX_ENTRIES must be a whole number >= 100 (got ${env.AUDIT_MAX_ENTRIES})`);
+    deps.auditMax = n;
+  }
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {

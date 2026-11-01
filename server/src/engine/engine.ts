@@ -62,6 +62,8 @@ export interface EngineOptions {
   paypalReader?: PayPalToolkitReader;
   /** the studio's IANA time zone (end-of-day review, slot labels); the demo runs in UTC */
   timeZone?: string;
+  /** audit retention: entries kept (default DEFAULT_AUDIT_MAX) */
+  auditMax?: number;
 }
 
 /** Local wall time minus UTC, in ms, of a time zone at an instant. */
@@ -178,7 +180,7 @@ export class Engine {
     // and PayPal would replay the previous life's orders, captures and webhooks. The simulator is per-engine.
     this.runTag = o.gateway.mode === 'sandbox' ? randomBytes(4).toString('hex') : '';
     this.clock = o.clock;
-    this.audit = new AuditLog(() => this.clock.now());
+    this.audit = new AuditLog(() => this.clock.now(), { max: o.auditMax });
     this.frontdesk = o.frontdesk(this.audit);
     this.gateway = o.gateway;
     this.policy = o.policy;
