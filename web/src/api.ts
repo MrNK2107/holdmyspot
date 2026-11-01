@@ -13,6 +13,7 @@ export interface BookingView {
   holdCents: number;
   authorizationId?: string;
   captureId?: string;
+  capturedCents?: number;
   refundId?: string;
   approvalLink?: string;
   orderId?: string;
@@ -86,6 +87,13 @@ export interface Ambiguity {
   options: Array<{ label: string; patch: Partial<PolicyRules> }>;
 }
 
+export interface DemoStatus {
+  step: number;
+  total: number;
+  beats: Array<{ id: string; title: string; say: string; view: { tab?: 'console' | 'policy'; sel?: string; phone?: string }; done: boolean }>;
+  bookingIds: Record<string, string>;
+}
+
 export class Api {
   constructor(public ws: string) {}
 
@@ -112,6 +120,8 @@ export class Api {
     this.req<{ result: { rules: PolicyRules; ambiguities: Ambiguity[]; spans: Array<{ field: string; text: string }>; errors: string[] } }>('POST', '/policy/compile', { prose });
   approvePolicy = (rules: PolicyRules, prose: string) => this.req<{ state: Snapshot }>('POST', '/policy/approve', { rules, prose });
   simApprove = (orderId: string) => this.req<{ state: Snapshot }>('POST', `/sim/approve/${orderId}`);
+  demo = () => this.req<DemoStatus>('GET', '/demo');
+  demoNext = () => this.req<{ state: Snapshot; result: DemoStatus }>('POST', '/demo/next');
 }
 
 export const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`;

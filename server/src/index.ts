@@ -12,3 +12,4 @@ await workspaces.create('demo');
 const app = await buildApp({ workspaces, webDist: resolve(here, '../../web/dist'), logger: process.env.LOG === '1', webhookVerifier: cfg.webhookVerifier });
 await app.listen({ port, host: process.env.HOST ?? '127.0.0.1' });
 console.log(`HoldMySpot on http://127.0.0.1:${port}  payments=${cfg.paymentsMode} ai=${cfg.aiMode}`);
+if (cfg.paymentsMode === 'mock') console.log(`Guided demo (13 beats, ~3 min): http://127.0.0.1:${port}/?demo=1   (press → or N; add &autoplay=12 to run hands-free)`);

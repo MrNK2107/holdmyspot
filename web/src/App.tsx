@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Api, type Ambiguity, type AuditEntry, type BookingView, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { Api, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -17,6 +17,26 @@ const MONEY_LABEL: Record<string, string> = {
   failed: 'hold failed',
   refunded: 'refunded',
 };
+
+/** Plain-English meaning of each money state, shown in the legend and the booking panel. */
+const MONEY_EXPLAIN: Record<string, string> = {
+  none: 'No PayPal authorization exists. Nothing can be charged.',
+  vaulted: 'PayPal wallet saved (Vault). The hold is placed 72 hours before the visit.',
+  held: 'PayPal authorization in place. Reserved on the client’s PayPal, not charged.',
+  'pending-refill': 'Late cancel or no-show. Still only held while the waitlist gets a chance.',
+  voided: 'Authorization voided. The client paid $0.',
+  captured: 'Fee captured from the authorization after the owner tapped Charge.',
+  failed: 'PayPal declined the hold. The client has a link to re-approve.',
+  refunded: 'Fee captured, then refunded in full.',
+};
+
+/** The amount behind a money chip: the captured fee for charges and refunds, the hold otherwise. */
+function chipAmount(b: BookingView): string {
+  if (b.money === 'held' || b.money === 'pending-refill') return ` ${usd(b.holdCents)}`;
+  if (b.money === 'captured' || b.money === 'refunded') return ` ${usd(b.capturedCents ?? b.holdCents)}`;
+  if (b.money === 'voided') return ' · $0';
+  return '';
+}
 
 const SCENES: Array<{ label: string; at: number }> = [
   { label: "Tue 2:00 PM · Jordan's T−72h hold", at: Date.UTC(2026, 10, 3, 14) },
@@ -55,10 +75,23 @@ export function App() {
   const [tab, setTab] = useState<'console' | 'policy'>(new URLSearchParams(location.search).get('tab') === 'policy' ? 'policy' : 'console');
   // ?sel=<bookingId>&phone=<clientId> preselect views (handy for screenshots and the video)
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).get('sel'));
+  const [phone, setPhone] = useState(new URLSearchParams(location.search).get('phone') ?? 'sam');
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [demoOn, setDemoOn] = useState(new URLSearchParams(location.search).has('demo'));
 
-  const refresh = useCallback(() => api.state().then(setS).catch((e) => setError(String(e.message ?? e))), [api]);
+  const refresh = useCallback(
+    () =>
+      api
+        .state()
+        .then((x) => {
+          setS(x);
+          setLoadError(null);
+        })
+        .catch((e) => setLoadError(String(e.message ?? e))),
+    [api],
+  );
 
   useEffect(() => {
     refresh();
@@ -82,7 +115,29 @@ export function App() {
     }
   };
 
-  if (!s) return <div className="loading">{error ?? 'Loading HoldMySpot…'}</div>;
+  const applyView = (v: { tab?: 'console' | 'policy'; sel?: string; phone?: string }, ids: Record<string, string>) => {
+    if (v.tab) setTab(v.tab);
+    if (v.sel) setSelected(ids[v.sel] ?? null);
+    if (v.phone) setPhone(v.phone);
+  };
+
+  if (!s) {
+    return loadError ? (
+      <div className="loading" role="alert">
+        <h1>This demo workspace isn’t available</h1>
+        <p className="muted">
+          {loadError}. Private demos are kept in memory and reset when the server restarts.
+        </p>
+        <a className="button primary" href="/">
+          Open the shared demo
+        </a>
+      </div>
+    ) : (
+      <div className="loading" role="status" aria-live="polite">
+        <span className="spinner" aria-hidden /> Loading HoldMySpot…
+      </div>
+    );
+  }
 
   const sel = s.bookings.find((b) => b.id === selected) ?? null;
 
@@ -142,6 +197,11 @@ export function App() {
             <option value="autopilot">Autopilot</option>
           </select>
         </label>
+        {s.paymentsMode === 'mock' && (
+          <button className={demoOn ? 'primary' : ''} aria-pressed={demoOn} onClick={() => setDemoOn(!demoOn)}>
+            Guided demo
+          </button>
+        )}
         <button className="ghost" disabled={busy} onClick={() => run(() => api.reset())}>
           Reset demo
         </button>
@@ -156,9 +216,16 @@ export function App() {
         </button>
       </div>
 
+      {demoOn && s.paymentsMode === 'mock' && <DemoBar api={api} s={s} busy={busy} run={run} applyView={applyView} />}
+
       {error && (
         <div className="error" role="alert">
-          {error} <button onClick={() => setError(null)}>dismiss</button>
+          {error} <button onClick={() => setError(null)}>Dismiss</button>
+        </div>
+      )}
+      {loadError && (
+        <div className="error" role="alert">
+          Lost contact with the server ({loadError}). Retrying on the next change.
         </div>
       )}
 
@@ -178,13 +245,97 @@ export function App() {
             )}
           </aside>
           <aside className="phone-col">
-            <Phone s={s} busy={busy} onSend={(c, t) => run(() => api.send(c, t))} />
+            <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
           </aside>
         </main>
       ) : (
         <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} />
       )}
     </div>
+  );
+}
+
+/**
+ * Guided demo for the video: each "Next" plays one scripted beat on the server (time travel, a client text,
+ * an owner tap) and points the console at the booking and phone thread the narration talks about.
+ * Keyboard: → or N. Optional ?autoplay=<seconds> advances on its own.
+ */
+function DemoBar({
+  api,
+  s,
+  busy,
+  run,
+  applyView,
+}: {
+  api: Api;
+  s: Snapshot;
+  busy: boolean;
+  run: (fn: () => Promise<unknown>) => Promise<void>;
+  applyView: (v: DemoStatus['beats'][number]['view'], ids: Record<string, string>) => void;
+}) {
+  const [d, setD] = useState<DemoStatus | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // re-read the step whenever the workspace changes (a reset brings it back to beat 0)
+  useEffect(() => {
+    api.demo().then(setD).catch((e) => setErr((e as Error).message));
+  }, [api, s.workspace, s.now, s.messages.length, s.approvals.length]);
+
+  const next = useCallback(async () => {
+    if (!d || d.step >= d.total) return;
+    setErr(null);
+    await run(async () => {
+      const r = await api.demoNext();
+      setD(r.result);
+      const beat = r.result.beats[r.result.step - 1];
+      if (beat) applyView(beat.view, r.result.bookingIds);
+      return r;
+    });
+  }, [d, api, run, applyView]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('input, textarea, select')) return;
+      if (e.key === 'ArrowRight' || e.key === 'n') next();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [next]);
+
+  const autoplay = Number(new URLSearchParams(location.search).get('autoplay') ?? 0);
+  useEffect(() => {
+    if (!autoplay || !d || d.step >= d.total || busy) return;
+    const t = setTimeout(next, autoplay * 1000);
+    return () => clearTimeout(t);
+  }, [autoplay, d, busy, next]);
+
+  if (!d) return <div className="demo-bar muted">{err ?? 'Loading the guided demo…'}</div>;
+  const current = d.beats[d.step - 1];
+  const upcoming = d.beats[d.step];
+  return (
+    <section className="demo-bar" aria-label="Guided demo">
+      <div className="demo-progress" aria-hidden>
+        {d.beats.map((b, i) => (
+          <i key={b.id} className={i < d.step ? 'done' : i === d.step ? 'next' : ''} />
+        ))}
+      </div>
+      <div className="demo-text" aria-live="polite">
+        <div className="demo-step">
+          {current ? `Beat ${d.step} of ${d.total}` : 'Guided demo'} · {current?.title ?? 'about 3 minutes, scripted clock'}
+        </div>
+        <p className="demo-say">{current?.say ?? 'Each step plays one scene on the PayPal simulator: time travel, a client text, or an owner tap. The money states update live.'}</p>
+        {err && <p className="demo-err">{err}</p>}
+      </div>
+      {upcoming ? (
+        <button className="primary demo-next" disabled={busy} onClick={next} aria-keyshortcuts="ArrowRight">
+          {d.step === 0 ? 'Start' : 'Next'}: {upcoming.title} ›
+        </button>
+      ) : (
+        <button className="demo-next" disabled={busy} onClick={() => run(() => api.reset())}>
+          Done. Replay from the start
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -237,7 +388,7 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
                   <span className="ev-svc">{b.serviceName}</span>
                   <span className="chip">
                     {MONEY_LABEL[b.money]}
-                    {b.money === 'held' || b.money === 'captured' ? ` ${usd(b.holdCents)}` : ''}
+                    {chipAmount(b)}
                   </span>
                 </button>
               );
@@ -249,17 +400,17 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
 }
 
 function MoneyStrip({ s }: { s: Snapshot }) {
-  const sum = (f: (b: Snapshot['bookings'][number]) => boolean) => s.bookings.filter(f).reduce((a, b) => a + b.holdCents, 0);
-  const held = sum((b) => b.money === 'held' || b.money === 'pending-refill');
-  const charged = sum((b) => b.money === 'captured');
+  const held = s.bookings.filter((b) => b.money === 'held' || b.money === 'pending-refill').reduce((a, b) => a + b.holdCents, 0);
+  const charged = s.bookings.filter((b) => b.money === 'captured').reduce((a, b) => a + (b.capturedCents ?? 0), 0);
+  const refunded = s.bookings.filter((b) => b.money === 'refunded').reduce((a, b) => a + (b.capturedCents ?? 0), 0);
   const refilled = s.bookings.filter((b) => b.state === 'REFILLED').length;
   const excused = s.bookings.filter((b) => b.state === 'EXCUSED').length;
   const failed = s.bookings.filter((b) => b.money === 'failed').length;
   return (
-    <div className="strip">
+    <div className="strip" aria-label="Money this week">
       <div>
         <span className="strip-n">{usd(held)}</span>
-        <span className="strip-l">on hold</span>
+        <span className="strip-l">held, not charged</span>
       </div>
       <div>
         <span className="strip-n">{refilled}</span>
@@ -271,7 +422,7 @@ function MoneyStrip({ s }: { s: Snapshot }) {
       </div>
       <div>
         <span className="strip-n">{usd(charged)}</span>
-        <span className="strip-l">charged (owner approved)</span>
+        <span className="strip-l">charged (owner approved){refunded ? ` · ${usd(refunded)} refunded` : ''}</span>
       </div>
       <div className={failed ? 'warn' : ''}>
         <span className="strip-n">{failed}</span>
@@ -283,14 +434,28 @@ function MoneyStrip({ s }: { s: Snapshot }) {
 
 function Legend() {
   return (
-    <div className="legend">
-      {Object.entries(MONEY_LABEL).map(([k, v]) => (
-        <span key={k} className={`legend-item m-${k}`}>
-          <i />
-          {v}
-        </span>
-      ))}
-    </div>
+    <details className="legend">
+      <summary>
+        {Object.entries(MONEY_LABEL).map(([k, v]) => (
+          <span key={k} className={`legend-item m-${k}`} title={MONEY_EXPLAIN[k]}>
+            <i aria-hidden />
+            {v}
+          </span>
+        ))}
+        <span className="legend-more">What do these mean?</span>
+      </summary>
+      <dl className="legend-explain">
+        {Object.entries(MONEY_LABEL).map(([k, v]) => (
+          <div key={k} className={`m-${k}`}>
+            <dt>
+              <i aria-hidden />
+              {v}
+            </dt>
+            <dd>{MONEY_EXPLAIN[k]}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -369,13 +534,26 @@ function BookingPanel({
             {b.serviceName} · {fmtDay(b.start)} {fmtTime(b.start)}
           </div>
         </div>
-        <span className={`chip big m-${b.money}`}>{MONEY_LABEL[b.money]}</span>
+        <span className={`chip big m-${b.money}`}>
+          {MONEY_LABEL[b.money]}
+          {chipAmount(b)}
+        </span>
       </div>
+      <p className={`money-explain m-${b.money}`}>{MONEY_EXPLAIN[b.money]}</p>
       <dl className="facts">
         <dt>State</dt>
-        <dd>{b.state}</dd>
+        <dd className="mono">{b.state}</dd>
         <dt>Hold</dt>
-        <dd>{usd(b.holdCents)}</dd>
+        <dd>{usd(b.holdCents)} authorized on PayPal</dd>
+        {b.capturedCents !== undefined && (
+          <>
+            <dt>Charged</dt>
+            <dd>
+              {usd(b.capturedCents)}
+              {b.refundId ? ', refunded' : ''}
+            </dd>
+          </>
+        )}
         {b.authorizationId && (
           <>
             <dt>Authorization</dt>
@@ -412,7 +590,8 @@ function BookingPanel({
         )}
       </div>
       <h4>Money timeline</h4>
-      <ol className="timeline">
+      {audit.length === 0 && <p className="muted small">Loading the audit log…</p>}
+      <ol className="timeline" aria-label={`Audit log for ${b.clientName}`}>
         {audit.map((e) => (
           <li key={e.seq} className={`t-${e.kind}`}>
             <span className="t-time">
@@ -427,8 +606,19 @@ function BookingPanel({
   );
 }
 
-function Phone({ s, busy, onSend }: { s: Snapshot; busy: boolean; onSend: (clientId: string, text: string) => void }) {
-  const [clientId, setClientId] = useState(new URLSearchParams(location.search).get('phone') ?? 'sam');
+function Phone({
+  s,
+  busy,
+  clientId,
+  setClientId,
+  onSend,
+}: {
+  s: Snapshot;
+  busy: boolean;
+  clientId: string;
+  setClientId: (id: string) => void;
+  onSend: (clientId: string, text: string) => void;
+}) {
   const [text, setText] = useState('');
   const thread = s.messages.filter((m) => m.clientId === clientId);
   const endRef = useRef<HTMLDivElement>(null);

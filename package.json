@@ -8,6 +8,8 @@
     "dev": "npm run dev -w server",
     "build": "npm run build -w web && npm run build -w server",
     "start": "npm start -w server",
-    "eval": "npm run eval -w server"
+    "eval": "npm run eval -w server",
+    "demo": "npm run build -w web && npm start -w server",
+    "ui-check": "npm run ui-check -w server"
   }
 }
