@@ -101,3 +101,13 @@ Goal: raise the judged score without keys. An independent read-only "judge" revi
 2. User: deploy the Blueprint on Render (outward action), put the URL in DEVPOST_SUBMISSION.md.
 3. Record the video from DEMO_SCRIPT (about 2:54; trim beat 4 if long). Decide on the injection replay (NEEDS_INPUT) and PITCH.md.
 4. Optional: real-numbers cold-open stat (needs a cited source), AG Grid row grouping by day.
+
+## 2026-11-02 pass 4 (00:46- IST, same branch, local only)
+
+Goal: maximise judged score without keys (gallery, judge re-read fixes, cold-open stat).
+
+### Done
+- **Devpost gallery** `npm run gallery` (`server/src/scripts/gallery.ts`): app in-process on 18095 (PayPal simulator, offline AI), drives the guided demo over HTTP, captures the console at 1680 CSS px (time-travel bar hidden) and frames each under a caption bar: `docs/gallery/01-week, 02-policy, 03-refill, 04-agent-denied, 05-owner-approval, 06-ledger` (1920x1080) + `thumbnail.png` (1200x800, 3:2). Referenced in `DEVPOST_SUBMISSION.md` (Gallery section with upload order + captions) and the README.
+- **Bug (state vs. copy):** after a no-show, while the capture card waits, Alex's chip said "refilling $20" while the card said "wasn't refilled". The snapshot now reports `held` for a PENDING_REFILL booking with an open capture card (`engine.ts` snapshot). Agent-trace gate copy for CLARIFY / NO_ACTION is plain language (`NO_MONEY_SUMMARY`), no more "No money moved · no money moved (CLARIFY)". Tests `server/test/pass4.test.ts`; ui-check asserts beat 11 shows `held $20`.
+- **Cold open with a cited stat:** Zenoti 2026 Beauty & Wellness Benchmark (summarised at https://www.zenoti.com/thecheckin/no-show-revenue-calculator, 13 May 2026): nail studios 4% no-show, 11% cancellation, $73 median ticket. Verified on the page itself; it is vendor platform data (primary report PDF not found). Used in the demo start card, DEMO_SCRIPT cold open (with footnote), README first screen and Devpost Inspiration. Removed the unverified "most owners never charge the fee" claim.
+- **README first screen:** problem (cited), what it does, gallery image, "look at these three things", honest status (simulator, offline AI, red-team replay noted), 2x2 gallery.
