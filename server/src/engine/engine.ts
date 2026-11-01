@@ -550,13 +550,19 @@ export class Engine {
       },
       { name: 'finish', access: 'end', description: 'End the turn.', run: async () => ({}) },
     ];
-    await this.traced(run, () =>
-      this.frontdesk.agent.run({ trigger: 'client_text', clientName: c.name, text }, tools, (st) => {
-        const rec = { ...st, n: run.steps.length + 1 };
-        run.steps.push(rec);
-        return rec;
-      }, b?.id),
-    );
+    try {
+      await this.traced(run, () =>
+        this.frontdesk.agent.run({ trigger: 'client_text', clientName: c.name, text }, tools, (st) => {
+          const rec = { ...st, n: run.steps.length + 1 };
+          run.steps.push(rec);
+          return rec;
+        }, b?.id),
+      );
+    } catch (err) {
+      // a provider outage must not drop the client's message: the fixed pipeline below takes over
+      run.steps.push({ n: run.steps.length + 1, kind: 'code', name: 'agent error', result: String((err as Error).message).slice(0, 200) });
+      this.audit.add('ai', `agent failed: ${(err as Error).message}`, { bookingId: b?.id });
+    }
 
     if (!b) {
       this.say(clientId, `Thanks, ${c.name.split(' ')[0]}! ${this.ownerName} will get back to you.`);
@@ -676,7 +682,10 @@ export class Engine {
         run.steps.push(rec);
         return rec;
       }),
-    );
+    ).catch((err: Error) => {
+      run.steps.push({ n: run.steps.length + 1, kind: 'code', name: 'agent error', result: String(err.message).slice(0, 200) });
+      return { final: undefined };
+    });
     const answer = String(out.final?.answer ?? '').slice(0, 400) || 'Sorry, I could not finish that. Nothing was changed.';
     if (card) run.gate = { kind: 'owner_approval', summary: `waiting for ${this.ownerName}'s tap: refund / keep`, approvalId: card.id };
     run.answer = answer;

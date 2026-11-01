@@ -101,6 +101,25 @@ describe('front desk agent: tool calls are traced', () => {
     expect(run.gate.kind).toBe('owner_approval'); // same card as the normal path
   });
 
+  it('a provider outage during the agent loop falls back to the fixed pipeline; the client still gets an answer', async () => {
+    class Down extends FakeLlmProvider {
+      async run<K extends AiTask>(task: K, input: AiTasks[K]['input']): Promise<AiTasks[K]['output']> {
+        if (task === 'agent_step') throw new Error('provider timeout');
+        return super.run(task, input);
+      }
+    }
+    const { e, mock } = await ws(() => new Down());
+    await e.clock.advanceTo(at(4, 9));
+    const before = moneyOps(mock).length;
+    await e.receiveMessage('sam', "so sorry, kiddo threw up all night, can't make it today");
+    const run = e.agentRuns.at(-1)!;
+    expect(run.steps.some((s) => s.kind === 'code' && s.name === 'agent error' && /timeout/.test(s.result ?? ''))).toBe(true);
+    expect(run.gate.kind).toBe('owner_approval');
+    expect(moneyOps(mock).length).toBe(before);
+    const answer = (await e.askAssistant('How did this week go?')).answer;
+    expect(answer).toMatch(/Nothing was changed/);
+  });
+
   it('propose_settlement refuses another booking id and proposes at most once', async () => {
     const { e } = await ws(() => new ScriptedAgent([
       { tool: 'propose_settlement', args: { bookingId: 'not-mine', intent: 'cancel', reason: 'no_reason', confidence: 1 } },
