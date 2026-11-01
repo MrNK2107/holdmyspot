@@ -118,6 +118,7 @@ textarea {
   color: #c9a7f0;
 }
 .brand-name {
+  margin: 0;
   font-weight: 700;
   font-size: 17px;
   letter-spacing: 0.2px;
@@ -225,11 +226,11 @@ textarea {
   padding: 14px;
   margin-bottom: 12px;
 }
-.card h3 {
+.card h2 {
   margin: 0 0 8px;
   font-size: 15px;
 }
-.card h4 {
+.card h3 {
   margin: 14px 0 6px;
   font-size: 13px;
   color: var(--ink-2);
@@ -551,7 +552,7 @@ textarea {
 }
 .bubble.client {
   align-self: flex-end;
-  background: #2f7cf6;
+  background: #1d5fd1;
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -563,7 +564,7 @@ textarea {
 .bubble-time {
   display: block;
   font-size: 10px;
-  opacity: 0.65;
+  opacity: 0.9;
   margin-top: 2px;
 }
 .quick {

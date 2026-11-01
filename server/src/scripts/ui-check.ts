@@ -1,0 +1,151 @@
+/**
+ * Headless UI check: starts the app in-process (PayPal simulator, fake LLM) on an unusual port,
+ * drives the built web UI in an isolated headless Chromium, runs axe-core on every screen, and
+ * refreshes docs/screenshots. Needs `npm run build -w web` first and the Playwright Chromium build
+ * (`npx playwright-core install chromium-headless-shell` if missing).
+ *
+ *   npm run ui-check            # from the repo root
+ *   UI_CHECK_SHOTS=0 npm run ui-check   # skip screenshots
+ */
+import { mkdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium, type Page } from 'playwright-core';
+import { buildApp } from '../app.js';
+import { Workspaces } from '../workspaces.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '../../..');
+const shots = resolve(root, 'docs/screenshots');
+const takeShots = process.env.UI_CHECK_SHOTS !== '0';
+const port = Number(process.env.UI_CHECK_PORT ?? 18091);
+const require = createRequire(import.meta.url);
+const axeSource = readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+
+type Violation = { id: string; impact: string; help: string; nodes: Array<{ target: string[] }> };
+const failures: string[] = [];
+const report: string[] = [];
+
+async function axe(page: Page, label: string): Promise<void> {
+  await page.addScriptTag({ content: axeSource });
+  const v = (await page.evaluate(async () => {
+    // @ts-expect-error injected global
+    const r = await window.axe.run(document, { resultTypes: ['violations'] });
+    return r.violations.map((x: any) => ({ id: x.id, impact: x.impact, help: x.help, nodes: x.nodes.map((n: any) => ({ target: n.target })) }));
+  })) as Violation[];
+  const bad = v.filter((x) => x.impact === 'serious' || x.impact === 'critical');
+  report.push(`axe ${label}: ${v.length} violations (${bad.length} serious/critical)${v.length ? ': ' + v.map((x) => `${x.id}[${x.impact}]x${x.nodes.length}`).join(', ') : ''}`);
+  for (const x of bad) failures.push(`${label}: ${x.id} (${x.impact}) ${x.help} @ ${x.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
+}
+
+async function shot(page: Page, name: string, fullPage = false): Promise<void> {
+  if (takeShots) await page.screenshot({ path: resolve(shots, name), fullPage });
+}
+
+function check(cond: boolean, what: string): void {
+  report.push(`${cond ? 'ok  ' : 'FAIL'} ${what}`);
+  if (!cond) failures.push(what);
+}
+
+const workspaces = new Workspaces();
+await workspaces.create('demo');
+const app = await buildApp({ workspaces, webDist: resolve(root, 'web/dist') });
+await app.listen({ port, host: '127.0.0.1' });
+const base = `http://127.0.0.1:${port}`;
+mkdirSync(shots, { recursive: true });
+
+const browser = await chromium.launch({ headless: true });
+try {
+  const newWs = async () => (await (await fetch(`${base}/api/workspaces`, { method: 'POST' })).json()).id as string;
+
+  // ---- desktop console + guided demo ----
+  const desk = await browser.newPage({ viewport: { width: 1680, height: 1000 } });
+  desk.on('pageerror', (e) => failures.push(`page error: ${e.message} ${(e.stack ?? '').split('\n').slice(0, 4).join(' <- ')}`));
+  desk.on('console', (m) => m.type() === 'error' && report.push(`console: ${m.text()}`));
+  const ws1 = await newWs();
+  await desk.goto(`${base}/?ws=${ws1}&demo=1`);
+  await desk.getByRole('button', { name: /^Start:/ }).waitFor();
+  await axe(desk, 'console desktop (start)');
+  await shot(desk, 'console-main.png');
+  const chipText = async (client: string) => (await desk.locator('.booking .chip.big').textContent())?.trim() + ` (${client})`;
+  const beats: Record<number, string> = {};
+  for (let i = 1; i <= 13; i++) {
+    await desk.locator('.demo-next').click();
+    await desk
+      .getByText(`Beat ${i} of 13`)
+      .waitFor({ timeout: 8000 })
+      .catch(async (e) => {
+        await desk.screenshot({ path: resolve(shots, `../ui-check-fail-beat${i}.png`) });
+        throw new Error(`beat ${i} did not show (${failures.join('; ')}): ${e}`);
+      });
+    await desk.waitForTimeout(150);
+    if (i === 2) {
+      await axe(desk, 'policy tab');
+      await shot(desk, 'policy-editor.png');
+    }
+    if ([4, 6, 9, 12, 13].includes(i)) beats[i] = await chipText(String(i));
+    if (i === 6) await shot(desk, 'console-hero1-excused.png');
+    if (i === 9) {
+      await axe(desk, 'console desktop (hero 2 refilled)');
+      await shot(desk, 'console-hero2-refilled.png');
+    }
+    if (i === 12) await shot(desk, 'console-hero3-charged.png');
+  }
+  check(/^held \$20/.test(beats[4]), `beat 4 Jordan re-approved → ${beats[4]}`);
+  check(/^released · \$0/.test(beats[6]), `beat 6 Sam excused → ${beats[6]}`);
+  check(/^released · \$0/.test(beats[9]), `beat 9 Maya refilled → ${beats[9]}`);
+  check(/^charged \$20/.test(beats[12]), `beat 12 Alex charged → ${beats[12]}`);
+  check(/^refunded \$20/.test(beats[13]), `beat 13 Alex refunded → ${beats[13]}`);
+  await desk.locator('details.legend summary').click();
+  await axe(desk, 'console desktop (end, legend open)');
+  await shot(desk, 'console-demo-end.png');
+  check((await desk.getByRole('button', { name: /Replay from the start/ }).count()) === 1, 'demo ends with a replay button');
+
+  // ---- phone-width console ----
+  const mob = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await mob.goto(`${base}/?ws=${ws1}&sel=${(await (await fetch(`${base}/api/ws/${ws1}/demo`)).json()).bookingIds.maya}&phone=maya`);
+  await mob.locator('.strip').waitFor();
+  const overflow = await mob.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(overflow <= 0, `console at 390px has no sideways page scroll (overflow ${overflow}px)`);
+  await axe(mob, 'console 390px');
+  await shot(mob, 'console-mobile.png');
+
+  // ---- booking page (390px): book + approve the hold ----
+  const ws2 = await newWs();
+  const book = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await book.goto(`${base}/book?ws=${ws2}`);
+  await book.locator('.slot').first().waitFor();
+  const bOverflow = await book.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(bOverflow <= 0, `booking page at 390px has no sideways scroll (overflow ${bOverflow}px)`);
+  await axe(book, 'booking page 390px');
+  await book.locator('.slot').first().click();
+  await book.getByLabel('Your name').fill('Jamie Doe');
+  await book.getByRole('checkbox').check();
+  await shot(book, 'booking-page-mobile.png', true);
+  await book.getByRole('button', { name: 'Book and approve with PayPal' }).click();
+  await book.getByRole('heading', { name: 'One last step' }).waitFor();
+  await axe(book, 'booking page approve step');
+  await book.getByRole('button', { name: 'Approve with PayPal' }).click();
+  await book.getByRole('heading', { name: "You're booked" }).waitFor();
+  const doneText = (await book.locator('.book-card.done').textContent()) ?? '';
+  check(/not a charge/.test(doneText), 'booking page confirms the hold is not a charge');
+  await shot(book, 'booking-page-booked.png');
+
+  // ---- error state: unknown workspace ----
+  const err = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await err.goto(`${base}/?ws=gone`);
+  await err.getByRole('heading', { name: /isn’t available/ }).waitFor();
+  await axe(err, 'console unknown workspace');
+  check(true, 'unknown workspace shows an error state');
+} finally {
+  await browser.close();
+  await app.close();
+}
+
+console.log(report.join('\n'));
+if (failures.length) {
+  console.error(`\n${failures.length} failure(s):\n- ${failures.join('\n- ')}`);
+  process.exit(1);
+}
+console.log('\nui-check passed');

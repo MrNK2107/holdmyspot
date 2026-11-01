@@ -123,7 +123,7 @@ export function App() {
 
   if (!s) {
     return loadError ? (
-      <div className="loading" role="alert">
+      <main className="loading">
         <h1>This demo workspace isn’t available</h1>
         <p className="muted">
           {loadError}. Private demos are kept in memory and reset when the server restarts.
@@ -131,7 +131,7 @@ export function App() {
         <a className="button primary" href="/">
           Open the shared demo
         </a>
-      </div>
+      </main>
     ) : (
       <div className="loading" role="status" aria-live="polite">
         <span className="spinner" aria-hidden /> Loading HoldMySpot…
@@ -149,11 +149,11 @@ export function App() {
             ◆
           </span>
           <div>
-            <div className="brand-name">HoldMySpot</div>
+            <h1 className="brand-name">HoldMySpot</h1>
             <div className="brand-sub">{s.business} · front desk</div>
           </div>
         </div>
-        <nav className="tabs">
+        <nav className="tabs" aria-label="Views">
           <button className={tab === 'console' ? 'on' : ''} onClick={() => setTab('console')}>
             Schedule
           </button>
@@ -176,7 +176,7 @@ export function App() {
         </div>
       </header>
 
-      <div className="travel">
+      <nav className="travel" aria-label="Demo clock and controls">
         <span className="travel-label">Time travel</span>
         {SCENES.map((sc) => (
           <button key={sc.label} disabled={busy || sc.at <= s.now} onClick={() => run(() => api.travel(sc.at))}>
@@ -214,7 +214,7 @@ export function App() {
         >
           New private demo
         </button>
-      </div>
+      </nav>
 
       {demoOn && s.paymentsMode === 'mock' && <DemoBar api={api} s={s} busy={busy} run={run} applyView={applyView} />}
 
@@ -236,7 +236,7 @@ export function App() {
             <WeekGrid s={s} selected={selected} onSelect={setSelected} />
             <Legend />
           </section>
-          <aside className="side">
+          <aside className="side" aria-label="Approvals and booking details">
             <Approvals s={s} busy={busy} onResolve={(id, c) => run(() => api.resolve(id, c))} onSelect={setSelected} />
             {sel ? (
               <BookingPanel b={sel} s={s} api={api} busy={busy} onRefund={() => run(() => api.refund(sel.id))} onApprove={(o) => run(() => api.simApprove(o))} />
@@ -244,7 +244,7 @@ export function App() {
               <div className="card muted">Select a booking to see its money timeline.</div>
             )}
           </aside>
-          <aside className="phone-col">
+          <aside className="phone-col" aria-label="Client text messages">
             <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
           </aside>
         </main>
@@ -480,9 +480,9 @@ function Approvals({
   };
   return (
     <div className="card approvals">
-      <h3>
+      <h2>
         Needs you <span className="count">{s.approvals.length}</span>
-      </h3>
+      </h2>
       {s.approvals.length === 0 && <p className="muted">Nothing to decide. Charges always wait for your tap.</p>}
       {s.approvals
         .slice()
@@ -529,7 +529,7 @@ function BookingPanel({
     <div className="card booking">
       <div className="booking-head">
         <div>
-          <h3>{b.clientName}</h3>
+          <h2>{b.clientName}</h2>
           <div className="muted">
             {b.serviceName} · {fmtDay(b.start)} {fmtTime(b.start)}
           </div>
@@ -543,8 +543,8 @@ function BookingPanel({
       <dl className="facts">
         <dt>State</dt>
         <dd className="mono">{b.state}</dd>
-        <dt>Hold</dt>
-        <dd>{usd(b.holdCents)} authorized on PayPal</dd>
+        <dt>Hold amount</dt>
+        <dd>{usd(b.holdCents)}</dd>
         {b.capturedCents !== undefined && (
           <>
             <dt>Charged</dt>
@@ -589,9 +589,9 @@ function BookingPanel({
           </button>
         )}
       </div>
-      <h4>Money timeline</h4>
+      <h3>Money timeline</h3>
       {audit.length === 0 && <p className="muted small">Loading the audit log…</p>}
-      <ol className="timeline" aria-label={`Audit log for ${b.clientName}`}>
+      <ol className="timeline" tabIndex={0} aria-label={`Audit log for ${b.clientName}`}>
         {audit.map((e) => (
           <li key={e.seq} className={`t-${e.kind}`}>
             <span className="t-time">
@@ -621,8 +621,12 @@ function Phone({
 }) {
   const [text, setText] = useState('');
   const thread = s.messages.filter((m) => m.clientId === clientId);
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => endRef.current?.scrollIntoView({ block: 'end' }), [thread.length, clientId]);
+  const threadRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // scroll only the thread, never the page (scrollIntoView would also scroll the window on phones)
+    const el = threadRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [thread.length, clientId]);
   const unread = (id: string) => s.messages.filter((m) => m.clientId === id && m.from === 'frontdesk').length;
   const send = (t: string) => {
     if (!t.trim()) return;
@@ -643,7 +647,7 @@ function Phone({
           ))}
         </select>
       </div>
-      <div className="thread">
+      <div className="thread" ref={threadRef} tabIndex={0} role="log" aria-label="Message thread">
         {thread.length === 0 && <p className="muted small center">No messages with {s.clients.find((c) => c.id === clientId)?.name} yet.</p>}
         {thread.map((m) => (
           <div key={m.id} className={`bubble ${m.from}`}>
@@ -651,7 +655,6 @@ function Phone({
             <span className="bubble-time">{fmtTime(m.at)}</span>
           </div>
         ))}
-        <div ref={endRef} />
       </div>
       <div className="quick">
         {(QUICK[clientId] ?? []).map((q) => (
@@ -716,19 +719,19 @@ function PolicyEditor({ s, api, onApproved }: { s: Snapshot; api: Api; onApprove
   return (
     <main className="policy">
       <section className="card">
-        <h3>Your policy, in your words</h3>
-        <textarea value={prose} onChange={(e) => setProse(e.target.value)} rows={8} />
+        <h2>Your policy, in your words</h2>
+        <textarea aria-label="Cancellation policy text" value={prose} onChange={(e) => setProse(e.target.value)} rows={8} />
         <div className="actions">
           <button className="primary" onClick={compile}>
             Compile into rules
           </button>
         </div>
         {spans.length > 0 && <p className="prose-preview" dangerouslySetInnerHTML={{ __html: highlighted }} />}
-        <h4>What clients see now (v{s.policy.version})</h4>
+        <h3>What clients see now (v{s.policy.version})</h3>
         <p className="summary">{s.policy.summary}</p>
       </section>
       <section className="card">
-        <h3>Compiled rules</h3>
+        <h2>Compiled rules</h2>
         {!merged && <p className="muted">Compile your policy to see the rules the engine will enforce. The AI only proposes; you approve.</p>}
         {merged && (
           <>
