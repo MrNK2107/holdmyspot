@@ -6,6 +6,7 @@ import { Engine } from './engine/engine.js';
 import type { PaymentsGateway, WebhookEvent } from './paypal/gateway.js';
 import { MockPayPalGateway } from './paypal/mock.js';
 import { RequestPreview } from './paypal/preview.js';
+import { PayPalToolkitReader } from './paypal/toolkit.js';
 import { DEMO_START, SEED_POLICY, seed } from './seed.js';
 
 export interface WorkspaceDeps {
@@ -13,6 +14,13 @@ export interface WorkspaceDeps {
   /** shared real gateway; when absent each workspace gets its own deterministic simulator */
   gateway?: PaymentsGateway;
   baseUrl?: string;
+  /**
+   * PayPal Agent Toolkit read tools for the owner's questions (on unless false). In simulator mode the
+   * toolkit's HTTP calls are answered from the workspace's simulator; with a real gateway it needs
+   * toolkitCredentials and calls api.sandbox.paypal.com (GET only).
+   */
+  agentToolkit?: boolean;
+  toolkitCredentials?: { clientId: string; clientSecret: string };
 }
 
 export interface Workspace {
@@ -28,6 +36,8 @@ export interface Workspace {
 export class Workspaces {
   private map = new Map<string, Workspace>();
   private seq = 0;
+  /** one toolkit client for the real sandbox account (shared, like the real gateway) */
+  private toolkitShared?: PayPalToolkitReader;
 
   constructor(private deps: WorkspaceDeps = {}) {}
 
@@ -50,6 +60,11 @@ export class Workspaces {
       gateway = preview.wrap(mock);
     }
     const llm = this.deps.llm ?? (() => new FakeLlmProvider());
+    let paypalReader: PayPalToolkitReader | undefined;
+    if (this.deps.agentToolkit !== false) {
+      if (mock) paypalReader = PayPalToolkitReader.simulator(mock);
+      else if (this.deps.toolkitCredentials) paypalReader = this.toolkitShared ??= PayPalToolkitReader.sandbox(this.deps.toolkitCredentials.clientId, this.deps.toolkitCredentials.clientSecret);
+    }
     const engine = new Engine({
       id,
       clock,
@@ -59,6 +74,7 @@ export class Workspaces {
       ownerName: 'Priya',
       businessName: 'Polished by Priya',
       baseUrl: this.deps.baseUrl,
+      paypalReader,
     });
     if (mock) {
       // Deliver simulated webhooks after the API call returns, as PayPal does.

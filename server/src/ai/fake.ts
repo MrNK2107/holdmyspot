@@ -258,10 +258,15 @@ function ownerStep(
   result: (name: string) => Record<string, unknown>,
   call: (tool: string, args: Record<string, unknown>, why: string) => AiTasks['agent_step']['output'],
 ): AiTasks['agent_step']['output'] {
+  // PayPal Agent Toolkit read tools, when the owner's toolset has them
+  const toolkit = i.tools.some((t) => t.name === 'paypal.list_transactions');
   if (/refund/i.test(i.text)) {
     if (!called('find_booking')) return call('find_booking', { query: i.text }, 'Find the charged booking the owner means.');
     const b = result('find_booking');
     if (!b.bookingId) return call('finish', { answer: 'I could not find a charged booking for that client, so there is nothing to refund.' }, 'No capture to refund.');
+    if (toolkit && b.captureId && !called('paypal.list_transactions')) {
+      return call('paypal.list_transactions', { transaction_id: b.captureId }, 'Confirm on PayPal (Agent Toolkit, read only) that the capture settled before proposing anything.');
+    }
     if (!called('propose_refund')) {
       return call('propose_refund', { bookingId: b.bookingId, reason: i.text.slice(0, 120) }, 'A refund moves money, so I can only propose it; the owner confirms on a card.');
     }
@@ -272,11 +277,16 @@ function ownerStep(
     return call('finish', { answer }, 'Tell the owner what is waiting for her.');
   }
   if (!called('list_transactions')) return call('list_transactions', {}, "Pull this week's PayPal activity before answering.");
+  if (toolkit && !called('paypal.list_transactions')) {
+    return call('paypal.list_transactions', {}, "Cross-check against PayPal's own transaction report (Agent Toolkit, read only).");
+  }
   const t = (result('list_transactions').totals ?? {}) as Record<string, number>;
+  const report = (result('paypal.list_transactions').result ?? {}) as { transaction_details?: unknown[] };
+  const settled = toolkit && Array.isArray(report.transaction_details) ? ` PayPal's report shows ${report.transaction_details.length} settled transaction(s).` : '';
   return call(
     'finish',
     {
-      answer: `This week: ${dollars(t.heldCents)} held on PayPal (not charged), ${dollars(t.chargedCents)} charged, ${dollars(t.refundedCents)} refunded. ${t.refilled ?? 0} late cancel(s) refilled at $0, ${t.excused ?? 0} excused.`,
+      answer: `This week: ${dollars(t.heldCents)} held on PayPal (not charged), ${dollars(t.chargedCents)} charged, ${dollars(t.refundedCents)} refunded. ${t.refilled ?? 0} late cancel(s) refilled at $0, ${t.excused ?? 0} excused.${settled}`,
     },
     'Summarise from the transactions.',
   );

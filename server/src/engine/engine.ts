@@ -7,6 +7,7 @@ import { assertTransition, isTerminal, moneyState } from '../domain/stateMachine
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
 import { slotMatches } from '../domain/waitlist.js';
 import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
+import { type PayPalToolkitReader, TOOLKIT_MONEY_TOOLS, TOOLKIT_PACKAGE, TOOLKIT_PREFIX, TOOLKIT_VERSION } from '../paypal/toolkit.js';
 
 export type OwnerMode = 'ask' | 'autopilot';
 
@@ -51,6 +52,8 @@ export interface EngineOptions {
   /** hold strategy: merchant-initiated at T-72h (primary) or authorize at booking + reauthorize at T-72h (fallback) */
   holdStrategy?: 'mit' | 'reauth';
   baseUrl?: string;
+  /** PayPal Agent Toolkit, read-only allow-list (paypal/toolkit.ts). Owner questions only; never client texts. */
+  paypalReader?: PayPalToolkitReader;
 }
 
 /** One inspectable run of the front desk on an inbound client text: tool calls, policy decision, money gate. */
@@ -121,6 +124,7 @@ export class Engine {
   /** late authorizations whose void failed: shown to the owner, never silently dropped */
   unreleasedAuths: Array<{ bookingId: string; authorizationId: string; error: string }> = [];
   private baseUrl: string;
+  readonly paypalReader?: PayPalToolkitReader;
 
   constructor(o: EngineOptions) {
     this.id = o.id;
@@ -134,6 +138,7 @@ export class Engine {
     this.ownerName = o.ownerName;
     this.businessName = o.businessName;
     this.baseUrl = o.baseUrl ?? '';
+    this.paypalReader = o.paypalReader;
     this.audit.subscribe(() => this.emit('audit'));
   }
 
@@ -680,6 +685,8 @@ export class Engine {
           return { status: 'awaiting_owner', approvalId: card.id };
         },
       },
+      // PayPal's own read tools via the official Agent Toolkit (allow-listed GETs; see paypal/toolkit.ts)
+      ...(this.paypalReader?.tools() ?? []).map((t): AgentTool => ({ name: t.name, access: 'read', source: t.source, description: t.description, run: t.run })),
       { name: 'finish', access: 'end', description: 'End the turn. args: {"answer": "<short reply to the owner>"}', run: async () => ({}) },
     ];
     const out = await this.traced(run, () =>
@@ -1126,6 +1133,14 @@ export class Engine {
       approvals: this.openApprovals(),
       agentRuns: this.agentRuns.slice(-30).reverse(),
       agentToolsNotGiven: MONEY_TOOLS_NOT_GIVEN,
+      agentToolkit: this.paypalReader
+        ? {
+            package: `${TOOLKIT_PACKAGE}@${TOOLKIT_VERSION}`,
+            tools: this.paypalReader.tools().map((t) => t.name),
+            notGiven: TOOLKIT_MONEY_TOOLS.map((n) => `${TOOLKIT_PREFIX}${n}`),
+            http: this.paypalReader.http.slice(-20),
+          }
+        : null,
       unreleasedAuths: this.unreleasedAuths,
       offers: this.offers,
       messages: this.messages,

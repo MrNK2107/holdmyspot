@@ -27,7 +27,7 @@ describe('owner asks the front desk agent', () => {
     const { e, mock, alexId } = await chargedAlex();
     const before = refunds(mock);
     const { answer, run } = await e.askAssistant('Alex apologised, please refund her no-show fee.');
-    expect(run.steps.filter((s) => s.kind === 'tool').map((s) => s.name)).toEqual(['find_booking', 'propose_refund', 'finish']);
+    expect(run.steps.filter((s) => s.kind === 'tool').map((s) => s.name)).toEqual(['find_booking', 'paypal.list_transactions', 'propose_refund', 'finish']);
     expect(run.steps.find((s) => s.name === 'propose_refund')?.access).toBe('propose');
     expect(refunds(mock)).toBe(before); // proposing is not refunding
     expect(e.bookings.get(alexId)!.refundId).toBeUndefined();
@@ -79,7 +79,7 @@ describe('owner asks the front desk agent', () => {
   it('answers a summary question from list_transactions without proposing anything', async () => {
     const { e } = await chargedAlex();
     const { answer, run } = await e.askAssistant('How did this week go?');
-    expect(run.steps.filter((s) => s.kind === 'tool').map((s) => s.name)).toEqual(['list_transactions', 'finish']);
+    expect(run.steps.filter((s) => s.kind === 'tool').map((s) => s.name)).toEqual(['list_transactions', 'paypal.list_transactions', 'finish']);
     expect(answer).toMatch(/\$20 charged/);
     expect(run.gate.kind).toBe('none');
   });

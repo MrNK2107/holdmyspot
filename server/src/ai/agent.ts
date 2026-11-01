@@ -18,6 +18,8 @@ export interface AgentTool {
   name: string;
   access: ToolAccess;
   description: string;
+  /** where the tool comes from when it is not ours, e.g. 'paypal-agent-toolkit' */
+  source?: string;
   run(args: Record<string, unknown>): Promise<unknown>;
 }
 
@@ -26,6 +28,7 @@ export interface TraceStep {
   kind: 'tool' | 'denied' | 'code' | 'effect' | 'gate' | 'owner';
   name: string;
   access?: ToolAccess;
+  source?: string;
   why?: string;
   args?: Record<string, unknown>;
   result?: string;
@@ -91,7 +94,7 @@ export class FrontDeskAgent {
       }
       // record the call before it runs, so what the tool triggers (policy check, owner gate) is listed after it
       this.audit.add('ai', `agent → ${name}`, { bookingId, data: { args, why } });
-      const rec = onStep({ kind: 'tool', name, access: tool.access, why, args });
+      const rec = onStep({ kind: 'tool', name, access: tool.access, ...(tool.source ? { source: tool.source } : {}), why, args });
       let result: unknown;
       try {
         result = await tool.run(args);

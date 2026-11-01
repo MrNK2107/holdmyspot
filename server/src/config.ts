@@ -15,7 +15,8 @@ export function configFromEnv(env: Record<string, string | undefined>): {
 } {
   // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
   const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
-  const deps: WorkspaceDeps = { baseUrl };
+  // PAYPAL_AGENT_TOOLKIT=off removes the PayPal Agent Toolkit read tools from the owner's agent
+  const deps: WorkspaceDeps = { baseUrl, agentToolkit: env.PAYPAL_AGENT_TOOLKIT !== 'off' };
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {
@@ -27,6 +28,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
       cancelUrl: `${baseUrl}/paypal/cancel`,
     });
     deps.gateway = gw;
+    deps.toolkitCredentials = { clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET };
     paymentsMode = 'sandbox';
     const webhookId = env.PAYPAL_WEBHOOK_ID;
     if (webhookId) webhookVerifier = (headers, event) => gw.verifyWebhook(headers, event, webhookId);

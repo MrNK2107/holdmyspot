@@ -20,7 +20,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { ALL_TOOLS_ENABLED, PayPalAgentToolkit } from '@paypal/agent-toolkit/openai';
+import type { PayPalAgentToolkit } from '@paypal/agent-toolkit/openai';
 import { centsToValue } from './gateway.js';
 import type { MockPayPalGateway } from './mock.js';
 
@@ -29,6 +29,8 @@ export const TOOLKIT_PACKAGE = '@paypal/agent-toolkit';
 const require = createRequire(import.meta.url);
 const toolkitEntry = require.resolve('@paypal/agent-toolkit/openai');
 export const TOOLKIT_VERSION: string = JSON.parse(readFileSync(join(dirname(toolkitEntry), '..', 'package.json'), 'utf8')).version;
+/** Loaded on first use (it costs ~110 MB of RSS), so workspaces that never ask PayPal do not pay for it. */
+const loadToolkit = () => require('@paypal/agent-toolkit/openai') as typeof import('@paypal/agent-toolkit/openai');
 
 /** The only toolkit tools the agent can see or call. All are HTTP GETs. */
 export const TOOLKIT_READ_TOOLS = ['list_transactions', 'get_order', 'get_refund', 'list_disputes', 'get_dispute'] as const;
@@ -50,6 +52,7 @@ export const TOOLKIT_PREFIX = 'paypal.';
 
 /** Every tool name the installed toolkit can expose (all actions on). Used only to prove what we leave out. */
 export function allToolkitToolNames(): string[] {
+  const { PayPalAgentToolkit, ALL_TOOLS_ENABLED } = loadToolkit();
   const tk = new PayPalAgentToolkit({ clientId: 'unused', clientSecret: 'unused', configuration: { actions: ALL_TOOLS_ENABLED, context: { sandbox: true } } });
   return tk.getTools().map((t) => t.function.name);
 }
@@ -66,14 +69,14 @@ export interface ToolkitHttpCall {
 type Backend = { kind: 'simulator'; sim: MockPayPalGateway } | { kind: 'live' };
 const als = new AsyncLocalStorage<{ backend: Backend; log: ToolkitHttpCall[] }>();
 
-// the exact axios instance the toolkit loads (hoisted or nested), so the adapter governs its calls
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const axios: any = createRequire(toolkitEntry)('axios');
 let installed = false;
 
 function installHttpGate(): void {
   if (installed) return;
   installed = true;
+  // the exact axios instance the toolkit loads (hoisted or nested), so the adapter governs its calls
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const axios: any = createRequire(toolkitEntry)('axios');
   const network = axios.getAdapter(axios.defaults.adapter);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   axios.defaults.adapter = async (config: any) => {
@@ -208,18 +211,24 @@ export interface ToolkitReadToolDef {
 }
 
 export class PayPalToolkitReader {
-  private toolkit: PayPalAgentToolkit;
+  private tk?: PayPalAgentToolkit;
   /** every HTTP request the toolkit made (or tried) for this workspace */
   readonly http: ToolkitHttpCall[] = [];
   private seq = 0;
 
-  constructor(private backend: Backend & { clientId?: string; clientSecret?: string }) {
-    installHttpGate();
-    this.toolkit = new PayPalAgentToolkit({
-      clientId: backend.kind === 'live' ? backend.clientId! : 'simulator',
-      clientSecret: backend.kind === 'live' ? backend.clientSecret! : 'simulator',
-      configuration: { actions: TOOLKIT_READ_ACTIONS, context: { sandbox: true } },
-    });
+  constructor(private backend: Backend & { clientId?: string; clientSecret?: string }) {}
+
+  private get toolkit(): PayPalAgentToolkit {
+    if (!this.tk) {
+      installHttpGate();
+      const { PayPalAgentToolkit } = loadToolkit();
+      this.tk = new PayPalAgentToolkit({
+        clientId: this.backend.kind === 'live' ? this.backend.clientId! : 'simulator',
+        clientSecret: this.backend.kind === 'live' ? this.backend.clientSecret! : 'simulator',
+        configuration: { actions: TOOLKIT_READ_ACTIONS, context: { sandbox: true } },
+      });
+    }
+    return this.tk;
   }
 
   static simulator(sim: MockPayPalGateway): PayPalToolkitReader {
@@ -247,6 +256,7 @@ export class PayPalToolkitReader {
       const val = args[k];
       if (typeof val === 'string' && val.length <= 128) clean[k] = val;
     }
+    if (this.http.length > 200) this.http.splice(0, this.http.length - 200);
     const before = this.http.length;
     const msg = await als.run({ backend: this.backend, log: this.http }, () =>
       this.toolkit.handleToolCall({ id: `call_${++this.seq}`, type: 'function', function: { name, arguments: JSON.stringify(clean) } }),
