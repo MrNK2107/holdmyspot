@@ -16,6 +16,7 @@ import {
 import { AgGridReact } from 'ag-grid-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Api, type AuditEntry, type BookingView, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { MONEY_TEXT, ledgerAmounts } from './money';
 
 ModuleRegistry.registerModules([
   ClientSideRowModelModule,
@@ -39,17 +40,6 @@ const theme = themeQuartz.withParams({
   rowHeight: 38,
   headerHeight: 38,
 });
-
-const MONEY_TEXT: Record<string, string> = {
-  none: 'no hold',
-  vaulted: 'wallet saved',
-  held: 'held',
-  'pending-refill': 'refilling',
-  voided: 'released',
-  captured: 'charged',
-  failed: 'hold failed',
-  refunded: 'refunded',
-};
 
 interface Row {
   id: string;
@@ -78,7 +68,6 @@ function bookingStateLabel(b: BookingView): string {
 
 function toRow(b: BookingView, s: Snapshot): Row {
   const name = (id?: string) => (id ? (s.bookings.find((x) => x.id === id)?.clientName ?? id) : '');
-  const charged = b.captureId ? (b.capturedCents ?? b.holdCents) : 0;
   return {
     id: b.id,
     start: b.start,
@@ -86,10 +75,7 @@ function toRow(b: BookingView, s: Snapshot): Row {
     service: b.serviceName,
     state: bookingStateLabel(b),
     money: b.money,
-    heldCents: b.money === 'held' || b.money === 'pending-refill' ? b.holdCents : 0,
-    chargedCents: charged,
-    refundedCents: b.refundId ? charged : 0,
-    keptCents: b.refundId ? 0 : charged,
+    ...ledgerAmounts(b),
     authorizationId: b.authorizationId ?? '',
     captureId: b.captureId ?? '',
     refundId: b.refundId ?? '',

@@ -204,3 +204,22 @@ describe('webhook event-id dedupe', () => {
     expect(await e.ingestWebhook(ev)).toBe('duplicate');
   });
 });
+
+describe('the ledger shows the server money state', () => {
+  it('a reversed capture is neither charged nor kept in the ledger row', async () => {
+    const { ledgerAmounts, MONEY_TEXT } = await import('../../web/src/money.js');
+    const w = await new Workspaces().create('lg');
+    const e = w.engine;
+    await e.clock.advanceTo(Date.UTC(2026, 10, 5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!.id, 'no_show');
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!.id, 'charge');
+    const view = () => e.snapshot().bookings.find((b) => b.id === alex.id)!;
+    expect(ledgerAmounts(view())).toMatchObject({ chargedCents: 2000, keptCents: 2000 });
+    await e.ingestWebhook({ id: 'WH-REV', event_type: 'PAYMENT.CAPTURE.REVERSED', create_time: '', resource: { id: alex.captureId!, custom_id: `lg:${alex.id}`, status: 'REVERSED' } });
+    expect(view().money).toBe('reversed');
+    expect(ledgerAmounts(view())).toEqual({ heldCents: 0, chargedCents: 0, refundedCents: 0, keptCents: 0 });
+    // every money state the server can send has a label
+    for (const m of ['none', 'vaulted', 'held', 'pending-refill', 'voided', 'captured', 'failed', 'refunded', 'reversed']) expect(MONEY_TEXT[m]).toBeTruthy();
+  });
+});
