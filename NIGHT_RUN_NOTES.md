@@ -170,3 +170,38 @@ Goal: close pass-5 loose ends and harden for submission. PITCH.md and the create
 - `npm run gallery` and `ui-check` serve `web/dist`: run `npm run build -w web` first after a UI change, or the images show the old UI.
 - npm 11 `overrides` did not re-resolve a nested dep (mathjs) even after deleting it from the lock; deleting the lock entry left the package missing. Restore the lock from a backup if you try again.
 - tsx's parser chokes on some regex literals in an `--import` hook file; write such helpers without regex or load them before tsx.
+
+## Review 2026-11-02 (adversarial money review, 02:32-04:15 IST, same branch, local only)
+
+Independent read of `server/src` (engine, policy/decide, gateway/mock/rest/ids, toolkit gate, webhooks, agent) before reading these notes. Each bug: failing test first (`server/test/review2.test.ts`, `restPaypal.test.ts`), minimal fix, one commit. PITCH.md and the create_refund replay untouched.
+
+### Bugs confirmed and fixed (14 commits, `a78aca5..7951252`)
+1. **Stale owner cards moved money**: an attendance card left open after a late-cancel text; tapping "arrived" voided the hold behind the pending fee card, then threw on the illegal transition. `applyApproval` now checks the booking can still take the card's step before any PayPal call; a stale card is closed (`resolved: 'stale'`, `StaleCardError`).
+2. **Fees used the current policy, not the booked one**: the capture note cites `v{policyVersion}` but the amount/caps came from whatever the owner approved later. Engine keeps every approved version; `rulesFor(b)` (version + hash match) feeds decide, the fee card and `captureViolations`.
+3. **Two live holds on one client**: declined reauthorization at T-72h left the original auth live; the re-approval auth replaced it in `onAuthorized` without a void. Replaced auths are now voided (failure -> `unreleasedAuths`), except reauthorization parents (`reauthParents`, set before the call so an early webhook is safe).
+4. **PayPal-Request-Id / custom_id reuse in real-PayPal mode**: `demo` (fixed id), reset or restart restarts `bk_1...`, so ids repeated and PayPal would replay the previous life's orders/captures and its webhooks would hit the new booking. Sandbox mode adds a random per-engine run tag to request ids and custom_id; `ingestWebhook` also checks the workspace part. Simulator ids unchanged (screenshots stable).
+5. **Model-fabricated quotes on review cards**: the card quoted `evidenceSpan` as the client's words; an injected/hallucinated span showed words the client never wrote. Spans not found in the text are replaced by the client's message.
+6. **Refilled slot charged when its void failed**: `onRefillClaimAuthorized` threw before REFILLED, so the cutoff raised a capture card. Now REFILLED regardless; live hold flagged.
+7. **CHARGED bookings adopted a stray new authorization** (overwrote the captured auth id, new hold never released). CHARGED is treated like the other terminal states: the late auth is voided.
+8. **Free-window cancel left chargeable when the void failed** (booking stayed HELD, later attendance -> no-show -> fee). Now CANCELLED_EARLY regardless; live hold flagged (`releaseOrFlag`).
+9. **"y'all ..." claimed a refill offer** (`YES` regex `\b` after `y` matches before an apostrophe) and placed a hold on the texter's wallet. Yes must be a word on its own.
+10. **REST capture FAILED recorded as COMPLETED** (`rest.ts`): now DECLINED. 11. **REST refund FAILED/CANCELLED recorded as refunded**: now throws `REFUND_FAILED`.
+12. **Reply-draft failure re-ran the settlement**: `reply()` threw after the money step, the agent/fallback retried `requestSettlement` and sent a second refill offer for the same slot (two claimable offers). `reply()` falls back to a fixed text.
+13. **Offer-ranking failure stranded the booking** in PENDING_REFILL with no offer and no cutoff (no fee decision ever). Falls back to waitlist order + fixed text.
+14. **No-show fee card fell back to the full hold** when `decide()` returned EXCUSE (e.g. a compiled policy listing `none` as excused). Capped at the no-show fee.
+
+### Suspected / not fixed (need a product call or real PayPal to confirm)
+- `engine.ts:511` `activeBookingFor` always targets the client's *earliest* active booking, and `propose_settlement` only accepts that id: "cancel my Saturday nail art" from a client with two upcoming visits cancels (or late-fees) the wrong one. Needs booking disambiguation (CLARIFY when >1 active booking, or match `proposedTime`); would change seeded flows (riley/taylor/noor have several bookings).
+- `engine.ts:525` a "yes, but I need to cancel..." from someone with an open offer still claims (regex is prefix-based). Consider whole-message affirmatives only.
+- `app.ts:245` real webhooks are routed outside the per-workspace lock (`Locks`), so they can interleave with an owner tap at network awaits. Current handlers look safe (reauth parents, known-auth set) but serializing them is cheap.
+- `engine.ts:478` / `:1189` reauthorize errors other than a DECLINED result throw out of the T-72h job (aborts `advanceTo` mid-way) or keep the capture card failing forever after the 29-day expiry; `holdStrategy: 'reauth'` with a booking > 32 days out cannot work (auth expires before T-72h). `reauth` is not reachable from config today.
+- `engine.ts:841` autopilot EXCUSE still uses `excuse()`, which throws on a void failure and leaves the booking HELD (chargeable later); owner taps are fine (card stays open for retry).
+- `engine.ts:1098` end-of-day review uses 23:59 **UTC** of the visit day: late-evening US visits get minutes (or zero) before NEEDS_REVIEW. All T-72h / window math is epoch ms, so no DST bug there.
+- `policy.ts:169` `captureViolations` caps at the hold, not at the fee for the kind (late vs no-show); the card amounts are right now, the invariant is looser than it reads.
+- `workspaces.ts:70` with toolkit credentials, one shared reader reads the whole sandbox account: any visitor workspace's owner questions can list other workspaces' PayPal transactions (read-only).
+- Webhooks other than `PAYMENT.AUTHORIZATION.CREATED` (`engine.ts:505`) are only logged: a CAPTURE.DENIED / reversal leaves the booking CHARGED.
+- Refund card left open after a direct `/refund` call errors with "already refunded" on every tap (not stale-closed).
+
+### Verified
+- `npm test` 179 passing (21 files), peak 1.30 GB / 2 GB. `npm run build` passes, 0.83 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB. `npm run eval` clean. Screenshot churn from ui-check reverted (content identical).
+- History note: early commits of this pass were written with CRLF by a Windows text-mode write; rewritten to LF on this local branch before anything else built on them (backup ref `refs/original/...` left by filter-branch).
