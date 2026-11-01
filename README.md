@@ -10,13 +10,13 @@
 
 ```bash
 npm install
-npm run build -w web     # owner console + booking page
-npm start                # http://127.0.0.1:18080  (no keys needed)
-npm test                 # server test suite
+npm run demo             # builds the web app, starts http://127.0.0.1:18080 (no keys needed)
+npm test                 # server tests, incl. end-to-end tests over a real HTTP server
+npm run ui-check         # headless browser: plays the guided demo, axe accessibility checks, refreshes docs/screenshots
 npm run eval             # message reader / injection / waitlist evals
 ```
 
-Open `http://127.0.0.1:18080/?ws=demo` for the owner console and `/book?ws=demo` for the client booking page. Use the time-travel buttons to walk the demo:
+Open `http://127.0.0.1:18080/?demo=1` for the **guided demo**: 13 beats, about 3 minutes, one press of → per beat (or `&autoplay=12`). The video script is in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md). `/book?ws=demo` is the client booking page. Or walk it yourself with the time-travel buttons:
 
 | Scene | What happens |
 |---|---|
@@ -53,7 +53,7 @@ Every booking has a money timeline: AI outputs, engine decisions, PayPal calls a
 Capture ≤ authorized amount; ≤ policy maximum; never below the confidence threshold; never on emergency/medical/bereavement without the owner; every capture needs an owner tap; silence never charges (unanswered attendance becomes "Needs review"); every PayPal write carries a `PayPal-Request-Id`; duplicate webhooks are logged and ignored.
 
 ### Failure paths handled
-T−72h hold declined → re-approval link · refill claimer declined → next candidate · duplicate webhook ignored · low-confidence message → clarifying question · prompt injection → zero money effect (measured: `npm run eval`) · capture after the 3-day honor period → reauthorize first, honest error if refused.
+T−72h hold declined → re-approval link · late cancel before any hold exists → same refill-first path, fee waived automatically if unfilled · refill claimer declined → next candidate · duplicate webhook ignored · low-confidence message → clarifying question · prompt injection → zero money effect (measured: `npm run eval`) · capture after the 3-day honor period → reauthorize first, honest error if refused.
 
 ## Configuration
 See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.

@@ -985,6 +985,11 @@ details.legend summary::-webkit-details-marker {
   }
   .travel {
     padding: 10px 16px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .travel > * {
+    flex: none;
   }
   .travel .spacer {
     display: none;
@@ -993,7 +998,7 @@ details.legend summary::-webkit-details-marker {
     overflow-x: auto;
   }
   .grid {
-    min-width: 600px;
+    min-width: 720px;
   }
   .phone {
     position: static;
