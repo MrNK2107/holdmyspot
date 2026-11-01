@@ -228,3 +228,13 @@ describe('PayPalRestGateway (recorded HTTP)', () => {
     await expect(g.void('A9', 'v')).rejects.toThrow('PREVIOUSLY_VOIDED');
   });
 });
+
+describe('PayPalRestGateway: capture outcomes (review 2026-11-02)', () => {
+  it('a capture PayPal reports as FAILED is not booked as a completed charge', async () => {
+    const { g } = gw([
+      TOKEN,
+      { method: 'POST', path: '/v2/payments/authorizations/A1/capture', status: 201, body: { id: '2GG279541U471931P', status: 'FAILED', amount: { currency_code: 'USD', value: '20.00' } } },
+    ]);
+    expect(await g.capture({ requestId: 'c', authorizationId: 'A1', amountCents: 2000, finalCapture: true })).toMatchObject({ status: 'DECLINED' });
+  });
+});
