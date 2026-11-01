@@ -27,8 +27,8 @@ describe('seeded workspace', () => {
     expect(e.bookings.size).toBe(12);
     expect(bookingOf('sam').state).toBe('HELD'); // Wed 17:00 is 56h away
     expect(bookingOf('maya').state).toBe('VAULTED'); // Thu 17:00 is 80h away
-    expect(bookingOf('ben').state).toBe('BOOKED'); // not vaulted: waiting for buyer approval
-    expect(bookingOf('ben').approvalLink).toMatch(/^\/sim\/t1\/paypal\/approve\/ORDER-/);
+    expect(bookingOf('ben').state).toBe('BOOKED'); // not vaulted, >72h out: asked to save PayPal (Vault v3), no hold yet
+    expect(bookingOf('ben').approvalLink).toMatch(/^\/sim\/t1\/paypal\/approve\/VSETUP-/);
     expect(e.clock.pending().some((j) => j.name.startsWith('T-72h'))).toBe(true);
     expect(e.waitlist.map((w) => w.parsed?.serviceIds)).toEqual([['gel'], ['gel'], ['gel', 'pedi']]);
   });
@@ -187,6 +187,15 @@ describe('safety', () => {
     expect(e.audit.forBooking(sam.id).some((a) => a.summary.startsWith('honor period over: reauthorize first'))).toBe(true);
   });
 
+  it('caps the number of visitor workspaces, keeping the shared demo', async () => {
+    const reg = new Workspaces();
+    reg.maxWorkspaces = 3;
+    await reg.create('demo');
+    for (let i = 0; i < 5; i++) await reg.create();
+    expect(reg.ids()).toHaveLength(3);
+    expect(reg.ids()).toContain('demo');
+  });
+
   it('workspaces are isolated', async () => {
     const reg = new Workspaces();
     const a = await reg.create('a');
@@ -196,5 +205,18 @@ describe('safety', () => {
     expect(await reg.routeWebhook({ id: 'x', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: 'q', custom_id: 'zz:bk_1' } })).toBe(
       'unknown_workspace',
     );
+  });
+});
+
+describe('vault-first booking (more than 72h out, no saved wallet)', () => {
+  it('saves the wallet now and places the merchant-initiated hold at T-72h', async () => {
+    const ben = bookingOf('ben');
+    const setup = ben.approvalLink!.split('/').at(-1)!;
+    expect(mock.calls.filter((c) => c.op === 'placeHold' && c.requestId.includes(ben.id))).toHaveLength(0);
+    mock.approve(setup);
+    await e.completeApproval(setup);
+    expect(ben.state).toBe('VAULTED');
+    await e.clock.advanceTo(ben.start - 72 * 3_600_000);
+    expect(ben.state).toBe('HELD');
   });
 });

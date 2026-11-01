@@ -59,10 +59,10 @@ T−72h hold declined → re-approval link · refill claimer declined → next c
 See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
 
 ## Not built yet (honest list)
-Vault v3 setup-token path for bookings more than 72h out (new clients are authorized at booking today); webhook signature verification; Agent Toolkit `create_refund`/`list_transactions`; Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
+Agent Toolkit `create_refund`/`list_transactions`; Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
 
 ## Tools
-- PayPal Orders v2 (intent=AUTHORIZE), Payments v2 (capture, void, reauthorize, refund), Vault (stored credentials), webhooks.
+- PayPal Orders v2 (intent=AUTHORIZE, merchant-initiated with `vault_id` + `stored_credential`), Payments v2 (capture, void, reauthorize, refund), Vault v3 (setup token → payment token for bookings more than 72h out), webhooks (signature-verified; the endpoint refuses events when no `PAYPAL_WEBHOOK_ID` is configured).
 - Claude (Anthropic API) for policy compilation, message classification, waitlist parsing/ranking and reply drafting, behind a provider interface with a deterministic fake for tests and keyless demos.
 
 ## Licence

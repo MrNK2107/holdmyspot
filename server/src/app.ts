@@ -12,6 +12,8 @@ export interface AppOptions {
   workspaces?: Workspaces;
   webDist?: string;
   logger?: boolean;
+  /** Verifies real PayPal webhook signatures. Without it the webhook endpoint refuses every event. */
+  webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown) => Promise<boolean>;
 }
 
 /** Serializes engine operations per workspace so concurrent requests never interleave money logic. */
@@ -181,8 +183,14 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 <script>b.onclick=async()=>{const r=await fetch('/api/ws/${wsId.replace(/[^\w-]/g, '')}/sim/approve/${orderId.replace(/[^\w-]/g, '')}',{method:'POST'});document.getElementById('r').textContent=r.ok?'Approved. You can close this tab.':'Failed: '+(await r.json()).error}</script>`);
   });
 
-  // Real PayPal webhooks. Signature verification (POST /v1/notifications/verify-webhook-signature) is a TODO before going live.
-  app.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req) => ({ result: await workspaces.routeWebhook(req.body) }));
+  // Real PayPal webhooks, verified with POST /v1/notifications/verify-webhook-signature.
+  // Unverified events could fake an authorization, so without a verifier nothing is accepted.
+  app.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req, reply) => {
+    if (!opts.webhookVerifier) return reply.code(403).send({ error: 'webhook verification not configured' });
+    const ok = await opts.webhookVerifier(req.headers as Record<string, string | undefined>, req.body).catch(() => false);
+    if (!ok) return reply.code(401).send({ error: 'invalid webhook signature' });
+    return { result: await workspaces.routeWebhook(req.body) };
+  });
 
   const dist = opts.webDist;
   if (dist && existsSync(join(dist, 'index.html'))) {

@@ -103,9 +103,35 @@ export class MockPayPalGateway implements PaymentsGateway {
 
   /** Simulated buyer approval in the PayPal popup. */
   approve(orderId: string): void {
+    const setup = this.setups.get(orderId);
+    if (setup) {
+      setup.approved = true;
+      return;
+    }
     const o = this.orders.get(orderId);
     if (!o) throw new PaymentsError('RESOURCE_NOT_FOUND', `order ${orderId}`);
     o.approved = true;
+  }
+
+  private setups = new Map<string, { customId: string; approved: boolean; vaultId?: string }>();
+
+  createVaultSetup(req: { requestId: string; customId: string; description: string }): Promise<{ setupTokenId: string; approvalUrl: string }> {
+    return this.once('createVaultSetup', req.requestId, () => {
+      const setupTokenId = this.id('VSETUP');
+      this.setups.set(setupTokenId, { customId: req.customId, approved: false });
+      return { setupTokenId, approvalUrl: `${this.opts.baseUrl ?? ''}/paypal/approve/${setupTokenId}` };
+    });
+  }
+
+  completeVaultSetup(setupTokenId: string, requestId: string): Promise<{ vaultId: string }> {
+    return this.once('completeVaultSetup', requestId, async () => {
+      const s = this.setups.get(setupTokenId);
+      if (!s) throw new PaymentsError('RESOURCE_NOT_FOUND', `setup token ${setupTokenId}`);
+      if (!s.approved) throw new PaymentsError('SETUP_TOKEN_NOT_APPROVED');
+      s.vaultId ??= this.id('VAULT');
+      await this.emit('VAULT.PAYMENT-TOKEN.CREATED', { id: s.vaultId, custom_id: s.customId });
+      return { vaultId: s.vaultId };
+    });
   }
 
   authorizeApprovedOrder(orderId: string, requestId: string): Promise<HoldResult> {

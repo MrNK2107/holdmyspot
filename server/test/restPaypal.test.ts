@@ -59,6 +59,50 @@ function gw(script: Rec[]) {
 }
 
 describe('PayPalRestGateway (recorded HTTP)', () => {
+  it('Vault v3: setup token with approve link, then payment token', async () => {
+    const { g } = gw([
+      TOKEN,
+      {
+        method: 'POST',
+        path: '/v3/vault/setup-tokens',
+        status: 201,
+        body: { id: '5C991763VB2781612', status: 'PAYER_ACTION_REQUIRED', links: [{ rel: 'approve', href: 'https://sandbox.paypal.com/agreements/approve?approval_session_id=5C9' }] },
+        check: (r) => expect(r.body.payment_source.paypal).toMatchObject({ usage_type: 'MERCHANT', customer_type: 'CONSUMER' }),
+      },
+      {
+        method: 'POST',
+        path: '/v3/vault/payment-tokens',
+        status: 201,
+        body: { id: 'jwgvx42', customer: { id: 'C1' } },
+        check: (r) => expect(r.body).toEqual({ payment_source: { token: { id: '5C991763VB2781612', type: 'SETUP_TOKEN' } } }),
+      },
+    ]);
+    expect(await g.createVaultSetup({ requestId: 'v1', customId: 'ws:b', description: 'd' })).toEqual({
+      setupTokenId: '5C991763VB2781612',
+      approvalUrl: 'https://sandbox.paypal.com/agreements/approve?approval_session_id=5C9',
+    });
+    expect(await g.completeVaultSetup('5C991763VB2781612', 'v2')).toEqual({ vaultId: 'jwgvx42' });
+  });
+
+  it('verifies webhook signatures via PayPal', async () => {
+    const { g } = gw([
+      TOKEN,
+      {
+        method: 'POST',
+        path: '/v1/notifications/verify-webhook-signature',
+        status: 200,
+        body: { verification_status: 'SUCCESS' },
+        check: (r) => expect(r.body).toMatchObject({ transmission_id: 't1', webhook_id: 'WHID', auth_algo: 'SHA256withRSA' }),
+      },
+    ]);
+    const ok = await g.verifyWebhook(
+      { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'u', 'paypal-transmission-id': 't1', 'paypal-transmission-sig': 's', 'paypal-transmission-time': 'x' },
+      { id: 'e' },
+      'WHID',
+    );
+    expect(ok).toBe(true);
+  });
+
   it('gets an OAuth token once and reuses it', async () => {
     const { g, seen } = gw([
       { ...TOKEN, check: (r) => expect(r.headers.Authorization).toBe(`Basic ${Buffer.from('id:secret').toString('base64')}`) },

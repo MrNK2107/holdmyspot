@@ -26,7 +26,15 @@ export class Workspaces {
 
   constructor(private deps: WorkspaceDeps = {}) {}
 
+  /** Hosted demo safety: keep at most this many workspaces, evicting the oldest visitor workspace. */
+  maxWorkspaces = 100;
+
   async create(id = `ws${++this.seq}`): Promise<Workspace> {
+    while (this.map.size >= this.maxWorkspaces) {
+      const oldest = [...this.map.keys()].find((k) => k !== 'demo');
+      if (!oldest) break;
+      this.map.delete(oldest);
+    }
     const clock = new DemoClock(DEMO_START);
     let mock: MockPayPalGateway | undefined;
     let gateway = this.deps.gateway;

@@ -35,8 +35,9 @@ export function BookingPage({ ws }: { ws: string }) {
   };
 
   const approve = async () => {
-    if (!booked?.orderId) return;
-    const r = await fetch(`/api/ws/${ws}/sim/approve/${booked.orderId}`, { method: 'POST' });
+    const token = booked?.approvalLink?.split('/').at(-1);
+    if (!token) return;
+    const r = await fetch(`/api/ws/${ws}/sim/approve/${token}`, { method: 'POST' });
     const j = await r.json();
     if (!r.ok) return setError(j.error);
     setBooked(j.result);
@@ -54,20 +55,23 @@ export function BookingPage({ ws }: { ws: string }) {
         </div>
       </header>
 
-      {booked?.state === 'HELD' ? (
+      {booked?.state === 'HELD' || booked?.state === 'VAULTED' ? (
         <section className="book-card done">
           <h2>You're booked</h2>
           <p>
             {svc.find((x) => x.id === service)?.name}, {start ? `${fmtDay(start)} at ${fmtTime(start)}` : ''}.
           </p>
           <p className="muted">
-            PayPal is holding {usd(hold)}. It is not a charge. Questions or changes? Just text {s.owner}.
+            {booked.state === 'HELD'
+              ? `PayPal is holding ${usd(hold)}. It is not a charge.`
+              : `Your PayPal is saved. We'll place a ${usd(hold)} hold 3 days before your visit; it is not a charge.`}{' '}
+            Questions or changes? Just text {s.owner}.
           </p>
         </section>
       ) : booked ? (
         <section className="book-card">
           <h2>One last step</h2>
-          <p>Approve the {usd(hold)} hold with PayPal to keep your spot.</p>
+          <p>Approve with PayPal to keep your spot. Nothing is charged today.</p>
           {s.paymentsMode === 'mock' ? (
             <>
               <button className="paypal wide" onClick={approve}>

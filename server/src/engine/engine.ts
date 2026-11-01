@@ -86,6 +86,8 @@ export class Engine {
   private listeners = new Set<(e: EngineEvent) => void>();
   /** orderId -> bookingId for buyer-present approvals */
   private pendingOrders = new Map<string, string>();
+  /** setupTokenId -> bookingId for Vault v3 approvals */
+  private pendingSetups = new Map<string, string>();
   private holdAttempts = new Map<string, number>();
   private baseUrl: string;
 
@@ -230,8 +232,10 @@ export class Engine {
     if (c.vaultId) this.setState(b, 'VAULTED', 'wallet already saved with PayPal');
 
     const lead = b.start - this.now();
-    if (lead <= HOLD_LEAD || this.holdStrategy === 'reauth' || !c.vaultId) {
+    if (lead <= HOLD_LEAD || this.holdStrategy === 'reauth') {
       await this.placeHold(b);
+    } else if (!c.vaultId) {
+      await this.startVaultSetup(b);
     }
     if (lead > HOLD_LEAD) {
       this.clock.schedule(b.start - HOLD_LEAD, `T-72h hold ${b.id}`, () => this.t72(b.id));
@@ -293,8 +297,31 @@ export class Engine {
     await this.reply(b, 'hold_failed', { link: b.approvalLink ?? '' });
   }
 
-  /** Buyer approved a PAYER_ACTION_REQUIRED order (PayPal popup / simulator). */
+  /** More than 72h out and no saved wallet: save it now (Vault v3 setup token), hold at T-72h. */
+  private async startVaultSetup(b: Booking): Promise<void> {
+    const r = await this.gateway.createVaultSetup({
+      requestId: this.requestId(b, 'vault'),
+      customId: this.customId(b),
+      description: `${this.businessName}: save PayPal for a $${(b.holdCents / 100).toFixed(0)} hold 3 days before your visit`,
+    });
+    b.approvalLink = r.approvalUrl;
+    this.pendingSetups.set(r.setupTokenId, b.id);
+    this.audit.add('paypal', `vault setup token ${r.setupTokenId} created (save wallet, no hold yet)`, { bookingId: b.id });
+  }
+
+  /** Buyer approved a PAYER_ACTION_REQUIRED order or a vault setup token (PayPal popup / simulator). */
   async completeApproval(orderId: string): Promise<Booking> {
+    const setupFor = this.pendingSetups.get(orderId);
+    if (setupFor) {
+      const b = this.booking(setupFor);
+      const { vaultId } = await this.gateway.completeVaultSetup(orderId, `${this.id}-${b.id}-vaulttoken-${orderId}`);
+      this.pendingSetups.delete(orderId);
+      this.client(b.clientId).vaultId = vaultId;
+      b.approvalLink = undefined;
+      this.audit.add('paypal', `payment token ${vaultId} created from setup token`, { bookingId: b.id });
+      if (b.state === 'BOOKED') this.setState(b, 'VAULTED', 'wallet saved with PayPal; hold will be placed 72h before the visit');
+      return b;
+    }
     const bookingId = this.pendingOrders.get(orderId);
     if (!bookingId) throw new Error(`no pending order ${orderId}`);
     const b = this.booking(bookingId);

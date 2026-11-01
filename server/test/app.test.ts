@@ -60,16 +60,31 @@ describe('HTTP API', () => {
     expect(a.result.version).toBe(2);
   });
 
-  it('simulator approval page and endpoint complete a buyer-present hold', async () => {
+  it('simulator approval page and endpoint complete a vault setup (wallet saved, no hold yet)', async () => {
     const s = (await app.inject('/api/ws/demo/state')).json();
     const ben = s.bookings.find((b: any) => b.clientId === 'ben');
     const page = await app.inject(ben.approvalLink);
     expect(page.body).toContain('Approve with PayPal');
-    const r = (await post(`/api/ws/demo/sim/approve/${ben.orderId}`)).json();
-    expect(r.result.state).toBe('HELD');
+    const token = ben.approvalLink.split('/').at(-1);
+    const r = (await post(`/api/ws/demo/sim/approve/${token}`)).json();
+    expect(r.result.state).toBe('VAULTED');
+  });
+
+  it('webhook endpoint refuses events without a verifier, or with a bad signature', async () => {
+    const ev = { id: 'WH-9', event_type: 'PAYMENT.AUTHORIZATION.CREATED', create_time: '', resource: { id: 'FAKE', custom_id: 'demo:bk_1' } };
+    expect((await post('/api/paypal/webhook', ev)).statusCode).toBe(403);
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const strict = await buildApp({ workspaces: ws, webhookVerifier: async () => false });
+    expect((await strict.inject({ method: 'POST', url: '/api/paypal/webhook', payload: ev })).statusCode).toBe(401);
+    await strict.close();
   });
 
   it('webhook endpoint routes by custom_id and dedupes', async () => {
+    await app.close();
+    const reg = new Workspaces();
+    await reg.create('demo');
+    app = await buildApp({ workspaces: reg, webhookVerifier: async () => true });
     const ev = { id: 'WH-1', event_type: 'PAYMENT.CAPTURE.COMPLETED', create_time: '', resource: { id: 'C1', custom_id: 'demo:bk_1' } };
     expect((await post('/api/paypal/webhook', ev)).json()).toEqual({ result: 'processed' });
     expect((await post('/api/paypal/webhook', ev)).json()).toEqual({ result: 'duplicate' });

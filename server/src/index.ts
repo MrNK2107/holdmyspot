@@ -9,6 +9,6 @@ const port = Number(process.env.PORT ?? 18080);
 const cfg = configFromEnv(process.env);
 const workspaces = new Workspaces(cfg.deps);
 await workspaces.create('demo');
-const app = await buildApp({ workspaces, webDist: resolve(here, '../../web/dist'), logger: process.env.LOG === '1' });
+const app = await buildApp({ workspaces, webDist: resolve(here, '../../web/dist'), logger: process.env.LOG === '1', webhookVerifier: cfg.webhookVerifier });
 await app.listen({ port, host: process.env.HOST ?? '127.0.0.1' });
 console.log(`HoldMySpot on http://127.0.0.1:${port}  payments=${cfg.paymentsMode} ai=${cfg.aiMode}`);

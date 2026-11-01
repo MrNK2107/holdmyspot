@@ -186,6 +186,44 @@ export class PayPalRestGateway implements PaymentsGateway {
     return { status: 'AUTHORIZED', authorizationId: r.json.id, honorPeriodEndsAt: created + 3 * DAY };
   }
 
+  async createVaultSetup(req: { requestId: string; customId: string; description: string }): Promise<{ setupTokenId: string; approvalUrl: string }> {
+    const r = await this.call('POST', '/v3/vault/setup-tokens', req.requestId, {
+      payment_source: {
+        paypal: {
+          description: req.description,
+          usage_type: 'MERCHANT',
+          customer_type: 'CONSUMER',
+          permit_multiple_payment_tokens: false,
+          experience_context: { return_url: this.cfg.returnUrl, cancel_url: this.cfg.cancelUrl, shipping_preference: 'NO_SHIPPING' },
+        },
+      },
+    });
+    if (r.status >= 300) PayPalRestGateway.fail(r.status, r.json);
+    const link = (r.json.links ?? []).find((l: any) => l.rel === 'approve');
+    return { setupTokenId: r.json.id, approvalUrl: link?.href ?? '' };
+  }
+
+  async completeVaultSetup(setupTokenId: string, requestId: string): Promise<{ vaultId: string }> {
+    const r = await this.call('POST', '/v3/vault/payment-tokens', requestId, { payment_source: { token: { id: setupTokenId, type: 'SETUP_TOKEN' } } });
+    if (r.status >= 300) PayPalRestGateway.fail(r.status, r.json);
+    return { vaultId: r.json.id };
+  }
+
+  /** POST /v1/notifications/verify-webhook-signature. Headers are the PAYPAL-* transmission headers. */
+  async verifyWebhook(headers: Record<string, string | undefined>, event: unknown, webhookId: string): Promise<boolean> {
+    const h = (k: string) => headers[k] ?? headers[k.toLowerCase()];
+    const r = await this.call('POST', '/v1/notifications/verify-webhook-signature', undefined, {
+      auth_algo: h('PAYPAL-AUTH-ALGO'),
+      cert_url: h('PAYPAL-CERT-URL'),
+      transmission_id: h('PAYPAL-TRANSMISSION-ID'),
+      transmission_sig: h('PAYPAL-TRANSMISSION-SIG'),
+      transmission_time: h('PAYPAL-TRANSMISSION-TIME'),
+      webhook_id: webhookId,
+      webhook_event: event,
+    });
+    return r.status === 200 && r.json.verification_status === 'SUCCESS';
+  }
+
   async refund(captureId: string, amountCents: number, requestId: string): Promise<RefundResult> {
     const r = await this.call('POST', `/v2/payments/captures/${captureId}/refund`, requestId, {
       amount: { currency_code: 'USD', value: centsToValue(amountCents) },

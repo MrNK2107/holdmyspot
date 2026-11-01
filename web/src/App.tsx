@@ -371,8 +371,8 @@ function BookingPanel({
             Refund fee
           </button>
         )}
-        {b.approvalLink && b.orderId && s.paymentsMode === 'mock' && (
-          <button className="paypal" disabled={busy} onClick={() => onApprove(b.orderId!)}>
+        {b.approvalLink && s.paymentsMode === 'mock' && (
+          <button className="paypal" disabled={busy} onClick={() => onApprove(b.approvalLink!.split('/').at(-1)!)}>
             Client approves with PayPal (simulated)
           </button>
         )}

@@ -67,6 +67,10 @@ export interface PaymentsGateway {
   void(authorizationId: string, requestId: string): Promise<{ status: 'VOIDED' }>;
   reauthorize(authorizationId: string, amountCents: number, requestId: string, simulateDecline?: boolean): Promise<ReauthorizeResult>;
   refund(captureId: string, amountCents: number, requestId: string): Promise<RefundResult>;
+  /** Vault v3: save the wallet now, hold later (bookings more than 72h out). */
+  createVaultSetup(req: { requestId: string; customId: string; description: string }): Promise<{ setupTokenId: string; approvalUrl: string }>;
+  /** After the buyer approves the setup token: exchange it for a payment token (vault id). */
+  completeVaultSetup(setupTokenId: string, requestId: string): Promise<{ vaultId: string }>;
 }
 
 /** PayPal webhook event, trimmed to the fields we route on. */
