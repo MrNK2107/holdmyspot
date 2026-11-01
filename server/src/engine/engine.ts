@@ -519,6 +519,36 @@ export class Engine {
       .sort((a, b) => a.start - b.start)[0];
   }
 
+  /**
+   * The visit a client text is about. With several upcoming visits, a text that names a day or a service
+   * matching exactly one of them is about that one ("cancel my nail art on Saturday" must not cancel, or
+   * late-fee, Wednesday's pedicure). Otherwise the next visit, as before. Code, not the model, picks it.
+   */
+  bookingForText(clientId: string, text: string): Booking | undefined {
+    const active = [...this.bookings.values()]
+      .filter((b) => b.clientId === clientId && ['BOOKED', 'VAULTED', 'HELD', 'HOLD_FAILED'].includes(b.state) && b.end > this.now())
+      .sort((a, b) => a.start - b.start);
+    if (active.length < 2) return active[0];
+    const t = ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+    const said = (w: string) => t.includes(` ${w} `);
+    const DAYS = [['sunday', 'sun'], ['monday', 'mon'], ['tuesday', 'tue', 'tues'], ['wednesday', 'wed'], ['thursday', 'thu', 'thur', 'thurs'], ['friday', 'fri'], ['saturday', 'sat']];
+    const dayOf = (ms: number) => new Date(ms).getUTCDay();
+    const today = dayOf(this.now());
+    const named = new Set<number>();
+    DAYS.forEach((names, d) => names.some(said) && named.add(d));
+    if (said('today') || said('tonight')) named.add(today);
+    if (said('tomorrow')) named.add((today + 1) % 7);
+    const GENERIC = new Set(['full', 'set', 'nail', 'nails', 'the', 'and']);
+    const serviceWords = (id: string) => {
+      const s = this.services.get(id);
+      return [id, ...(s?.name.toLowerCase().split(/[^a-z0-9]+/) ?? [])].filter((w) => w.length >= 3 && !GENERIC.has(w));
+    };
+    const score = (b: Booking) => (named.has(dayOf(b.start)) ? 1 : 0) + (serviceWords(b.serviceId).some(said) ? 1 : 0);
+    const best = Math.max(...active.map(score));
+    const top = active.filter((b) => score(b) === best);
+    return best > 0 && top.length === 1 ? top[0] : active[0];
+  }
+
   async receiveMessage(clientId: string, text: string): Promise<{ label?: MessageLabel; decision?: Decision; claimed?: boolean; rebooked?: string }> {
     const c = this.client(clientId);
     text = String(text ?? '').slice(0, MAX_MESSAGE_CHARS); // bounded model input and audit log
@@ -557,7 +587,7 @@ export class Engine {
       return { rebooked: nb.id };
     }
 
-    const b = this.activeBookingFor(clientId);
+    const b = this.bookingForText(clientId, text);
     const run = this.startRun(clientId, text, b?.id);
     let label: MessageLabel | undefined;
     let decision: Decision | undefined;

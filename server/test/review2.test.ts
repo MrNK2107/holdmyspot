@@ -232,6 +232,17 @@ describe('review 2026-11-02', () => {
     expect(e.openApprovals().some((a) => a.id === card.id)).toBe(false);
     expect(mock.calls.filter((c) => c.op === 'refund').length).toBe(refundsBefore);
   });
+  it('a client with several visits who names one cancels that visit, not the earliest one', async () => {
+    await e.clock.advanceTo(at(3, 12));
+    const riley = (svc: string) => [...e.bookings.values()].find((x) => x.clientId === 'riley' && x.serviceId === svc)!;
+    expect(riley('pedi').state).toBe('HELD'); // Wed 4 Nov 11:00, inside the 24h fee window
+    await e.receiveMessage('riley', 'I need to cancel my nail art on Saturday, sorry');
+    expect(riley('pedi').state).toBe('HELD'); // untouched: not offered to the waitlist, no fee path
+    expect(riley('art').state).toBe('CANCELLED_EARLY'); // Sat 7 Nov, 74h ahead: free
+    // a text that names nothing still goes to the next visit, as before
+    await e.receiveMessage('riley', 'running 10 min late');
+    expect(e.agentRuns.at(-1)!.bookingId).toBe(riley('pedi').id);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {
