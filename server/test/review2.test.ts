@@ -192,6 +192,21 @@ describe('review 2026-11-02', () => {
     const card = e.openApprovals().find((a) => a.bookingId === b.id && a.kind === 'capture');
     expect(card && card.kind === 'capture' && card.feeCents).toBe(1000);
   });
+  it('an autopilot excusal is final even when PayPal fails to release the hold', async () => {
+    e.mode = 'autopilot';
+    await e.clock.advanceTo(at(4, 9));
+    const sam = bk('sam');
+    const gw = e.gateway as { void: (a: string, r: string) => Promise<{ status: 'VOIDED' }> };
+    const realVoid = gw.void;
+    gw.void = async (a, r) => {
+      if (a === sam.authorizationId) throw new Error('HTTP 503 temporarily unavailable');
+      return realVoid(a, r);
+    };
+    await e.receiveMessage('sam', "so sorry, kiddo threw up all night, can't make it today").catch(() => undefined);
+    gw.void = realVoid;
+    expect(sam.state).toBe('EXCUSED');
+    expect(e.unreleasedAuths.map((u) => u.authorizationId)).toContain(sam.authorizationId);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

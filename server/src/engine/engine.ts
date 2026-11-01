@@ -838,7 +838,8 @@ export class Engine {
           this.addApproval({ kind: 'review', bookingId: b.id, prompt: `${this.client(b.clientId).name}: "${label.evidenceSpan}". Policy says excuse (no charge).`, suggested: 'excuse', options: ['excuse', 'refill_then_charge'] });
           await this.reply(b, 'received');
         } else {
-          await this.excuse(b, d.why);
+          // no owner in the loop to retry: the excusal stands even if PayPal fails to release the hold now
+          await this.excuse(b, d.why, { autoRelease: true });
         }
         break;
       case 'OWNER_REVIEW':
@@ -912,8 +913,9 @@ export class Engine {
     }
   }
 
-  private async excuse(b: Booking, why: string, opts: { waiver?: boolean } = {}): Promise<void> {
-    await this.voidHold(b, why);
+  private async excuse(b: Booking, why: string, opts: { waiver?: boolean; autoRelease?: boolean } = {}): Promise<void> {
+    if (opts.autoRelease) await this.releaseOrFlag(b, why);
+    else await this.voidHold(b, why);
     this.setState(b, 'EXCUSED', why);
     if (opts.waiver) {
       // the owner chose not to charge: not a policy excusal, so it does not use up the allowance
