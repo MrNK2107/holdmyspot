@@ -3,7 +3,7 @@ import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
 import { type AgentTool, MONEY_TOOLS_NOT_GIVEN, type TraceStep } from '../ai/agent.js';
 import { FrontDesk } from '../ai/frontdesk.js';
 import { type ApprovedPolicy, type Decision, captureViolations, decide } from '../domain/policy.js';
-import { assertTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
+import { assertTransition, canTransition, isTerminal, moneyState } from '../domain/stateMachine.js';
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
 import { slotMatches } from '../domain/waitlist.js';
 import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
@@ -90,6 +90,9 @@ export const NO_MONEY_SUMMARY: Partial<Record<Decision['outcome'], string>> = {
   CLARIFY: 'not sure what the client meant, so it asked them to clarify; the hold stays as it is',
   NO_ACTION: 'not a cancellation, so there is nothing to settle; the hold stays as it is',
 };
+
+/** A card whose booking has moved on; refused before any PayPal call. */
+export class StaleCardError extends Error {}
 
 export class Engine {
   readonly id: string;
@@ -1025,6 +1028,13 @@ export class Engine {
     try {
       await (run ? this.traced(run, () => this.applyApproval(a, b, choice)) : this.applyApproval(a, b, choice));
     } catch (err) {
+      if (err instanceof StaleCardError) {
+        // nothing to retry: close the card so it cannot be tapped again later
+        a.resolved = 'stale';
+        this.audit.add('engine', `"${choice}" refused: ${err.message}`, { bookingId: b.id });
+        this.emit('approval');
+        throw err;
+      }
       // keep the card open so the owner can retry or choose differently
       this.audit.add('engine', `"${choice}" failed, card kept open: ${(err as Error).message}`, { bookingId: b.id });
       this.emit('approval');
@@ -1037,6 +1047,16 @@ export class Engine {
   }
 
   private async applyApproval(a: Approval, b: Booking, choice: string): Promise<void> {
+    // A card can outlive the situation it was raised for (a late-cancel text after the attendance card,
+    // an excuse after the fee card). Check the booking can still take the card's step before any PayPal call.
+    const target: BookingState | undefined =
+      a.kind === 'attendance' ? (choice === 'arrived' ? 'ATTENDED' : 'PENDING_REFILL')
+      : a.kind === 'review' ? (choice === 'excuse' ? 'EXCUSED' : 'PENDING_REFILL')
+      : a.kind === 'capture' ? (choice === 'charge' ? 'CHARGED' : 'EXCUSED')
+      : undefined;
+    if (target && (b.state === target || !canTransition(b.state, target))) {
+      throw new StaleCardError(`this card is out of date: the booking is already ${b.state}; nothing was changed`);
+    }
     if (a.kind === 'attendance') {
       if (choice === 'arrived') {
         await this.voidHold(b, 'client arrived');
