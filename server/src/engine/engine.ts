@@ -82,6 +82,9 @@ const HOLD_LEAD = 72 * HOUR;
 const OFFER_FANOUT = 3;
 // a claim places a hold on the claimer's wallet, so the yes must be a word of its own ("y'all ..." is not a yes)
 const YES = /^\s*(yes|yep|yeah|y|i'?ll take it|claim|me!?)(?![\w'’])/i;
+// ...and a yes that goes on to decline or cancel ("yes, but I can't do today") is not a claim
+const NOT_A_CLAIM = /\b(but|cancel\w*|can'?t|cannot|won'?t|not|unable)\b/i;
+const isClaim = (text: string) => YES.test(text) && !NOT_A_CLAIM.test(text.replace(YES, ''));
 
 /**
  * Deterministic policy engine and the only caller of the payments gateway.
@@ -557,7 +560,7 @@ export class Engine {
     this.emit('message');
 
     const offer = this.offers.filter((o) => o.offeredTo.includes(clientId) && o.status !== 'closed').at(-1);
-    if (offer && YES.test(text)) {
+    if (offer && isClaim(text)) {
       const run = this.startRun(clientId, text, offer.slotBookingId);
       run.steps.push({ n: 1, kind: 'code', name: 'route: YES to an open refill offer', result: 'claim handled by code, no AI: the slot is theirs only once their own PayPal hold authorizes' });
       const claimed = await this.traced(run, () => this.claim(offer, clientId));

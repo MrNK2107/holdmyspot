@@ -243,6 +243,15 @@ describe('review 2026-11-02', () => {
     await e.receiveMessage('riley', 'running 10 min late');
     expect(e.agentRuns.at(-1)!.bookingId).toBe(riley('pedi').id);
   });
+  it('"yes, but I have to cancel..." is not a claim on a refill offer (no hold placed)', async () => {
+    await e.clock.advanceTo(at(5, 9));
+    const maya = bk('maya');
+    await e.receiveMessage('maya', "I can't make it today, something came up");
+    const r = await e.receiveMessage('chris', "Yes, but I can't do today, sorry");
+    expect(r.claimed).toBeUndefined();
+    expect([...e.bookings.values()].filter((x) => x.refillOfBookingId === maya.id && x.clientId === 'chris')).toEqual([]);
+    expect((await e.receiveMessage('chris', "yes please, I'll take it")).claimed).toBe(true);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {
