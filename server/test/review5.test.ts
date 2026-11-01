@@ -138,3 +138,31 @@ describe('evicting or resetting a workspace releases its live holds first', () =
     expect(reg.get('demo')).toBe(second);
   });
 });
+
+describe('live PayPal toolkit reads time out like the REST adapter (20 s policy)', () => {
+  it('a hung PayPal answer is cut off at the timeout, and the request carries axios\'s own timeout', async () => {
+    const { PayPalToolkitReader, TOOLKIT_TIMEOUT_MS, toolkitLiveNetworkForTests } = await import('../src/paypal/toolkit.js');
+    expect(TOOLKIT_TIMEOUT_MS).toBe(20_000);
+    const seen: number[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const restore = toolkitLiveNetworkForTests((config: any) => {
+      seen.push(config.timeout);
+      return new Promise(() => undefined); // never answers
+    }, 50);
+    try {
+      const r = PayPalToolkitReader.sandbox('offline-client', 'offline-secret');
+      const t0 = Date.now();
+      const out = await r.call('get_order', { id: 'NOPE' }).then(
+        (x) => JSON.stringify(x),
+        (e: Error) => e.message,
+      );
+      expect(Date.now() - t0).toBeLessThan(2000);
+      expect(out).toMatch(/timeout|timed out/i);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((t) => t === 50)).toBe(true);
+      expect(r.http.some((h) => h.status === 0)).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+});

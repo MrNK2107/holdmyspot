@@ -71,13 +71,28 @@ const als = new AsyncLocalStorage<{ backend: Backend; log: ToolkitHttpCall[] }>(
 
 let installed = false;
 
+/** Same policy as the REST adapter: a hung PayPal read must not hold the workspace lock. */
+export const TOOLKIT_TIMEOUT_MS = 20_000;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const live: { network?: (config: any) => Promise<any>; timeoutMs: number } = { timeoutMs: TOOLKIT_TIMEOUT_MS };
+
+/** Test hook: answer live toolkit HTTP with `fn` (and a shorter timeout); returns a restore function. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toolkitLiveNetworkForTests(fn: (config: any) => Promise<any>, timeoutMs: number): () => void {
+  installHttpGate();
+  const prev = { ...live };
+  live.network = fn;
+  live.timeoutMs = timeoutMs;
+  return () => Object.assign(live, prev);
+}
+
 function installHttpGate(): void {
   if (installed) return;
   installed = true;
   // the exact axios instance the toolkit loads (hoisted or nested), so the adapter governs its calls
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axios: any = createRequire(toolkitEntry)('axios');
-  const network = axios.getAdapter(axios.defaults.adapter);
+  live.network = axios.getAdapter(axios.defaults.adapter);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   axios.defaults.adapter = async (config: any) => {
     const store = als.getStore();
@@ -96,7 +111,21 @@ function installHttpGate(): void {
       return respond(403, { name: 'BLOCKED', message: `HoldMySpot lets the agent read PayPal only; ${method} ${url.pathname} was refused before it left the server` });
     }
     if (store.backend.kind === 'live') {
-      const res = await network(config);
+      // axios aborts the socket at config.timeout; the race is the backstop for anything that ignores it
+      const ms = live.timeoutMs;
+      config.timeout = ms;
+      let timer: NodeJS.Timeout | undefined;
+      const res = await Promise.race([
+        live.network!(config),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new axios.AxiosError(`timeout of ${ms}ms exceeded (no answer from PayPal)`, 'ECONNABORTED', config)), ms + 100);
+        }),
+      ])
+        .catch((err) => {
+          if (err?.code === 'ECONNABORTED' || err?.code === 'ETIMEDOUT') store.log.push({ method, path: url.pathname, status: 0 });
+          throw err;
+        })
+        .finally(() => clearTimeout(timer));
       if (!isToken) store.log.push({ method, path: url.pathname, status: res.status });
       return res;
     }
