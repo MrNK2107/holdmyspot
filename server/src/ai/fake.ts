@@ -191,6 +191,8 @@ function draftReply(name: string, situation: string, f: Record<string, string>):
       return `No problem, ${first}. You cancelled in time, so your hold is released. Hope to see you soon!`;
     case 'pending_refill':
       return `Thanks for letting me know, ${first}. I'll try to fill your spot from the waitlist first. If I do, you pay nothing.`;
+    case 'refilled_no_hold':
+      return `Good news, ${first}: your spot was filled, so there's nothing to pay.`;
     case 'refilled':
       return `Good news, ${first}: your spot was filled, so you pay $0. Your hold is released.`;
     case 'charged':

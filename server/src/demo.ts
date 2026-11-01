@@ -34,11 +34,19 @@ function card(e: Engine, clientId: string, kind: string) {
   return a;
 }
 
-/** Routine visits that happened while the clock jumped: Priya marks them arrived, which releases their holds. */
+/** The seeded regulars whose routine visits the script may mark as arrived. */
+const SEEDED_REGULARS = new Set(['riley', 'taylor', 'noor', 'sam', 'maya', 'alex', 'jordan', 'ben', 'eli', 'chris', 'dana']);
+
+/**
+ * Routine seeded visits that happened while the clock jumped: Priya marks them arrived, which releases their holds.
+ * Bookings anyone else made (e.g. a judge on the booking page) are never touched: their cards stay for a real tap.
+ */
 async function tidyRoutineVisits(e: Engine, keep: string[]): Promise<void> {
   for (const a of e.openApprovals()) {
     if (a.kind !== 'attendance') continue;
-    if (keep.includes(e.booking(a.bookingId).clientId)) continue;
+    const b = e.booking(a.bookingId);
+    if (!SEEDED_REGULARS.has(b.clientId) || b.refillOfBookingId) continue;
+    if (keep.includes(b.clientId)) continue;
     await e.resolveApproval(a.id, 'arrived');
   }
 }

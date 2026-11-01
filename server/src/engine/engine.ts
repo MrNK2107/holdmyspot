@@ -93,6 +93,8 @@ export class Engine {
   /** bookingId -> every authorization id seen for it (guards against late/duplicate events) */
   private knownAuths = new Map<string, Set<string>>();
   private holdAttempts = new Map<string, number>();
+  /** late authorizations whose void failed: shown to the owner, never silently dropped */
+  unreleasedAuths: Array<{ bookingId: string; authorizationId: string; error: string }> = [];
   private baseUrl: string;
 
   constructor(o: EngineOptions) {
@@ -370,8 +372,15 @@ export class Engine {
     known.add(authorizationId);
     if ((isTerminal(b.state) && b.state !== 'CHARGED') || (b.state === 'PENDING_REFILL' && !b.authorizationId)) {
       // e.g. an approval that arrives after the booking was cancelled: release it right away
-      await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId)).catch(() => undefined);
-      this.audit.add('paypal', `void late authorization ${authorizationId}: booking is ${b.state}`, { bookingId: b.id });
+      try {
+        await this.gateway.void(authorizationId, this.intentKey(b, 'void', authorizationId));
+        this.audit.add('paypal', `void late authorization ${authorizationId}: booking is ${b.state}`, { bookingId: b.id });
+      } catch (err) {
+        // never claim a release that did not happen: keep it visible so the owner can release it
+        this.unreleasedAuths.push({ bookingId: b.id, authorizationId, error: (err as Error).message });
+        this.audit.add('paypal', `VOID FAILED for late authorization ${authorizationId} (${(err as Error).message}); needs a manual release`, { bookingId: b.id });
+        this.emit('state');
+      }
       return;
     }
     b.authorizationId = authorizationId;
@@ -472,6 +481,7 @@ export class Engine {
       if (d.outcome === 'PENDING_REFILL' || d.outcome === 'OWNER_REVIEW') {
         // Late cancel: same refill-then-settle path as a held booking; the settle step is an automatic waiver.
         b.cancelledAt = this.now();
+        if (d.outcome === 'OWNER_REVIEW') this.audit.add('engine', `owner not asked: ${d.why}, but no hold is in place, so there is no fee to decide`, { bookingId: b.id });
         await this.startRefill(b, `${d.why}; no hold in place, so no fee is possible`);
         return d;
       }
@@ -585,6 +595,8 @@ export class Engine {
 
   private async startRefill(b: Booking, why: string): Promise<void> {
     this.setState(b, 'PENDING_REFILL', why);
+    // the slot is given up: no older approval link may attach a new hold to it
+    this.dropPendingApprovals(b);
     const svc = this.services.get(b.serviceId)!;
     const eligible = this.eligibleWaitlist(b);
     if (b.start > this.now() && eligible.length) {
@@ -637,7 +649,7 @@ export class Engine {
     this.setState(slot, 'REFILLED', `refilled by ${this.client(nb.clientId).name}`);
     this.say(nb.clientId, `Confirmed! See you ${this.slotLabel(nb)}.`);
     for (const id of o.offeredTo.filter((x) => x !== nb.clientId)) this.say(id, 'That spot has been filled. You are still on the waitlist.');
-    await this.reply(slot, 'refilled');
+    await this.reply(slot, slot.authorizationId ? 'refilled' : 'refilled_no_hold');
   }
 
   private offerForClaim(nb: Booking): RefillOffer | undefined {
@@ -679,7 +691,11 @@ export class Engine {
     if (!b.authorizationId) {
       // Late cancel with no hold in place: nothing to capture, so the fee is waived automatically.
       this.setState(b, 'EXCUSED', 'not refilled; no hold was in place, so the fee is waived');
-      this.say(b.clientId, `Hi ${this.client(b.clientId).name.split(' ')[0]}, we couldn't refill your spot, but there's no fee this time because no hold was in place.`);
+      const tried = this.offers.some((o) => o.slotBookingId === b.id);
+      this.say(
+        b.clientId,
+        `Hi ${this.client(b.clientId).name.split(' ')[0]}, thanks for letting us know. ${tried ? "We couldn't refill your spot, but there's" : "There's"} no fee this time because no PayPal hold was in place for this visit.`,
+      );
       return;
     }
     const fee = decide({ booking: b, rules: this.policy.rules, now: this.now(), kind: 'no_show', priorExcusals: 0 });
@@ -812,7 +828,8 @@ export class Engine {
       ...b,
       clientName: this.client(b.clientId).name,
       serviceName: this.services.get(b.serviceId)?.name,
-      money: b.refundId ? 'refunded' : !b.authorizationId && !['BOOKED', 'VAULTED', 'HOLD_FAILED', 'PENDING_REFILL'].includes(b.state) ? 'none' : moneyState(b.state, !!b.captureId),
+      // a booking that never had an authorization has no money at stake, whatever its state
+      money: b.refundId ? 'refunded' : !b.authorizationId && !['VAULTED', 'HOLD_FAILED'].includes(b.state) ? 'none' : moneyState(b.state, !!b.captureId),
     });
     return {
       workspace: this.id,
@@ -828,6 +845,7 @@ export class Engine {
       bookings: [...this.bookings.values()].sort((a, b) => a.start - b.start).map(view),
       waitlist: this.waitlist,
       approvals: this.openApprovals(),
+      unreleasedAuths: this.unreleasedAuths,
       offers: this.offers,
       messages: this.messages,
       jobs: this.clock.pending(),

@@ -175,7 +175,8 @@ describe('e2e over HTTP: guided demo', () => {
     expect(last.result.bookingIds.taylor).toBe(taylorThu.id);
     expect(booking(s, 'alex').money).toBe('refunded');
     expect(s.bookings.filter((b: any) => b.money === 'captured')).toHaveLength(0);
-    expect(s.approvals.filter((a: any) => a.kind !== 'attendance' || booking(s, 'alex').id === a.bookingId)).toHaveLength(0);
+    expect(s.approvals).toHaveLength(0);
+    expect(s.unreleasedAuths).toHaveLength(0);
     await expect(post('demo/next')).rejects.toThrow('demo finished');
     // reset replays from the top
     await post('reset');
@@ -192,6 +193,24 @@ describe('e2e over HTTP: guided demo', () => {
     await post('demo/next'); // jordan beat still fine
     await post('demo/next');
     await post('demo/next'); // sam texts again: no active booking, polite reply
+    const before = (await get('state')).bookings.map((b: any) => [b.id, b.money, b.captureId]);
     await expect(post('demo/next')).rejects.toThrow('off-script');
+    const after = (await get('state')).bookings.map((b: any) => [b.id, b.money, b.captureId]);
+    expect(after).toEqual(before);
+    expect(after.some(([, , cap]: any[]) => cap)).toBe(false);
+  });
+
+  it("never taps 'arrived' on a booking it did not seed (e.g. a judge's own booking)", async () => {
+    const slots: number[] = await get('slots?service=pedi&n=1');
+    const b = await post('book', { name: 'Judge Visit', serviceId: 'pedi', start: slots[0] }); // Tue 3 Nov, within 72h
+    const token = b.result.approvalLink.split('/').at(-1);
+    await post(`sim/approve/${token}`);
+    for (let i = 0; i < 7; i++) await post('demo/next'); // past Thu 9 AM
+    const s = await get('state');
+    const judge = s.bookings.find((x: any) => x.id === b.result.id);
+    // left for a real owner tap: unanswered by end of day it becomes NEEDS_REVIEW, still held, nothing released or charged
+    expect(judge.state).toBe('NEEDS_REVIEW');
+    expect(judge.money).toBe('held');
+    expect(judge.captureId).toBeUndefined();
   });
 });

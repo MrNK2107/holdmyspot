@@ -76,6 +76,7 @@ export interface Snapshot {
   bookings: BookingView[];
   waitlist: Array<{ id: string; clientId: string; text: string; parsed?: { serviceIds: string[]; days: number[]; earliestMin: number; latestMin: number } }>;
   approvals: Approval[];
+  unreleasedAuths?: Array<{ bookingId: string; authorizationId: string; error: string }>;
   messages: ChatMessage[];
   jobs: Array<{ id: string; at: number; name: string }>;
 }

@@ -49,7 +49,8 @@ export function validateRules(r: PolicyRules): string[] {
   if (!int(r.holdCents) || r.holdCents === 0) errs.push('holdCents must be a positive integer');
   if (!int(r.lateCancelFeeCents) || r.lateCancelFeeCents > r.holdCents) errs.push('lateCancelFeeCents must be <= holdCents');
   if (!int(r.noShowFeeCents) || r.noShowFeeCents > r.holdCents) errs.push('noShowFeeCents must be <= holdCents');
-  if (!(r.freeCancelHours >= 0 && r.freeCancelHours <= 168)) errs.push('freeCancelHours must be 0..168');
+  if (!(r.freeCancelHours >= 0 && r.freeCancelHours <= 72))
+    errs.push('freeCancelHours must be 0..72: the PayPal hold is placed 72h before the visit, so a longer fee window could never be charged');
   if (!(r.minConfidence > 0 && r.minConfidence <= 1)) errs.push('minConfidence must be in (0,1]');
   if (r.excusedReasons.some((x) => r.protectedReasons.includes(x))) errs.push('a reason cannot be both excused and protected');
   return errs;

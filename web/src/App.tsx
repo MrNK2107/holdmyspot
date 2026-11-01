@@ -483,6 +483,11 @@ function Approvals({
       <h2>
         Needs you <span className="count">{s.approvals.length}</span>
       </h2>
+      {(s.unreleasedAuths ?? []).map((u) => (
+        <div key={u.authorizationId} className="error" role="alert">
+          PayPal hold {u.authorizationId} could not be released automatically ({u.error}). Release it in PayPal.
+        </div>
+      ))}
       {s.approvals.length === 0 && <p className="muted">Nothing to decide. Charges always wait for your tap.</p>}
       {s.approvals
         .slice()
