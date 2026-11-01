@@ -153,6 +153,23 @@ describe('review 2026-11-02', () => {
     expect(alex.authorizationId).toBe(captured);
     expect(mock.authorizationStatus(stray.status === 'AUTHORIZED' ? stray.authorizationId : '')).toBe('VOIDED');
   });
+  it('a free-window cancellation is final even when PayPal fails to release the hold (never left chargeable)', async () => {
+    await e.clock.advanceTo(at(4, 15));
+    const art = [...e.bookings.values()].find((x) => x.clientId === 'riley' && x.serviceId === 'art')!;
+    expect(art.state).toBe('HELD');
+    const gw = e.gateway as { void: (a: string, r: string) => Promise<{ status: 'VOIDED' }> };
+    const realVoid = gw.void;
+    gw.void = async (a, r) => {
+      if (a === art.authorizationId) throw new Error('HTTP 503 temporarily unavailable');
+      return realVoid(a, r);
+    };
+    await e.receiveMessage('riley', 'Hi, I need to cancel my appointment please').catch(() => undefined);
+    gw.void = realVoid;
+    expect(art.state).toBe('CANCELLED_EARLY');
+    expect(e.unreleasedAuths.map((u) => u.authorizationId)).toContain(art.authorizationId);
+    await e.clock.advanceTo(at(7, 16));
+    expect(e.approvals.filter((a) => a.bookingId === art.id)).toEqual([]);
+  });
 });
 
 describe('review 2026-11-02: what the owner reads before a money tap', () => {

@@ -818,7 +818,8 @@ export class Engine {
         await this.reply(b, label.intent === 'running_late' ? 'running_late' : 'ack');
         break;
       case 'VOID_EARLY':
-        await this.voidHold(b, 'cancelled outside the fee window');
+        // a free cancellation is final even if PayPal fails to release the hold right now
+        await this.releaseOrFlag(b, 'cancelled outside the fee window');
         this.setState(b, 'CANCELLED_EARLY', d.why);
         await this.reply(b, 'cancelled_early');
         break;
@@ -885,6 +886,19 @@ export class Engine {
       }
       this.audit.add('paypal', `void failed: ${(err as Error).message}`, { bookingId: b.id });
       throw err;
+    }
+  }
+
+  /**
+   * Release a hold where the outcome no longer depends on it (free cancel, refilled slot). If PayPal fails,
+   * the booking still moves on, so it can never become chargeable; the live hold is shown to the owner.
+   */
+  private async releaseOrFlag(b: Booking, why: string): Promise<void> {
+    try {
+      await this.voidHold(b, why);
+    } catch (err) {
+      this.unreleasedAuths.push({ bookingId: b.id, authorizationId: b.authorizationId!, error: (err as Error).message });
+      this.emit('state');
     }
   }
 
@@ -986,14 +1000,8 @@ export class Engine {
     if (!o || o.status !== 'claiming' || slot.state !== 'PENDING_REFILL') return;
     o.status = 'filled';
     slot.refilledByBookingId = nb.id;
-    try {
-      await this.voidHold(slot, 'slot refilled');
-    } catch (err) {
-      // the slot is refilled, so the canceller owes nothing whatever PayPal said: never leave it chargeable.
-      // The hold that could not be released is shown to the owner instead of being dropped.
-      this.unreleasedAuths.push({ bookingId: slot.id, authorizationId: slot.authorizationId!, error: (err as Error).message });
-      this.emit('state');
-    }
+    // the slot is refilled, so the canceller owes nothing whatever PayPal says about the release
+    await this.releaseOrFlag(slot, 'slot refilled');
     this.setState(slot, 'REFILLED', `refilled by ${this.client(nb.clientId).name}`);
     this.say(nb.clientId, `Confirmed! See you ${this.slotLabel(nb)}.`);
     for (const id of o.offeredTo.filter((x) => x !== nb.clientId)) this.say(id, 'That spot has been filled. You are still on the waitlist.');
