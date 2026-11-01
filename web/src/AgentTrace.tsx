@@ -65,6 +65,14 @@ function Gate({ run }: { run: AgentRun }) {
   );
 }
 
+/** One-line label for the compact card: effects say what changed, not just which kind of step it was. */
+function miniLabel(x: TraceStep): string {
+  if (x.kind !== 'effect' || !x.result) return x.name;
+  if (x.name === 'booking state') return x.result.split(':')[0].toLowerCase();
+  if (x.name.startsWith('PayPal call')) return `PayPal: ${x.result}`;
+  return `${x.name}: ${x.result}`;
+}
+
 /** Compact card for the console side column: the latest run for the selected booking (or the latest overall). */
 export function AgentTraceCard({ s, selected, onOpen }: { s: Snapshot; selected: string | null; onOpen: () => void }) {
   const runs = s.agentRuns ?? [];
@@ -91,7 +99,7 @@ export function AgentTraceCard({ s, selected, onOpen }: { s: Snapshot; selected:
           const tag = stepTag(x);
           return (
             <li key={x.n} className={`k-${x.kind}`}>
-              <code>{x.name}</code> <span className={`trace-tag ${tag.cls}`}>{tag.text}</span>
+              <code title={x.result ? `${x.name}: ${x.result}` : x.name}>{miniLabel(x)}</code> <span className={`trace-tag ${tag.cls}`}>{tag.text}</span>
             </li>
           );
         })}

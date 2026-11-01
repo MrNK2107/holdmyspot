@@ -338,8 +338,17 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 .half-left .ev-time,
-.half-right .ev-time {
+.half-right .ev-time,
+.half-left .ev-svc,
+.half-right .ev-svc {
   display: none;
+}
+/* two bookings share a slot (late cancel + its refill): let the money chip wrap instead of clipping */
+.half-left .chip,
+.half-right .chip {
+  white-space: normal;
+  max-width: 100%;
+  line-height: 1.2;
 }
 .ev-name {
   font-weight: 650;
