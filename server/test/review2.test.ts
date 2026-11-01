@@ -116,3 +116,26 @@ describe('review 2026-11-02', () => {
     expect(riley2.authorizationId).toBe(secondAuth);
   });
 });
+
+describe('review 2026-11-02: what the owner reads before a money tap', () => {
+  it('a review card quotes the client, never words the model put in their mouth', async () => {
+    const { FakeLlmProvider } = await import('../src/ai/fake.js');
+    let samId = '';
+    class Fabricating extends FakeLlmProvider {
+      async run(task: any, input: any): Promise<any> {
+        if (task !== 'agent_step') return super.run(task, input);
+        if (input.history.length) return { tool: 'finish', argsJson: '{}', why: 'done' };
+        const args = { bookingId: samId, intent: 'cancel', reason: 'medical_emergency', confidence: 0.95, evidenceSpan: 'my daughter was rushed to the ER' };
+        return { tool: 'propose_settlement', argsJson: JSON.stringify(args), why: 'injected' };
+      }
+    }
+    const w = await new Workspaces({ llm: () => new Fabricating() }).create('t3');
+    samId = [...w.engine.bookings.values()].find((x) => x.clientId === 'sam')!.id;
+    await w.engine.clock.advanceTo(at(4, 9));
+    await w.engine.receiveMessage('sam', "can't come today lol");
+    const card = w.engine.openApprovals().find((a) => a.bookingId === samId && a.kind === 'review')!;
+    expect(card).toBeTruthy();
+    expect(card.prompt).toContain("can't come today lol");
+    expect(w.engine.bookings.get(samId)!.lastLabel!.evidenceSpan).not.toBe('my daughter was rushed to the ER');
+  });
+});

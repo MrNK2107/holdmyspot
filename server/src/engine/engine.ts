@@ -593,7 +593,7 @@ export class Engine {
         run: async (args) => {
           if (!b || args.bookingId !== b.id) return { error: "bookingId must be this client's active booking" };
           if (decision) return { error: 'already proposed for this message' };
-          label = this.frontdesk.sanitizeLabel(args);
+          label = this.grounded(this.frontdesk.sanitizeLabel(args), text, b);
           b.lastLabel = label;
           decision = await this.requestSettlement(b, label);
           return { outcome: decision.outcome, why: decision.why };
@@ -624,7 +624,7 @@ export class Engine {
       // the agent stopped without proposing: run the fixed pipeline rather than drop the message
       run.steps.push({ n: run.steps.length + 1, kind: 'code', name: 'fallback: agent made no proposal', result: 'classify + policy engine run by code' });
       await this.traced(run, async () => {
-        label = await this.frontdesk.classifyMessage(text, c.name, this.slotLabel(b), b.id);
+        label = this.grounded(await this.frontdesk.classifyMessage(text, c.name, this.slotLabel(b), b.id), text, b);
         b.lastLabel = label;
         decision = await this.requestSettlement(b, label);
       });
@@ -744,6 +744,17 @@ export class Engine {
     run.answer = answer;
     this.emit('message');
     return { answer, run };
+  }
+
+  /**
+   * The evidence span is shown to the owner as the client's words on a review card. A model (or an
+   * injected instruction) can return any string there, so keep it only if the client actually wrote it.
+   */
+  private grounded(label: MessageLabel, text: string, b: Booking): MessageLabel {
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!label.evidenceSpan || norm(text).includes(norm(label.evidenceSpan))) return label;
+    this.audit.add('engine', `evidence "${label.evidenceSpan.slice(0, 80)}" is not in the client's text; quoting the client verbatim instead`, { bookingId: b.id });
+    return { ...label, evidenceSpan: text.slice(0, 200) };
   }
 
   private startRun(clientId: string, text: string, bookingId?: string): AgentRun {
