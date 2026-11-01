@@ -313,3 +313,31 @@ The open items of "Review round 2". Each: failing test first (`server/test/revie
 - The front desk's prepare-refund card and the refund-failed card still show the full captured fee after a partial dashboard refund (the refund itself sends only the rest). Left alone: the agent refund path is next to the create_refund replay.
 - Opening a private console in another browser needs the `#owner=` link; there is no "copy owner link" button yet.
 - Owner token is a capability, not a login; CSRF note in SECURITY.md still applies to the open `demo` workspace only.
+
+## 2026-11-02 final check (04:00-04:20 IST, same branch, local only)
+
+End-to-end re-verification for submission after the money/security passes. No new features. PITCH.md and the create_refund replay are untouched.
+
+### Done
+- **HTTP, all beats.** `npm run demo` was started on 18310 and later again from a fresh clone on 18320. A scratch script played all 13 beats over HTTP:
+  - on a private workspace (owner token; without the token or with a wrong one, state and demo/next answer 403; `GET public` carries no bookings);
+  - again after a reset;
+  - on the open shared `demo` workspace.
+  Every beat returned ok, and the expected chips appeared (Jordan held, Sam and Maya released, Alex charged then refunded). End totals: $20 charged and $20 refunded.
+- **Headless browser (isolated playwright-core).** The guided demo ran on a private and on the shared workspace. At every beat the week-grid chips, the selected booking's big chip and the money strip matched `/state` (beats 2 and 10 open other tabs). The ledger totals row matched the server totals ($100 held, $20 charged, $20 refunded, $0 kept). With the token, a reload without `#owner=` keeps access; a fresh browser with only the booking link gets "owner access needed" and 0 bookings.
+- **Regression found and fixed, test first.** The ledger raised AG Grid console error #200 because the tooltip module was not registered (`headerTooltip` on Kept, `tooltipField` on Refill). ui-check now fails on any desktop console error; it failed, then `TooltipModule` was registered and it passes.
+- **Gallery re-shot.** The legend strip now lists "partly refunded", so 01, 03, 05 and the thumbnail changed; 02, 04 and 06 are identical. Captions are still true. The ui-check console screenshots were refreshed for the same legend change; the ledger-rest-requests churn (ids) was reverted.
+- **DEMO_SCRIPT** is still 2:52 and every line fits its slot at 2.5 words per second. No change.
+- **Fresh clone** in scratch: `npm ci --offline`, then `npm test` (272 tests), `npm run demo` with the full beat and browser check, and `npm run eval` all OK. The clone was deleted.
+- **DEVPOST**: test count 253 -> 272, plus a "Surface review" bullet (19 fixes + 7 follow-ups incl. the owner token). README review line mentions review4/review5. The eval numbers and the 14 axe screens match.
+- New `docs/SUBMISSION_CHECKLIST.md`: what is done, the user's steps in order (sandbox keys + 4 buyers -> sandbox-smoke -> video -> Render -> Devpost fields -> gallery order) and the open decisions (PITCH.md, create_refund replay, Bryntum, partial-refund cards).
+
+### Verified
+- `npm test`: 272 passing (25 files), 0.75 GB / 2 GB.
+- `npm run build`: passes after every commit, 0.83 GB / 3 GB.
+- `npm run ui-check`: passes (axe 0 on 14 screens, no console errors), 1.06 GB / 2 GB.
+- `npm run eval`: injection money effects 0, 0.28 GB.
+- Servers on 18310 and 18320 were started by this pass, recorded in pids.txt, and killed.
+
+### Still open
+- Everything in `docs/SUBMISSION_CHECKLIST.md` "Your steps" and "Open decisions". Nothing has run against the live PayPal sandbox yet.
