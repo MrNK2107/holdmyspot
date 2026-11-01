@@ -1,0 +1,25 @@
+{
+  "_note": "DRAFT starter set (2026-11-01). Each pair: waitlist text + a slot (UTC) + whether the slot satisfies the entry. Design target: 20 pairs, precision@1 on ranking. Review before use.",
+  "pairs": [
+    { "text": "gel manicure, weekdays after 5", "service": "gel", "slot": "2026-11-05T17:00:00Z", "match": true },
+    { "text": "gel manicure, weekdays after 5", "service": "gel", "slot": "2026-11-05T11:00:00Z", "match": false },
+    { "text": "gel manicure, weekdays after 5", "service": "gel", "slot": "2026-11-07T17:00:00Z", "match": false },
+    { "text": "gel manicure, weekdays after 5", "service": "pedi", "slot": "2026-11-05T17:00:00Z", "match": false },
+    { "text": "pedicure any time", "service": "pedi", "slot": "2026-11-03T10:00:00Z", "match": true },
+    { "text": "pedicure any time", "service": "gel", "slot": "2026-11-03T10:00:00Z", "match": false },
+    { "text": "Saturday mornings, nail art", "service": "art", "slot": "2026-11-07T09:00:00Z", "match": true },
+    { "text": "Saturday mornings, nail art", "service": "art", "slot": "2026-11-07T14:00:00Z", "match": false },
+    { "text": "Saturday mornings, nail art", "service": "art", "slot": "2026-11-06T09:00:00Z", "match": false },
+    { "text": "Gel manicure, Thursday after 4pm", "service": "gel", "slot": "2026-11-05T17:00:00Z", "match": true },
+    { "text": "Gel manicure, Thursday after 4pm", "service": "gel", "slot": "2026-11-05T15:00:00Z", "match": false },
+    { "text": "pedicure or gel, any time", "service": "gel", "slot": "2026-11-04T12:00:00Z", "match": true },
+    { "text": "pedicure or gel, any time", "service": "art", "slot": "2026-11-04T12:00:00Z", "match": false },
+    { "text": "lunch break only, gel manicure", "service": "gel", "slot": "2026-11-04T12:00:00Z", "match": true },
+    { "text": "lunch break only, gel manicure", "service": "gel", "slot": "2026-11-04T16:00:00Z", "match": false },
+    { "text": "evenings, pedicure", "service": "pedi", "slot": "2026-11-04T18:00:00Z", "match": true },
+    { "text": "evenings, pedicure", "service": "pedi", "slot": "2026-11-04T10:00:00Z", "match": false },
+    { "text": "weekend, any service... nail art preferred", "service": "art", "slot": "2026-11-07T11:00:00Z", "match": true },
+    { "text": "mon or wed before 2, gel", "service": "gel", "slot": "2026-11-02T11:00:00Z", "match": true },
+    { "text": "mon or wed before 2, gel", "service": "gel", "slot": "2026-11-03T11:00:00Z", "match": false }
+  ]
+}

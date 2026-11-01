@@ -4,6 +4,7 @@ import { FrontDesk } from '../ai/frontdesk.js';
 import { type ApprovedPolicy, type Decision, captureViolations, decide } from '../domain/policy.js';
 import { assertTransition, moneyState } from '../domain/stateMachine.js';
 import type { Booking, BookingState, ChatMessage, Client, MessageLabel, Service, WaitlistEntry } from '../domain/types.js';
+import { slotMatches } from '../domain/waitlist.js';
 import { type HoldResult, type PaymentsGateway, type WebhookEvent, PaymentsError } from '../paypal/gateway.js';
 
 export type OwnerMode = 'ask' | 'autopilot';
@@ -460,17 +461,8 @@ export class Engine {
   // ---------- refill ----------
 
   eligibleWaitlist(b: Booking): WaitlistEntry[] {
-    const d = new Date(b.start);
-    const dow = d.getUTCDay();
-    const startMin = d.getUTCHours() * 60 + d.getUTCMinutes();
     const svc = this.services.get(b.serviceId)!;
-    return this.waitlist.filter((w) => {
-      const p = w.parsed;
-      if (!p || w.clientId === b.clientId) return false;
-      if (p.serviceIds.length && !p.serviceIds.includes(b.serviceId)) return false;
-      if (p.days.length && !p.days.includes(dow)) return false;
-      return startMin >= p.earliestMin && startMin + svc.durationMin <= p.latestMin;
-    });
+    return this.waitlist.filter((w) => w.parsed && w.clientId !== b.clientId && slotMatches(w.parsed, b.serviceId, b.start, svc.durationMin));
   }
 
   private async startRefill(b: Booking, why: string): Promise<void> {
