@@ -96,6 +96,8 @@ try {
       const trace = (await desk.locator('.trace-detail').textContent()) ?? '';
       check(/create_refund/.test(trace) && /not in the front desk's toolset/.test(trace), 'agent trace shows the injected create_refund call denied');
       check(/propose_settlement/.test(trace) && /policy check/.test(trace), 'agent trace shows the proposal and the policy check');
+      const toolset = (await desk.locator('.toolsets').textContent()) ?? '';
+      check(/paypal\.list_transactions/.test(toolset) && /PayPal Agent Toolkit/.test(toolset) && /paypal\.create_refund/.test(toolset), 'agent tab lists the PayPal Agent Toolkit read tools and the toolkit money tools it does not get');
       await axe(desk, 'agent trace tab');
       await shot(desk, 'agent-trace-injection.png');
     }
@@ -103,6 +105,7 @@ try {
     if (i === 13) {
       const card = (await desk.locator('.trace-card').textContent()) ?? '';
       check(/find_booking/.test(card) && /propose_refund/.test(card) && /owner tap/.test(card), 'beat 13: agent card shows the owner request, the refund proposal and the tap');
+      check(/paypal\.list_transactions/.test(card), 'beat 13: agent checked the capture on PayPal through the Agent Toolkit before proposing');
       check(/Tap "Refund"/.test((await desk.locator('.ask-card').textContent()) ?? ''), 'beat 13: the front desk answered the owner');
       await shot(desk, 'console-owner-refund.png');
     }

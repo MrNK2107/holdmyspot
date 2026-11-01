@@ -55,6 +55,8 @@ export interface TraceStep {
   kind: 'tool' | 'denied' | 'code' | 'effect' | 'gate' | 'owner';
   name: string;
   access?: 'read' | 'model' | 'propose' | 'end';
+  /** 'paypal-agent-toolkit' for PayPal's official toolkit tools */
+  source?: string;
   why?: string;
   args?: Record<string, unknown>;
   result?: string;
@@ -103,6 +105,8 @@ export interface Snapshot {
   messages: ChatMessage[];
   agentRuns?: AgentRun[];
   agentToolsNotGiven?: string[];
+  /** PayPal Agent Toolkit read tools in the owner's agent (null when PAYPAL_AGENT_TOOLKIT=off) */
+  agentToolkit?: { package: string; tools: string[]; notGiven: string[]; http: Array<{ method: string; path: string; status: number; blocked?: boolean }> } | null;
   jobs: Array<{ id: string; at: number; name: string }>;
 }
 

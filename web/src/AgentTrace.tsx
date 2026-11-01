@@ -17,6 +17,7 @@ const GATE_LABEL: Record<AgentRun['gate']['kind'], string> = {
 };
 
 function stepTag(s: TraceStep): { cls: string; text: string } {
+  if (s.kind === 'tool' && s.source === 'paypal-agent-toolkit') return { cls: 'acc-read', text: 'read only · PayPal Agent Toolkit' };
   if (s.kind === 'tool') return { cls: `acc-${s.access ?? 'read'}`, text: ACCESS_LABEL[s.access ?? 'read'] };
   if (s.kind === 'denied') return { cls: 'acc-denied', text: 'denied · not in toolset' };
   if (s.kind === 'gate') return { cls: 'acc-gate', text: 'money gate' };
@@ -155,6 +156,11 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
               <li>
                 <code>propose_refund</code> <span className="trace-tag acc-propose">proposal → owner card</span>
               </li>
+              {(s.agentToolkit?.tools ?? []).map((t) => (
+                <li key={t}>
+                  <code>{t}</code> <span className="trace-tag acc-read">read only · PayPal Agent Toolkit</span>
+                </li>
+              ))}
             </ul>
           </div>
           <div>
@@ -165,10 +171,21 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
                   <code className="struck">{t}</code> <span className="trace-tag acc-denied">engine only</span>
                 </li>
               ))}
+              {(s.agentToolkit?.notGiven ?? []).map((t) => (
+                <li key={t}>
+                  <code className="struck">{t}</code> <span className="trace-tag acc-denied">not on allow-list</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
         <p className="muted">
+          {s.agentToolkit && (
+            <>
+              PayPal reads go through PayPal’s official Agent Toolkit (<code>{s.agentToolkit.package}</code>), limited to five read tools; any other toolkit call, and any non-GET request, is refused before it
+              leaves the server.{' '}
+            </>
+          )}
           Releasing a hold (void) is automatic when the policy says so, because it only returns money. Any charge needs {s.owner}’s tap on a card. Asking for a tool outside the set is
           logged as denied and nothing runs.
         </p>
