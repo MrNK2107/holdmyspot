@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { PolicyRules } from './domain/policy.js';
 import { approve } from './domain/policy.js';
+import { demoStatus, playNextBeat } from './demo.js';
 import type { Engine } from './engine/engine.js';
 import type { WebhookEvent } from './paypal/gateway.js';
 import { Workspaces, type Workspace } from './workspaces.js';
@@ -163,6 +164,18 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     const w = await workspaces.reset(req.params.ws);
     return { ok: true, state: w.engine.snapshot() };
   });
+
+  // Guided demo (video script): beats drive the same engine calls as the endpoints above.
+  app.get<{ Params: { ws: string } }>('/api/ws/:ws/demo', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    return w && demoStatus(w);
+  });
+  app.post<{ Params: { ws: string } }>('/api/ws/:ws/demo/next', async (req, reply) =>
+    act(req.params.ws, reply, async (_e, w) => {
+      if (!w.mock) throw new Error('the guided demo runs on the PayPal simulator only');
+      return playNextBeat(w);
+    }),
+  );
 
   // Sandbox simulator for buyer approval (mock mode only). The real flow uses the PayPal JS SDK popup.
   app.post<{ Params: { ws: string; orderId: string } }>('/api/ws/:ws/sim/approve/:orderId', async (req, reply) =>

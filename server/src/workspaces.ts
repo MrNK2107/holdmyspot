@@ -17,6 +17,8 @@ export interface WorkspaceDeps {
 export interface Workspace {
   engine: Engine;
   mock?: MockPayPalGateway;
+  /** beats of the guided demo already played (see demo.ts) */
+  demoStep?: number;
 }
 
 /** Per-visitor demo workspaces (design §12.1): each has its own bookings, clock and audit log. */
