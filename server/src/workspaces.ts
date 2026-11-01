@@ -76,6 +76,11 @@ export class Workspaces {
     return this.create(id);
   }
 
+  /** Finds the workspace waiting on a PayPal approval (order id or vault setup token). */
+  findByPendingApproval(id: string): Workspace | undefined {
+    return [...this.map.values()].find((w) => w.engine.hasPendingApproval(id));
+  }
+
   ids(): string[] {
     return [...this.map.keys()];
   }

@@ -183,6 +183,20 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
 <script>b.onclick=async()=>{const r=await fetch('/api/ws/${wsId.replace(/[^\w-]/g, '')}/sim/approve/${orderId.replace(/[^\w-]/g, '')}',{method:'POST'});document.getElementById('r').textContent=r.ok?'Approved. You can close this tab.':'Failed: '+(await r.json()).error}</script>`);
   });
 
+  // PayPal redirects the buyer here after approval (orders: ?token=; vault setup: ?approval_token_id=).
+  app.get<{ Querystring: { token?: string; approval_token_id?: string } }>('/paypal/return', async (req, reply) => {
+    const id = req.query.approval_token_id ?? req.query.token ?? '';
+    const w = workspaces.findByPendingApproval(id);
+    if (!w) return reply.code(404).type('text/html').send('<p>This approval link has expired or was already used.</p>');
+    try {
+      await locks.run(w.engine.id, () => w.engine.completeApproval(id));
+      return reply.redirect(`/book?ws=${encodeURIComponent(w.engine.id)}&approved=1`);
+    } catch (err) {
+      return reply.code(400).type('text/html').send(`<p>PayPal approval failed: ${String((err as Error).message).replace(/[<>&]/g, '')}</p>`);
+    }
+  });
+  app.get('/paypal/cancel', async (_req, reply) => reply.type('text/html').send('<p>No problem: nothing was held. You can close this tab.</p>'));
+
   // Real PayPal webhooks, verified with POST /v1/notifications/verify-webhook-signature.
   // Unverified events could fake an authorization, so without a verifier nothing is accepted.
   app.post<{ Body: WebhookEvent }>('/api/paypal/webhook', async (req, reply) => {

@@ -311,6 +311,10 @@ export class Engine {
     this.audit.add('paypal', `vault setup token ${r.setupTokenId} created (save wallet, no hold yet)`, { bookingId: b.id });
   }
 
+  hasPendingApproval(id: string): boolean {
+    return this.pendingOrders.has(id) || this.pendingSetups.has(id);
+  }
+
   /** Buyer approved a PAYER_ACTION_REQUIRED order or a vault setup token (PayPal popup / simulator). */
   async completeApproval(orderId: string): Promise<Booking> {
     const setupFor = this.pendingSetups.get(orderId);

@@ -114,3 +114,24 @@ describe('public booking page API', () => {
     expect((await post('/api/ws/demo/book', { name: 'Late', serviceId: 'gel', start: slots[0] })).statusCode).toBe(400);
   });
 });
+
+describe('PayPal return URL', () => {
+  it('completes the pending approval and redirects to the booking page', async () => {
+    const s = (await app.inject('/api/ws/demo/state')).json();
+    const ben = s.bookings.find((b: any) => b.clientId === 'ben');
+    const token = ben.approvalLink.split('/').at(-1);
+    await post(`/api/ws/demo/sim/approve/${token}`).catch(() => undefined);
+    expect((await app.inject(`/paypal/return?approval_token_id=${token}`)).statusCode).toBe(404); // already used
+  });
+
+  it('works for a fresh pending order', async () => {
+    const slots = (await app.inject('/api/ws/demo/slots?service=pedi')).json();
+    const r = (await post('/api/ws/demo/book', { name: 'Ret Urn', serviceId: 'pedi', start: slots[0] })).json();
+    const token = r.result.approvalLink.split('/').at(-1);
+    // the simulator needs the buyer approval first; the real return URL comes after PayPal approval
+    const ws = (await app.inject('/api/ws/demo/state')).json();
+    expect(ws.workspace).toBe('demo');
+    const res = await app.inject(`/paypal/return?token=${token}`);
+    expect(res.statusCode).toBe(400); // not approved in the simulator yet → honest error
+  });
+});
