@@ -86,3 +86,16 @@ describe('config', () => {
     expect(configFromEnv({ PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b' }).deps.gateway?.mode).toBe('sandbox');
   });
 });
+
+describe('public booking page API', () => {
+  it('lists free slots and books a new client who then approves the PayPal hold', async () => {
+    const slots = (await app.inject('/api/ws/demo/slots?service=gel')).json();
+    expect(slots.length).toBeGreaterThan(0);
+    const r = (await post('/api/ws/demo/book', { name: 'Zoe Q', serviceId: 'gel', start: slots[0] })).json();
+    expect(r.result.state).toBe('BOOKED');
+    expect(r.result.approvalLink).toContain('/paypal/approve/');
+    const a = (await post(`/api/ws/demo/sim/approve/${r.result.orderId}`)).json();
+    expect(a.result.state).toBe('HELD');
+    expect((await post('/api/ws/demo/book', { name: 'Late', serviceId: 'gel', start: slots[0] })).statusCode).toBe(400);
+  });
+});

@@ -112,6 +112,9 @@ export function App() {
             {fmtDay(s.now)} · {fmtTime(s.now)}
           </div>
         </div>
+        <a className="booklink" href={`/book?ws=${ws}`} target="_blank" rel="noreferrer">
+          Client booking page ↗
+        </a>
         <div className="badges">
           <span className={`badge ${s.paymentsMode}`}>{s.paymentsMode === 'mock' ? 'PayPal simulator' : 'PayPal sandbox'}</span>
           <span className="badge ai">AI: {s.aiProvider}</span>

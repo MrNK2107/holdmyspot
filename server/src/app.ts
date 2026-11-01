@@ -106,6 +106,25 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     act(req.params.ws, reply, (e) => e.createBooking(req.body)),
   );
 
+  app.get<{ Params: { ws: string }; Querystring: { service: string; n?: string } }>('/api/ws/:ws/slots', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    try {
+      return w.engine.freeSlots(req.query.service, Math.min(12, Number(req.query.n ?? 6)));
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+  });
+
+  // Public booking page: new client books a slot and is sent to PayPal to approve the hold.
+  app.post<{ Params: { ws: string }; Body: { name: string; serviceId: string; start: number } }>('/api/ws/:ws/book', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => {
+      if (!e.freeSlots(req.body.serviceId, 12).includes(req.body.start)) throw new Error('that time is no longer free');
+      const c = e.newClient(req.body.name);
+      return e.createBooking({ clientId: c.id, serviceId: req.body.serviceId, start: req.body.start });
+    }),
+  );
+
   app.post<{ Params: { ws: string; id: string } }>('/api/ws/:ws/bookings/:id/refund', async (req, reply) =>
     act(req.params.ws, reply, (e) => e.refund(req.params.id)),
   );

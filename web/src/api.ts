@@ -70,6 +70,7 @@ export interface Snapshot {
   owner: string;
   business: string;
   policy: { version: number; hash: string; rules: PolicyRules; prose: string; summary: string };
+  services: Array<{ id: string; name: string; durationMin: number; priceCents: number }>;
   clients: Array<{ id: string; name: string; vaulted: boolean; sandboxDecline: boolean }>;
   bookings: BookingView[];
   waitlist: Array<{ id: string; clientId: string; text: string; parsed?: { serviceIds: string[]; days: number[]; earliestMin: number; latestMin: number } }>;

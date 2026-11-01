@@ -185,6 +185,15 @@ export class Engine {
     this.clients.set(c.id, c);
   }
 
+  /** New client from the public booking page (no saved wallet yet). */
+  newClient(name: string): Client {
+    const clean = name.trim().slice(0, 40);
+    if (!clean) throw new Error('name is required');
+    const c: Client = { id: this.nextId('cl'), name: clean };
+    this.addClient(c);
+    return c;
+  }
+
   async addWaitlist(clientId: string, text: string): Promise<WaitlistEntry> {
     const parsed = await this.frontdesk.parseWaitlistEntry(text, [...this.services.values()]);
     const e: WaitlistEntry = { id: this.nextId('wl'), clientId, text, parsed };
@@ -441,8 +450,13 @@ export class Engine {
 
   /** Free slots of the same service in the next 7 days, on the hour, 10:00-18:00 UTC. */
   suggestSlots(b: Booking, n = 3): string[] {
-    const svc = this.services.get(b.serviceId)!;
-    const out: string[] = [];
+    return this.freeSlots(b.serviceId, n).map((start) => this.slotLabel({ ...b, start }));
+  }
+
+  freeSlots(serviceId: string, n = 3): number[] {
+    const svc = this.services.get(serviceId);
+    if (!svc) throw new Error(`unknown service ${serviceId}`);
+    const out: number[] = [];
     const base = new Date(this.now());
     base.setUTCHours(0, 0, 0, 0);
     for (let d = 1; d <= 7 && out.length < n; d++) {
@@ -452,7 +466,7 @@ export class Engine {
         const clash = [...this.bookings.values()].some(
           (x) => !['CANCELLED_EARLY', 'EXCUSED', 'REFILLED'].includes(x.state) && x.start < end && start < x.end,
         );
-        if (!clash && new Date(start).getUTCDay() !== 0) out.push(this.slotLabel({ ...b, start }));
+        if (!clash && new Date(start).getUTCDay() !== 0) out.push(start);
       }
     }
     return out;
