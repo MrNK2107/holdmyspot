@@ -713,7 +713,7 @@ function Phone({
         </select>
       </div>
       <div className="thread" ref={threadRef} tabIndex={0} role="log" aria-label="Message thread">
-        {thread.length === 0 && <p className="muted small center">No messages with {s.clients.find((c) => c.id === clientId)?.name} yet.</p>}
+        {thread.length === 0 && <p className="muted small center">No messages with {s.clients.find((c) => c.id === clientId)?.name} yet. You are playing this client: tap a suggested text below or type one, as if you were them.</p>}
         {thread.map((m) => (
           <div key={m.id} className={`bubble ${m.from}`}>
             {m.text}

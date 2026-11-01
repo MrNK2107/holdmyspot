@@ -60,7 +60,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 | Webhooks + `verify-webhook-signature` | `PAYMENT.AUTHORIZATION.CREATED` etc., deduplicated and routed by `custom_id`; the endpoint refuses events when verification is not configured |
 | `PayPal-Request-Id` on every write | Idempotent retries keyed to the business intent |
 
-**Honest status:** [TODO revise after the sandbox run] The REST adapter is written and unit-tested against recorded HTTP exchanges, but has not yet run against the live PayPal sandbox, because the sandbox app keys were not set up at the time of writing. The demo and video currently run on the built-in simulator, which is labelled **PayPal simulator** in the UI. Switching is one environment variable (`PAYMENTS=sandbox`).
+**Honest status:** [TODO revise after the sandbox run] The REST adapter is written and unit-tested against scripted HTTP exchanges written from PayPal's API reference (not recordings of the live sandbox), but has not yet run against the live PayPal sandbox, because the sandbox app keys were not set up at the time of writing. The demo and video currently run on the built-in simulator, which is labelled **PayPal simulator** in the UI. Switching is one environment variable (`PAYMENTS=sandbox`).
 
 ## How we used AI
 
