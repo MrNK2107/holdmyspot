@@ -8,7 +8,7 @@
 
 ![Late cancel refilled: Maya pays $0, Chris's hold authorizes](docs/gallery/03-refill.png)
 
-**Look at these three things** (about 3 minutes, no keys: `npm install && npm run demo`, then open `/?demo=1`):
+**Look at these three things** (about 3 minutes, no keys: `npm ci && npm run demo`, then open `/?demo=1`):
 
 1. **Refill first, fee last** (beats 7-9): a late cancel is offered to the waitlist; the slot fills only when the claimer's own PayPal hold authorizes, so the canceller pays $0.
 2. **A text cannot move money** (beat 10, *Agent trace* tab): a prompt injection makes the model reach for `create_refund`; it is denied because that tool does not exist in its toolset (offline, this attempt is a scripted red-team replay; the denial path is the same for a live model). The owner's agent reads PayPal through the official **PayPal Agent Toolkit**, limited to five read tools; the toolkit's money tools are never given ([how](docs/AGENT_TOOLKIT.md)).
@@ -23,14 +23,18 @@
 
 ## Run it in 5 minutes
 
+Needs Node.js 20, 22 or 24+ (developed on 24; the Render Blueprint pins 22) and npm 10+. No keys, no accounts: the PayPal simulator and the offline AI provider are the defaults.
+
 ```bash
-npm install
-npm run demo             # builds the web app, starts http://127.0.0.1:18080 (no keys needed)
+npm ci                   # exact versions from package-lock.json (npm prints audit advisories: see docs/SECURITY.md)
+npm run demo             # builds the web app, starts http://127.0.0.1:18080 (no keys needed; PORT=... to change, Ctrl+C to stop)
 npm test                 # server tests, incl. end-to-end tests over a real HTTP server
 npm run ui-check         # headless browser: plays the guided demo, axe accessibility checks, refreshes docs/screenshots
 npm run eval             # message reader / injection / waitlist evals
 npm run gallery          # headless browser: regenerates the framed Devpost images in docs/gallery
 ```
+
+`ui-check` and `gallery` drive a headless Chromium through the project-local `playwright-core`. On a machine without Playwright's browser cache, install it once with `npx playwright-core install chromium-headless-shell` (about 100 MB download). `npm test`, `npm run demo`, `npm run build` and `npm run eval` need no browser, and in the default (simulator) mode the app and the tests make no outbound requests.
 
 Open `http://127.0.0.1:18080/?demo=1` for the **guided demo**: 13 beats, about 3 minutes, one press of → per beat (or `&autoplay=12`). The video script is in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md). `/book?ws=demo` is the client booking page. Or walk it yourself with the time-travel buttons:
 

@@ -4,7 +4,7 @@ Devpost rules: the video must be **under 3 minutes**, public on YouTube, show th
 
 ## Before recording
 
-1. `npm install` (once), then `npm run demo`. It builds the web app and starts the server on `http://127.0.0.1:18080` with the PayPal simulator and the deterministic front desk (no keys).
+1. `npm ci` (once), then `npm run demo`. It builds the web app and starts the server on `http://127.0.0.1:18080` with the PayPal simulator and the deterministic front desk (no keys).
    - With sandbox keys later: `PAYMENTS=sandbox ... npm run demo`. The guided demo button is hidden in sandbox mode, because its beats use the simulator's approve step; record the sandbox take by hand with the time-travel buttons and the steps below.
 2. Open `http://127.0.0.1:18080/?demo=1` in a clean browser window at **1680×1000** (or 1920×1080), zoom 100%, no extensions or bookmarks bar visible.
 3. Check the top bar shows **PayPal simulator** and **AI: offline provider**, and the guided-demo bar shows the who/problem card with "Start: Priya's week". While the guided demo is on, the manual time-travel buttons are hidden.

@@ -4,7 +4,7 @@ _Draft, not submitted. Fill the [TODO] items before submitting. Everything marke
 
 **Name:** HoldMySpot
 **Tagline:** Fair, without the fight. An AI front desk that holds no-show fees with PayPal and refills the slot before anyone is charged.
-**Links:** GitHub [TODO public repo URL] · Demo [TODO hosted URL, or "run locally: `npm install && npm run demo`"] · Video [TODO YouTube URL]
+**Links:** GitHub [TODO public repo URL] · Demo [TODO hosted URL, or "run locally: `npm ci && npm run demo`"] · Video [TODO YouTube URL]
 
 ## Gallery (upload in this order)
 
