@@ -281,5 +281,10 @@ Second independent adversarial review, on what the money review did not cover: H
 - `/policy/approve` `prose` is not type/size checked (owner-only; stored in the policy).
 - `/audit` exposes the full audit including `placeHold` results with vault ids to anyone holding the workspace id (merchant-side tokens; same capability as the console).
 - **Design: the public booking link is the owner's capability.** `App.tsx:188` shares `/book?ws=<id>` with clients, and `BookingPage.tsx:19` reads `/api/ws/<id>/state` (every client's name, messages, bookings, audit-adjacent data). Anyone holding a booking link can call every owner route of that workspace (approvals, refunds, policy, mode, time, reset). Fine for per-visitor demo workspaces; a real deployment needs a separate public booking id and owner auth.
+- `engine.ts:272,702` messages and `audit.ts:21` entries grow without bound per workspace, and every action returns the full snapshot (all messages). The shared `demo` workspace is never evicted: at the new 30/min budget a script can still grow it by ~43k texts a day until each response is megabytes. Cap messages (keep recent N per client) and decide an audit retention policy.
+- `PAYMENT.CAPTURE.REFUNDED` / `PAYMENT.CAPTURE.COMPLETED` are only logged: a refund made in the PayPal dashboard leaves the booking "charged / kept" and the refund button then fails at PayPal. Needs the refund resource shape confirmed with live keys.
 - `rest.ts` `holdFromOrder`: an authorization in `PENDING` (under review) is treated as AUTHORIZED; capturing it would fail until PayPal clears it.
 - Live-mode `paypal.get_order` results (payer name/email) go into the owner's trace and the model context (owner-only, clipped to 800/6000 chars).
+
+### Verified (review round 2)
+- `npm test` **251 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.
