@@ -179,3 +179,35 @@ describe('money webhooks other than AUTHORIZATION.CREATED', () => {
     expect(alex.refundId).not.toBe(refundId); // a new request, not a replay of the failed one
   });
 });
+
+describe("end-of-day review in the studio's time zone", () => {
+  it('a 3 pm visit in Los Angeles is not sent to review at 23:59 UTC (4 pm local)', async () => {
+    const w = await new Workspaces({ timeZone: 'America/Los_Angeles' }).create('t6');
+    const e = w.engine;
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 23) }); // 15:00 PST
+    await e.clock.advanceTo(at(3, 23, 15));
+    expect(e.openApprovals().some((a) => a.bookingId === b.id && a.kind === 'attendance')).toBe(true);
+    await e.clock.advanceTo(at(4, 0, 30)); // 16:30 in Los Angeles: the studio's day is not over
+    expect(b.state).toBe('HELD');
+    await e.clock.advanceTo(at(4, 8, 0)); // 00:00 in Los Angeles
+    expect(b.state).toBe('NEEDS_REVIEW');
+  });
+
+  it('the UTC default is unchanged', async () => {
+    const e = (await new Workspaces().create('t7')).engine;
+    const b = await e.createBooking({ clientId: 'chris', serviceId: 'gel', start: at(3, 18) });
+    await e.clock.advanceTo(at(3, 23, 58));
+    expect(b.state).toBe('HELD');
+    await e.clock.advanceTo(at(4, 0, 0));
+    expect(b.state).toBe('NEEDS_REVIEW');
+  });
+});
+
+describe('STUDIO_TIMEZONE', () => {
+  it('is validated and passed to the workspaces', async () => {
+    const { configFromEnv } = await import('../src/config.js');
+    expect(configFromEnv({ STUDIO_TIMEZONE: 'America/Los_Angeles' }).deps.timeZone).toBe('America/Los_Angeles');
+    expect(configFromEnv({}).deps.timeZone).toBeUndefined();
+    expect(() => configFromEnv({ STUDIO_TIMEZONE: 'Mars/Olympus' })).toThrow(/IANA/);
+  });
+});

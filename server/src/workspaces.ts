@@ -22,6 +22,8 @@ export interface WorkspaceDeps {
    */
   agentToolkit?: boolean | ToolkitVia;
   toolkitCredentials?: { clientId: string; clientSecret: string };
+  /** the studio's IANA time zone (STUDIO_TIMEZONE); default UTC, as the demo */
+  timeZone?: string;
 }
 
 export interface Workspace {
@@ -84,6 +86,7 @@ export class Workspaces {
       businessName: 'Polished by Priya',
       baseUrl: this.deps.baseUrl,
       paypalReader,
+      timeZone: this.deps.timeZone,
     });
     if (mock) {
       // Deliver simulated webhooks after the API call returns, as PayPal does.

@@ -107,7 +107,7 @@ Threat model (prompt injection, the money gate, webhook verification, secrets, d
 T−72h hold declined → re-approval link · late cancel before any hold exists → same refill-first path, fee waived automatically if unfilled · refill claimer declined → next candidate · duplicate webhook ignored · low-confidence message → clarifying question · prompt injection → zero money effect (measured: `npm run eval`) · capture after the 3-day honor period → reauthorize first, honest error if refused.
 
 ## Configuration
-See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `PAYPAL_AGENT_TOOLKIT` = unset (toolkit function calling), `mcp` (PayPal's MCP server class) or `off`. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
+See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `PAYPAL_AGENT_TOOLKIT` = unset (toolkit function calling), `mcp` (PayPal's MCP server class) or `off`. `STUDIO_TIMEZONE` (IANA, e.g. `America/Los_Angeles`; default UTC) sets the studio's end of day for the attendance review and the time zone of slot labels. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
 
 ## Deploy on Render
 

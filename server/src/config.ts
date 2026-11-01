@@ -19,6 +19,15 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   // surface; PAYPAL_AGENT_TOOLKIT=mcp = PayPal's MCP server class in-process; =off removes them
   const tk = env.PAYPAL_AGENT_TOOLKIT;
   const deps: WorkspaceDeps = { baseUrl, agentToolkit: tk === 'off' ? false : tk === 'mcp' ? 'mcp' : 'functions' };
+  if (env.STUDIO_TIMEZONE) {
+    // the studio's IANA zone (e.g. America/Los_Angeles): end-of-day review and slot labels; default UTC
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: env.STUDIO_TIMEZONE });
+    } catch {
+      throw new Error(`STUDIO_TIMEZONE ${env.STUDIO_TIMEZONE} is not an IANA time zone`);
+    }
+    deps.timeZone = env.STUDIO_TIMEZONE;
+  }
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {

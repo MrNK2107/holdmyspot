@@ -58,6 +58,22 @@ export interface EngineOptions {
   baseUrl?: string;
   /** PayPal Agent Toolkit, read-only allow-list (paypal/toolkit.ts). Owner questions only; never client texts. */
   paypalReader?: PayPalToolkitReader;
+  /** the studio's IANA time zone (end-of-day review, slot labels); the demo runs in UTC */
+  timeZone?: string;
+}
+
+/** Local wall time minus UTC, in ms, of a time zone at an instant. */
+function zoneOffset(ms: number, timeZone: string): number {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+  const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]));
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+}
+
+/** 23:59 on the local day (in timeZone) of the instant ms, as epoch ms. DST-safe. */
+export function endOfLocalDay(ms: number, timeZone: string): number {
+  const local = new Date(ms + zoneOffset(ms, timeZone));
+  const wall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 23, 59);
+  return wall - zoneOffset(wall - zoneOffset(wall, timeZone), timeZone);
 }
 
 /** One inspectable run of the front desk on an inbound client text: tool calls, policy decision, money gate. */
@@ -112,6 +128,7 @@ export class Engine {
   holdStrategy: 'mit' | 'reauth';
   ownerName: string;
   businessName: string;
+  readonly timeZone: string;
 
   services = new Map<string, Service>();
   clients = new Map<string, Client>();
@@ -163,6 +180,7 @@ export class Engine {
     this.businessName = o.businessName;
     this.baseUrl = o.baseUrl ?? '';
     this.paypalReader = o.paypalReader;
+    this.timeZone = o.timeZone ?? 'UTC';
     this.audit.subscribe(() => this.emit('audit'));
   }
 
@@ -238,8 +256,8 @@ export class Engine {
 
   private slotLabel(b: Booking): string {
     const d = new Date(b.start);
-    const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+    const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: this.timeZone });
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: this.timeZone });
     return `${day} ${time}`;
   }
 
@@ -1195,9 +1213,8 @@ export class Engine {
     const b = this.booking(bookingId);
     if (b.state !== 'HELD') return;
     this.addApproval({ kind: 'attendance', bookingId: b.id, prompt: `Did ${this.client(b.clientId).name} show up?`, options: ['arrived', 'no_show'] });
-    const endOfDay = new Date(b.start);
-    endOfDay.setUTCHours(23, 59, 0, 0);
-    this.clock.schedule(endOfDay.getTime(), `end-of-day review ${b.id}`, () => {
+    // the studio's end of day, not UTC's (a 3 pm visit in Los Angeles would go to review at 4 pm local)
+    this.clock.schedule(endOfLocalDay(b.start, this.timeZone), `end-of-day review ${b.id}`, () => {
       if (b.state === 'HELD') this.setState(b, 'NEEDS_REVIEW', 'attendance not answered; nothing charged or voided automatically');
     });
   }
