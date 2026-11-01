@@ -178,3 +178,29 @@ describe('PayPalRestGateway transport errors', () => {
     expect(err.issue).toBe('TIMEOUT');
   });
 });
+
+describe('webhook event-id dedupe', () => {
+  it('an event whose handler failed is not burned: PayPal\'s retry of the same id is processed', async () => {
+    const w = await new Workspaces().create('wh');
+    const e = w.engine;
+    await e.clock.advanceTo(Date.UTC(2026, 10, 5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    expect(alex.state).toBe('HELD');
+    const ev = {
+      id: 'WH-RETRY-1',
+      event_type: 'PAYMENT.AUTHORIZATION.VOIDED' as const,
+      create_time: '',
+      resource: { id: alex.authorizationId!, custom_id: `wh:${alex.id}`, status: 'VOIDED' },
+    };
+    const engine = e as unknown as { onHoldVoided: (...a: unknown[]) => void };
+    const real = engine.onHoldVoided;
+    engine.onHoldVoided = () => {
+      throw new Error('transient failure');
+    };
+    await expect(e.ingestWebhook(ev)).rejects.toThrow('transient failure');
+    engine.onHoldVoided = real;
+    expect(await e.ingestWebhook(ev)).toBe('processed');
+    expect(alex.holdVoided).toMatch(/voided/);
+    expect(await e.ingestWebhook(ev)).toBe('duplicate');
+  });
+});

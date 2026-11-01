@@ -546,10 +546,16 @@ export class Engine {
         [...this.bookings.values()].find((x) => x.refundId === e.resource.id || x.captureId === e.resource.id);
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
-    if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
-    else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
-    else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
-    else if (e.event_type === 'PAYMENT.AUTHORIZATION.VOIDED') this.onHoldVoided(b, e.resource.id);
+    try {
+      if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
+      else if (e.event_type === 'PAYMENT.CAPTURE.DENIED' || e.event_type === 'PAYMENT.CAPTURE.REVERSED') this.onCaptureLost(b, e);
+      else if (e.event_type === 'PAYMENT.REFUND.FAILED') this.onRefundFailed(b, e.resource.id);
+      else if (e.event_type === 'PAYMENT.AUTHORIZATION.VOIDED') this.onHoldVoided(b, e.resource.id);
+    } catch (err) {
+      // the route answers 5xx and PayPal redelivers the same event id: that retry must not be deduped away
+      this.seenEvents.delete(e.id);
+      throw err;
+    }
     return 'processed';
   }
 
