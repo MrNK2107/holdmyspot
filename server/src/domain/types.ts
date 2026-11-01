@@ -45,6 +45,8 @@ export interface Booking {
   captureId?: string;
   refundId?: string;
   capturedCents?: number;
+  /** end of the hold's 29-day authorization validity (a reauthorization does not extend it) */
+  holdExpiresAt?: number;
   /** PayPal allows one reauthorization per authorization */
   reauthorized?: boolean;
   refilledByBookingId?: string;

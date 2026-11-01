@@ -211,3 +211,39 @@ describe('STUDIO_TIMEZONE', () => {
     expect(() => configFromEnv({ STUDIO_TIMEZONE: 'Mars/Olympus' })).toThrow(/IANA/);
   });
 });
+
+describe('charging after the 29-day authorization expiry', () => {
+  const alexFeeCard = async (id: string) => {
+    const w = await new Workspaces().create(id);
+    const e = w.engine;
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!.id, 'no_show');
+    const card = e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!;
+    return { e, alex, card, mock: w.mock! };
+  };
+
+  it('is detected up front: the card closes with the reason, the booking no longer shows a hold, PayPal is not called', async () => {
+    const { e, alex, card, mock } = await alexFeeCard('t8');
+    await e.clock.advanceTo(at(2, 11) + 30 * 24 * 3600_000); // the hold was placed 2 Nov 11:00; now 2 Dec
+    const calls = mock.delivered.length;
+    const paypalBefore = e.audit.forBooking(alex.id).filter((x) => x.kind === 'paypal').length;
+    await expect(e.resolveApproval(card.id, 'charge')).rejects.toThrow(/expired/);
+    expect(e.openApprovals().some((a) => a.id === card.id)).toBe(false); // not tappable again
+    expect(alex.state).toBe('EXCUSED');
+    expect(alex.captureId).toBeUndefined();
+    expect(e.snapshot().bookings.find((b) => b.id === alex.id)!.money).not.toBe('held');
+    expect(mock.delivered.length).toBe(calls);
+    expect(e.audit.forBooking(alex.id).filter((x) => x.kind === 'paypal').length).toBe(paypalBefore);
+    expect(e.audit.forBooking(alex.id).map((x) => x.summary).join('\n')).toMatch(/authorization .*expired/i);
+  });
+
+  it('a reauthorized hold keeps the original 29-day expiry', async () => {
+    const { e, alex, card } = await alexFeeCard('t9');
+    await e.clock.advanceTo(at(2, 11) + 20 * 24 * 3600_000); // day 20: reauthorize-before-capture still works
+    await e.resolveApproval(card.id, 'charge');
+    expect(alex.state).toBe('CHARGED');
+    expect(alex.reauthorized).toBe(true);
+    expect(alex.holdExpiresAt).toBe(at(2, 11) + 29 * 24 * 3600_000);
+  });
+});

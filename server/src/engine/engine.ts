@@ -95,6 +95,7 @@ export interface AgentRun {
 export type EngineEvent = { type: 'audit' | 'state' | 'message' | 'approval'; at: number };
 
 const HOLD_LEAD = 72 * HOUR;
+const AUTH_VALIDITY = 29 * DAY;
 const OFFER_FANOUT = 3;
 // a claim places a hold on the claimer's wallet, so the yes must be a word of its own ("y'all ..." is not a yes)
 const YES = /^\s*(yes|yep|yeah|y|i'?ll take it|claim|me!?)(?![\w'’])/i;
@@ -472,6 +473,8 @@ export class Engine {
     const prev = b.authorizationId;
     b.authorizationId = authorizationId;
     b.authorizedAt = this.now();
+    // PayPal authorizations are valid 29 days; a reauthorization keeps its parent's expiry
+    if (!(prev && this.reauthParents.has(prev) && b.holdExpiresAt)) b.holdExpiresAt = this.now() + AUTH_VALIDITY;
     if (prev && prev !== authorizationId && !this.reauthParents.has(prev)) {
       // a fresh hold (e.g. the re-approval after a declined reauthorization) replaces one that is still
       // live at PayPal: release it, or the client would carry two holds and only one could ever be settled
@@ -1300,6 +1303,13 @@ export class Engine {
   /** Every capture path ends here, after an owner tap. */
   private async capture(b: Booking, feeCents: number): Promise<void> {
     if (!b.authorizationId) throw new Error('no authorization to capture');
+    if (b.holdExpiresAt !== undefined && this.now() >= b.holdExpiresAt) {
+      // every reauthorize/capture would fail from here on: settle it now instead of a card that fails on each tap
+      const when = new Date(b.holdExpiresAt).toISOString().slice(0, 10);
+      this.audit.add('engine', `capture not attempted: PayPal authorization ${b.authorizationId} expired on ${when} (29-day limit); nothing can be collected`, { bookingId: b.id });
+      this.setState(b, 'EXCUSED', 'the hold expired before the fee was charged; nothing collected');
+      throw new StaleCardError(`the PayPal authorization expired on ${when} (authorizations last 29 days), so this fee can no longer be charged; nothing was sent to PayPal`);
+    }
     const violations = captureViolations({ amountCents: feeCents, authorizedCents: b.holdCents, rules: this.rulesFor(b), label: b.cancelledAt ? b.lastLabel : undefined, ownerApproved: true, kind: b.cancelledAt ? 'late_cancel' : 'no_show' });
     if (violations.length) {
       this.audit.add('engine', `capture blocked: ${violations.join('; ')}`, { bookingId: b.id });
