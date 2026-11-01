@@ -104,4 +104,30 @@ describe('review regressions', () => {
     await e.ingestWebhook({ ...ev, id: 'WH-replayed-with-new-id' });
     expect(sam.authorizationId).toBe(current);
   });
+  it('a claim still waiting for approval at the slot cutoff is closed, not left hanging', async () => {
+    e.waitlist = e.waitlist.filter((w) => w.clientId === 'dana');
+    await e.clock.advanceTo(at(5, 16, 55));
+    const maya = bk('maya');
+    await e.receiveMessage('maya', 'cancel, sorry');
+    await e.receiveMessage('dana', 'yes');
+    const nb = [...e.bookings.values()].find((x) => x.clientId === 'dana' && x.refillOfBookingId)!;
+    await e.clock.advanceTo(at(5, 17));
+    expect(nb.state).toBe('CANCELLED_EARLY');
+    expect(e.offers[0].status).toBe('closed');
+    expect(e.openApprovals().some((a) => a.bookingId === maya.id && a.kind === 'capture')).toBe(true);
+  });
+
+  it('refill claims place the hold immediately even when the slot is more than 72h out', async () => {
+    e.policy = { ...e.policy, rules: { ...e.policy.rules, freeCancelHours: 120 } };
+    const jordan = bk('jordan'); // Fri 14:00, 101h away at the seed time
+    e.clients.get('jordan')!.sandboxDecline = false;
+    await e.placeHold(jordan); // as under the authorize-at-booking fallback
+    expect(jordan.state).toBe('HELD');
+    e.addClient({ id: 'zed', name: 'Zed Z', vaultId: 'VAULT-ZED' });
+    await e.addWaitlist('zed', 'nail art, any time');
+    await e.receiveMessage('jordan', "can't make it, something came up");
+    expect(jordan.state).toBe('PENDING_REFILL');
+    await e.receiveMessage('zed', 'yes');
+    expect(jordan.state).toBe('REFILLED');
+  });
 });
