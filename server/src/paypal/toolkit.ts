@@ -224,6 +224,19 @@ export type ToolkitVia = 'functions' | 'mcp';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type McpClient = { callTool(p: { name: string; arguments: Record<string, unknown> }): Promise<any>; listTools(): Promise<{ tools: Array<{ name: string }> }>; close(): Promise<void> };
 
+/**
+ * What one workspace may read of a PayPal account it shares with other workspaces (PAYMENTS=sandbox:
+ * one account, many visitor workspaces). Deny by default: only objects this workspace created.
+ */
+export interface ToolkitScope {
+  /** the custom_id is this workspace's ("<workspace>:<booking>[:<run tag>]") */
+  owns(customId: string | undefined): boolean;
+  /** every PayPal order, authorization, capture and refund id this workspace created */
+  ids(): Set<string>;
+}
+
+const NOT_OURS = "not one of this studio's PayPal objects; nothing was read";
+
 export class PayPalToolkitReader {
   private tk?: PayPalAgentToolkit;
   private mcp?: { client: Promise<McpClient>; at: number };
@@ -234,10 +247,22 @@ export class PayPalToolkitReader {
   constructor(
     private backend: Backend & { clientId?: string; clientSecret?: string },
     readonly via: ToolkitVia = 'functions',
+    private scope?: ToolkitScope,
+    /** the shared reader whose toolkit client and MCP connection a scoped view reuses */
+    private core?: PayPalToolkitReader,
   ) {}
+
+  /**
+   * A view for one workspace: same toolkit client and connection, its own HTTP log, and reads limited to
+   * that workspace's own objects (any visitor could otherwise ask about another visitor's transactions).
+   */
+  forWorkspace(scope: ToolkitScope): PayPalToolkitReader {
+    return new PayPalToolkitReader(this.backend, this.via, scope, this.core ?? this);
+  }
 
   /** PayPal's MCP server (toolkit build) with our allow-list, and an MCP client wired to it in memory. */
   private mcpClient(): Promise<McpClient> {
+    if (this.core) return this.core.mcpClient();
     // sandbox access tokens live 3-8 h; reconnect with a fresh one every hour
     if (this.mcp && Date.now() - this.mcp.at < 3600_000) return this.mcp.client;
     const client = (async () => {
@@ -267,6 +292,7 @@ export class PayPalToolkitReader {
   }
 
   private get toolkit(): PayPalAgentToolkit {
+    if (this.core) return this.core.toolkit;
     if (!this.tk) {
       installHttpGate();
       const { PayPalAgentToolkit } = loadToolkit();
@@ -304,6 +330,12 @@ export class PayPalToolkitReader {
       const val = args[k];
       if (typeof val === 'string' && val.length <= 128) clean[k] = val;
     }
+    if (this.scope) {
+      // ids the model passes must be this workspace's: refused before any request leaves
+      const ids = this.scope.ids();
+      const asked = name === 'get_order' ? clean.id : name === 'get_refund' ? clean.refund_id : name === 'list_transactions' ? clean.transaction_id : undefined;
+      if (asked !== undefined && !ids.has(String(asked))) return { via: this.via, result: { error: NOT_OURS }, http: [] };
+    }
     if (this.http.length > 200) this.http.splice(0, this.http.length - 200);
     const before = this.http.length;
     let text: string;
@@ -324,7 +356,29 @@ export class PayPalToolkitReader {
     } catch {
       /* keep text */
     }
+    if (this.scope) result = this.limitToScope(name, result, this.scope);
     return { via: this.via, result, http: this.http.slice(before).map((h) => `${h.method} ${h.path} → ${h.status}${h.blocked ? ' (blocked)' : ''}`) };
+  }
+
+  /** Drops whatever a shared-account answer holds that is not this workspace's. */
+  private limitToScope(name: ToolkitReadTool, result: unknown, scope: ToolkitScope): unknown {
+    if (!result || typeof result !== 'object') return name === 'get_order' || name === 'get_refund' ? result : { error: NOT_OURS };
+    const ids = scope.ids();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = result as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const disputeOurs = (d: any) => (d?.disputed_transactions ?? []).some((t: any) => ids.has(t?.seller_transaction_id));
+    if (name === 'list_transactions' && Array.isArray(r.transaction_details)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = r.transaction_details.filter((row: any) => {
+        const i = row?.transaction_info ?? {};
+        return scope.owns(i.custom_field) || ids.has(i.transaction_id) || ids.has(i.paypal_reference_id);
+      });
+      return { ...r, transaction_details: rows, total_items: rows.length, ...('found' in r ? { found: rows.length > 0 } : {}) };
+    }
+    if (name === 'list_disputes' && Array.isArray(r.items)) return { ...r, items: r.items.filter(disputeOurs) };
+    if (name === 'get_dispute' && !r.error && !disputeOurs(r)) return { error: NOT_OURS };
+    return result;
   }
 
   tools(): ToolkitReadToolDef[] {

@@ -81,3 +81,48 @@ describe('capture invariant', () => {
     expect(b.captureId).toBeUndefined();
   });
 });
+
+describe('shared sandbox account: the Agent Toolkit reads only the asking workspace', () => {
+  const chargeAlex = async (e: import('../src/engine/engine.js').Engine) => {
+    await e.clock.advanceTo(at(5, 11, 10));
+    const alex = [...e.bookings.values()].find((b) => b.clientId === 'alex')!;
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'attendance')!.id, 'no_show');
+    await e.resolveApproval(e.openApprovals().find((a) => a.bookingId === alex.id && a.kind === 'capture')!.id, 'charge');
+    return alex;
+  };
+
+  it('each workspace gets its own scoped view of the one toolkit client', async () => {
+    const { MockPayPalGateway } = await import('../src/paypal/mock.js');
+    const { DEMO_START } = await import('../src/seed.js');
+    const reg = new Workspaces({ gateway: new MockPayPalGateway(() => DEMO_START), toolkitCredentials: { clientId: 'x', clientSecret: 'y' } });
+    const a = await reg.create('A');
+    const b = await reg.create('B');
+    expect(a.engine.paypalReader).toBeTruthy();
+    expect(a.engine.paypalReader).not.toBe(b.engine.paypalReader); // no network: the toolkit loads on first call
+  });
+
+  it("one workspace's owner questions cannot list or fetch another workspace's PayPal objects", async () => {
+    const { MockPayPalGateway } = await import('../src/paypal/mock.js');
+    const { PayPalToolkitReader } = await import('../src/paypal/toolkit.js');
+    let active: import('../src/engine/engine.js').Engine | undefined; // the account's clock follows the workspace acting
+    const account = new MockPayPalGateway(() => active?.now() ?? Date.UTC(2026, 10, 2, 9));
+    const reg = new Workspaces({ gateway: account, agentToolkit: false });
+    const A = (await reg.create('A')).engine;
+    const B = (await reg.create('B')).engine;
+    active = A;
+    const alexA = await chargeAlex(A);
+    active = B;
+    const alexB = await chargeAlex(B);
+    const reader = PayPalToolkitReader.simulator(account).forWorkspace({ owns: (c) => A.ownsCustomId(c), ids: () => A.paypalIds() });
+    type Tx = { result: { transaction_details?: Array<{ transaction_info: { transaction_id: string } }>; error?: string } };
+    const all = (await reader.call('list_transactions', {})) as Tx;
+    expect(all.result.transaction_details!.map((r) => r.transaction_info.transaction_id)).toEqual([alexA.captureId]);
+    const other = (await reader.call('list_transactions', { transaction_id: alexB.captureId })) as Tx;
+    expect(other.result.error).toMatch(/not one of this studio/);
+    const order = (await reader.call('get_order', { id: alexB.orderId })) as Tx & { http: string[] };
+    expect(order.result.error).toMatch(/not one of this studio/);
+    expect(order.http).toEqual([]); // refused before any request
+    const mine = (await reader.call('get_order', { id: alexA.orderId })) as { result: { id: string } };
+    expect(mine.result.id).toBe(alexA.orderId);
+  });
+});

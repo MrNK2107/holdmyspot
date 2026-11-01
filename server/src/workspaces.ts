@@ -69,7 +69,9 @@ export class Workspaces {
       const via: ToolkitVia = this.deps.agentToolkit === 'mcp' ? 'mcp' : 'functions';
       if (mock) paypalReader = PayPalToolkitReader.simulator(mock, via);
       else if (this.deps.toolkitCredentials) {
-        paypalReader = this.toolkitShared ??= PayPalToolkitReader.sandbox(this.deps.toolkitCredentials.clientId, this.deps.toolkitCredentials.clientSecret, via);
+        // one client for the shared sandbox account; each workspace reads only its own objects through it
+        this.toolkitShared ??= PayPalToolkitReader.sandbox(this.deps.toolkitCredentials.clientId, this.deps.toolkitCredentials.clientSecret, via);
+        paypalReader = this.toolkitShared.forWorkspace({ owns: (c) => engine.ownsCustomId(c), ids: () => engine.paypalIds() });
       }
     }
     const engine = new Engine({

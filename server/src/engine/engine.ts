@@ -504,14 +504,26 @@ export class Engine {
       return 'duplicate';
     }
     this.seenEvents.add(e.id);
-    const [wsId, bookingId, tag] = e.resource.custom_id?.split(':') ?? [];
-    // an event for another workspace, or for an earlier engine under the same workspace id, is not ours
-    const ours = wsId === this.id && (tag ?? '') === this.runTag;
-    const b = ours && bookingId ? this.bookings.get(bookingId) : undefined;
+    const bookingId = e.resource.custom_id?.split(':')[1];
+    const b = this.ownsCustomId(e.resource.custom_id) && bookingId ? this.bookings.get(bookingId) : undefined;
     this.audit.add('webhook', `${e.event_type} ${e.resource.id}`, { bookingId: b?.id, data: e });
     if (!b) return 'ignored';
     if (e.event_type === 'PAYMENT.AUTHORIZATION.CREATED') await this.onAuthorized(b, e.resource.id);
     return 'processed';
+  }
+
+  /** custom_id is this engine's: not another workspace's, nor an earlier engine's under the same workspace id */
+  ownsCustomId(customId: string | undefined): boolean {
+    const [wsId, , tag] = customId?.split(':') ?? [];
+    return wsId === this.id && (tag ?? '') === this.runTag;
+  }
+
+  /** Every PayPal order, authorization, capture and refund id this workspace knows (scopes the shared toolkit reader). */
+  paypalIds(): Set<string> {
+    const ids = new Set<string>(this.pendingOrders.keys());
+    for (const b of this.bookings.values()) for (const x of [b.orderId, b.authorizationId, b.captureId, b.refundId]) if (x) ids.add(x);
+    for (const set of this.knownAuths.values()) for (const x of set) ids.add(x);
+    return ids;
   }
 
   // ---------- client messages ----------
