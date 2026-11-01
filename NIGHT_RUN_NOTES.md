@@ -247,3 +247,32 @@ Leftovers of the review follow-up, each test-first (`server/test/pass7.test.ts`,
 ### Still open
 - Outside-void handling is written from the docs (no live keys). A HELD booking whose hold was voided outside stays HELD until the T-72h reauthorize/visit; it does not proactively send a re-approval link.
 - The clarifying question fires for any text naming two different visits (e.g. "running late for Wed and Sat"); it never moves money, but the client must text again.
+
+## Review round 2 (2026-11-02, 03:18- IST, same branch, local only)
+
+Second independent adversarial review, on what the money review did not cover: HTTP surface, REST adapter, webhook path, AI output, UI money display. Each bug: failing test first (`server/test/review4.test.ts`), minimal fix, one commit, `npm run build` after every commit. PITCH.md and the create_refund replay untouched.
+
+### Confirmed and fixed (`f1c902a..`)
+1. **Attribute injection in the policy highlight** (`frontdesk.ts`, `App.tsx`): compile_policy `spans` were not whitelisted; the model's `field` went unescaped into `<mark title="...">` via `dangerouslySetInnerHTML`. Spans now need a real rule name and text found in the owner's prose; the UI strips non-word chars from the title and uses a replacer function (no `$&` patterns).
+2. **Malformed rules went live** (`policy.ts` `validateRules`): `/policy/approve` takes rules from the request body; strings for numbers, unknown reasons, a non-boolean `refillWaives`, a negative excusal count or extra keys were accepted. Full shape check now (types, known reasons, `excusalLimit` count >= 0 / months 1..24, no extra fields).
+3. **Time travel to a string / 1e300** (`app.ts` `/time`): clock became a string/unrepresentable. Finite number, not backwards, at most 400 days ahead.
+4. **Bookings with a past or non-number start** (`engine.createBooking`): a past start placed a hold for a visit that already happened and then raised an attendance/no-show card; a string start broke the timers. Future safe-integer start required.
+5. **`/reset` created workspaces with caller-chosen ids**: now 404 for an unknown workspace.
+6. **REST adapter transport** (`rest.ts`): no timeout (a hung PayPal call held the workspace lock forever), an HTML 5xx page threw a SyntaxError, network errors were not PaymentsErrors, a revoked cached token failed every call. Now 20 s timeout (`TIMEOUT`), `NETWORK_ERROR` / `UPSTREAM_ERROR` mapping, one token refresh + replay on 401 with the same PayPal-Request-Id. `preview.ts` token stub returns its body as text.
+7. **Webhook dedupe burned failed events** (`engine.ingestWebhook`): the event id was marked seen before the handler ran; a handler error -> 5xx -> PayPal's redelivery was ignored as duplicate. The id is un-marked when the handler throws.
+8. **Ledger counted a reversed capture as kept money** (`web/src/money.ts`, `Ledger.tsx`): server totals exclude it, the ledger's Charged/Kept did not, and `reversed` had no label. Amounts/labels moved to a React-free module that the server tests import.
+9. **No rate limit on model-backed routes** (`app.ts`): `/messages`, `/assistant`, `/policy/compile`, `/book`, `/reset`: 30 per workspace and 300 server-wide per minute (429). `POST /api/workspaces` (seeds through the model and, in sandbox mode, PayPal; may evict the oldest visitor's workspace) shares one 30/min budget. SECURITY.md updated (CRLF kept).
+10. **Runtime error messages leaked to clients** (`act`): TypeError/RangeError/etc. from a malformed body now answer `invalid request` (logged server-side).
+11. **PayPal error on the T-72h hold aborted the clock run** (`engine.t72`): a 5xx/timeout on `placeHold` threw out of the job (job already dequeued) -> no hold, no link, later jobs in that advance skipped. Now handled like a decline (HOLD_FAILED + re-approval link) unless an authorization already exists; a hold PayPal did create still attaches via its AUTHORIZATION.CREATED webhook.
+12. **Model calls could hang 10 min inside the workspace lock** (`anthropic.ts`): 60 s timeout, one retry, plus a backstop race.
+
+### Suspected / not fixed (need a product call or live keys)
+- `workspaces.ts:53-58,123-126`: evicting or resetting a sandbox-mode workspace drops its live holds without voiding them (sandbox wallets stay held up to 29 days; later webhooks go to `unknown_workspace`). Needs a "release all" on evict/reset; product call for the hosted demo.
+- `workspaces.ts:43`: `tails` (lock queue) entries are never deleted on eviction (small leak, 1 promise per evicted id).
+- `toolkit.ts` HTTP gate (`network(config)`): live toolkit reads (axios) have no timeout; set `config.timeout` in the adapter. Not testable offline.
+- `web/src/api.ts:131`, `App.tsx:110,188`, `BookingPage.tsx:19,30,68,71`: the `?ws=` value is put into API paths without `encodeURIComponent`; a crafted link could aim a button at another route of the same workspace. No ambient authority (the id is the capability), so not exploitable across workspaces; cheap hardening.
+- CSRF: body-less POSTs (`/refund`, `/demo/next`, `/reset`, `/sim/approve`) can be sent cross-site as text/plain; only matters for the public `demo` workspace, which anyone can drive anyway. Add an Origin check if workspaces ever get cookies/auth.
+- `app.ts` webhook route: a handler error answers Fastify's default 500 body with the error message (PayPal is the only verified caller).
+- `/policy/approve` `prose` is not type/size checked (owner-only; stored in the policy).
+- `/audit` exposes the full audit including `placeHold` results with vault ids to anyone holding the workspace id (merchant-side tokens; same capability as the console).
+- Live-mode `paypal.get_order` results (payer name/email) go into the owner's trace and the model context (owner-only, clipped to 800/6000 chars).
