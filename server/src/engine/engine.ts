@@ -682,7 +682,7 @@ export class Engine {
   /** Every capture path ends here, after an owner tap. */
   private async capture(b: Booking, feeCents: number): Promise<void> {
     if (!b.authorizationId) throw new Error('no authorization to capture');
-    const violations = captureViolations({ amountCents: feeCents, authorizedCents: b.holdCents, rules: this.policy.rules, label: b.lastLabel, ownerApproved: true });
+    const violations = captureViolations({ amountCents: feeCents, authorizedCents: b.holdCents, rules: this.policy.rules, label: b.cancelledAt ? b.lastLabel : undefined, ownerApproved: true });
     if (violations.length) {
       this.audit.add('engine', `capture blocked: ${violations.join('; ')}`, { bookingId: b.id });
       throw new PaymentsError('ENGINE_INVARIANT', violations.join('; '));
