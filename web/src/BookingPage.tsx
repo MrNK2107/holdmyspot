@@ -9,7 +9,7 @@ export function BookingPage({ ws }: { ws: string }) {
   const [start, setStart] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [agree, setAgree] = useState(false);
-  const [booked, setBooked] = useState<{ id: string; orderId?: string; approvalLink?: string; state: string } | null>(null);
+  const [booked, setBooked] = useState<{ id: string; start?: number; orderId?: string; approvalLink?: string; authorizationId?: string; state: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(true);
@@ -87,7 +87,7 @@ export function BookingPage({ ws }: { ws: string }) {
         <section className="book-card done">
           <h2>You're booked</h2>
           <p>
-            {svc.find((x) => x.id === service)?.name}, {start ? `${fmtDay(start)} at ${fmtTime(start)}` : ''}.
+            {svc.find((x) => x.id === service)?.name}, {booked.start ? `${fmtDay(booked.start)} at ${fmtTime(booked.start)}` : ''}.
           </p>
           <p className="muted">
             {booked.state === 'HELD'
@@ -95,6 +95,11 @@ export function BookingPage({ ws }: { ws: string }) {
               : `Your PayPal is saved. We'll place a ${usd(hold)} hold 3 days before your visit; it is not a charge.`}{' '}
             Questions or changes? Just text {s.owner}.
           </p>
+          {booked.authorizationId && (
+            <p className="muted small">
+              PayPal authorization <code>{booked.authorizationId}</code>
+            </p>
+          )}
         </section>
       ) : booked ? (
         <section className="book-card">
