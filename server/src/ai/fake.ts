@@ -106,7 +106,7 @@ export function compilePolicy(prose: string): AiTasks['compile_policy']['output'
     }
     spans.push({ field: 'lateCancelFeeCents', text: dollars[0].text });
   }
-  rules.refillWaives = /(fill|rebook|refill)/.test(t) || DEFAULT_RULES.refillWaives;
+  rules.refillWaives = /(fill|rebook|refill)/.test(t);
   rules.excusedReasons = [];
   if (/\bsick\b|illness|\bill\b/.test(t)) rules.excusedReasons.push('illness_self');
   const ambiguities: Ambiguity[] = [];
@@ -120,6 +120,17 @@ export function compilePolicy(prose: string): AiTasks['compile_policy']['output'
       options: [
         { label: 'Yes, excuse it once every 6 months', patch: { excusedReasons: [...rules.excusedReasons, 'illness_dependent'], excusalLimit: { count: 1, months: 6 } } },
         { label: 'No, the normal fee applies', patch: {} },
+      ],
+    });
+  }
+  if (!rules.refillWaives) {
+    ambiguities.push({
+      id: 'refill-waives',
+      question: 'If I fill the spot from your waitlist, should the client pay nothing?',
+      span: '',
+      options: [
+        { label: 'Yes, refilled means $0 (recommended)', patch: { refillWaives: true } },
+        { label: 'No, the fee still applies', patch: { refillWaives: false } },
       ],
     });
   }

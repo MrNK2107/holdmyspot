@@ -55,7 +55,7 @@ describe('HTTP API', () => {
   it('policy compile returns rules + questions; approve bumps the version', async () => {
     const c = (await post('/api/ws/demo/policy/compile', { prose: '48 hours notice or $30. Emergencies are fine.' })).json();
     expect(c.result.rules.freeCancelHours).toBe(48);
-    expect(c.result.ambiguities.length).toBeGreaterThan(0);
+    expect(c.result.ambiguities.map((a: any) => a.id)).toEqual(['sick-child', 'refill-waives', 'no-show-fee']);
     const a = (await post('/api/ws/demo/policy/approve', { rules: c.result.rules, prose: 'x' })).json();
     expect(a.result.version).toBe(2);
   });
