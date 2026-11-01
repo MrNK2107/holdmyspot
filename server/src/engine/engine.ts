@@ -965,11 +965,20 @@ export class Engine {
     const svc = this.services.get(b.serviceId)!;
     const eligible = this.eligibleWaitlist(b);
     if (b.start > this.now() && eligible.length) {
-      const { order, offer } = await this.frontdesk.rankAndDraftOffer(
-        this.slotLabel(b),
-        svc.name,
-        eligible.map((w) => ({ id: w.clientId, name: this.client(w.clientId).name, text: w.text })),
-      );
+      let order: string[];
+      let offer: string;
+      try {
+        ({ order, offer } = await this.frontdesk.rankAndDraftOffer(
+          this.slotLabel(b),
+          svc.name,
+          eligible.map((w) => ({ id: w.clientId, name: this.client(w.clientId).name, text: w.text })),
+        ));
+      } catch (err) {
+        // the booking is already PENDING_REFILL: without an offer and a cutoff it would never reach a fee decision
+        this.audit.add('ai', `rank_and_draft_offer failed: ${(err as Error).message}; offering in waitlist order`, { bookingId: b.id });
+        order = [...new Set(eligible.map((w) => w.clientId))];
+        offer = `A ${svc.name} spot just opened: ${this.slotLabel(b)}. Reply YES to claim it. First yes gets it.`;
+      }
       const o: RefillOffer = { id: this.nextId('offer'), slotBookingId: b.id, ranked: order, offeredTo: order.slice(0, OFFER_FANOUT), failed: [], status: 'open', text: offer };
       this.offers.push(o);
       this.audit.add('engine', `refill: offered to ${o.offeredTo.map((id) => this.client(id).name).join(', ')}`, { bookingId: b.id });

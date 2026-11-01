@@ -226,4 +226,15 @@ describe('review 2026-11-02: a model failure after money logic ran', () => {
     expect(maya.state).toBe('PENDING_REFILL');
     expect(eng.offers.filter((o) => o.slotBookingId === maya.id)).toHaveLength(1);
   });
+
+  it('a failed offer ranking still offers the slot and still reaches the fee decision at the cutoff', async () => {
+    const eng = await flaky('rank_and_draft_offer');
+    await eng.clock.advanceTo(at(5, 9));
+    const maya = [...eng.bookings.values()].find((x) => x.clientId === 'maya')!;
+    await eng.receiveMessage('maya', "I can't make it today, something came up").catch(() => undefined);
+    expect(maya.state).toBe('PENDING_REFILL');
+    expect(eng.offers.filter((o) => o.slotBookingId === maya.id)).toHaveLength(1);
+    await eng.clock.advanceTo(at(5, 18));
+    expect(eng.openApprovals().some((a) => a.bookingId === maya.id && a.kind === 'capture')).toBe(true);
+  });
 });
