@@ -84,7 +84,7 @@ try {
       await axe(desk, 'policy tab');
       await shot(desk, 'policy-editor.png');
     }
-    if ([4, 6, 9, 12, 13].includes(i)) beats[i] = await chipText(String(i));
+    if ([4, 6, 9, 11, 12, 13].includes(i)) beats[i] = await chipText(String(i));
     if (i === 6) await shot(desk, 'console-hero1-excused.png');
     if (i === 9) {
       await axe(desk, 'console desktop (hero 2 refilled)');
@@ -110,7 +110,8 @@ try {
   check(/^held \$20/.test(beats[4]), `beat 4 Jordan re-approved → ${beats[4]}`);
   check(/^released · \$0/.test(beats[6]), `beat 6 Sam excused → ${beats[6]}`);
   check(/^released · \$0/.test(beats[9]), `beat 9 Maya refilled → ${beats[9]}`);
-  check(/^charged \$20/.test(beats[12]), `beat 12 Alex charged → ${beats[12]}`);
+  check(/^held \$20/.test(beats[11]), `beat 11 Alex no-show, fee card waiting: still only held → ${beats[11]}`);
+  check(/^charged \$20/.test(beats[12]),`beat 12 Alex charged → ${beats[12]}`);
   check(/^refunded \$20/.test(beats[13]), `beat 13 Alex refunded → ${beats[13]}`);
   await desk.locator('details.legend summary').click();
   await axe(desk, 'console desktop (end, legend open)');
