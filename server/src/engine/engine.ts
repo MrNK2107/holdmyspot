@@ -246,7 +246,7 @@ export class Engine {
 
   private async reply(b: Booking, situation: string, facts: Record<string, string> = {}): Promise<void> {
     const c = this.client(b.clientId);
-    const all = { owner: this.ownerName, appointment: this.slotLabel(b), ...facts };
+    const all: Record<string, string> = { owner: this.ownerName, appointment: this.slotLabel(b), ...facts };
     let text: string;
     try {
       text = await this.frontdesk.draftReply(c.name, situation, all, b.id);
