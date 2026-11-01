@@ -265,6 +265,10 @@ Second independent adversarial review, on what the money review did not cover: H
 10. **Runtime error messages leaked to clients** (`act`): TypeError/RangeError/etc. from a malformed body now answer `invalid request` (logged server-side).
 11. **PayPal error on the T-72h hold aborted the clock run** (`engine.t72`): a 5xx/timeout on `placeHold` threw out of the job (job already dequeued) -> no hold, no link, later jobs in that advance skipped. Now handled like a decline (HOLD_FAILED + re-approval link) unless an authorization already exists; a hold PayPal did create still attaches via its AUTHORIZATION.CREATED webhook.
 12. **Model calls could hang 10 min inside the workspace lock** (`anthropic.ts`): 60 s timeout, one retry, plus a backstop race.
+13. **REST capture without `amount`** (`rest.ts`): a COMPLETED capture whose body lacks `amount` threw a TypeError after money moved (booking not CHARGED, card offered again). Falls back to the requested amount.
+14. **Evicted workspaces kept their lock-queue entry** (`workspaces.ts`): deleted on eviction.
+15. **Ledger state words contradicted the money chip** (`money.ts` `bookingStateLabel`): a reversed capture read "charged", a hold voided at PayPal read "held". Slip: the test passed extra fields and broke `tsc` for one commit (`b89db83`, fixed in `8d50d90`).
+16. **Rate limit bypass via percent-encoding** (my own fix 9): the limiter matched the raw URL, so `/api/ws/demo/%6Dessages` (routed to `/messages`) skipped it. Now matches `req.routeOptions.url` + `req.params.ws`.
 
 ### Suspected / not fixed (need a product call or live keys)
 - `workspaces.ts:53-58,123-126`: evicting or resetting a sandbox-mode workspace drops its live holds without voiding them (sandbox wallets stay held up to 29 days; later webhooks go to `unknown_workspace`). Needs a "release all" on evict/reset; product call for the hosted demo.
