@@ -15,6 +15,29 @@ export interface AppOptions {
   logger?: boolean;
   /** Verifies real PayPal webhook signatures. Without it the webhook endpoint refuses every event. */
   webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
+  /** Budget for routes that call the model (client texts, the owner's assistant, policy compile, booking). */
+  rateLimit?: { perWorkspacePerMin: number; globalPerMin: number };
+}
+
+/** Sliding one-minute windows: per workspace and for the whole server (visitors can create many workspaces). */
+function modelBudget(limits: { perWorkspacePerMin: number; globalPerMin: number }) {
+  const per = new Map<string, number[]>();
+  let all: number[] = [];
+  return (wsId: string): boolean => {
+    const now = Date.now();
+    const recent = (xs: number[]) => xs.filter((t) => now - t < 60_000);
+    all = recent(all);
+    const mine = recent(per.get(wsId) ?? []);
+    if (mine.length >= limits.perWorkspacePerMin || all.length >= limits.globalPerMin) {
+      per.set(wsId, mine);
+      return false;
+    }
+    mine.push(now);
+    all.push(now);
+    per.set(wsId, mine);
+    if (per.size > 1000) per.delete(per.keys().next().value!);
+    return true;
+  };
 }
 
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
@@ -40,6 +63,16 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       return reply.code(400).send({ ok: false, error: (err as Error).message, state: w.engine.snapshot() });
     }
   };
+
+  const allowModelCall = modelBudget(opts.rateLimit ?? { perWorkspacePerMin: 30, globalPerMin: 300 });
+  // each of these runs the model (and, for /book, PayPal); without a budget one script could run up the bill
+  app.addHook('preHandler', async (req, reply) => {
+    if (req.method !== 'POST') return;
+    const m = /^\/api\/ws\/([^/]+)\/(messages|assistant|policy\/compile|book)$/.exec(req.url.split('?')[0]);
+    if (m && workspaces.get(decodeURIComponent(m[1])) && !allowModelCall(decodeURIComponent(m[1]))) {
+      return reply.code(429).send({ ok: false, error: 'too many requests: try again in a minute' });
+    }
+  });
 
   app.get('/api/health', async () => ({ ok: true, workspaces: workspaces.ids().length }));
 

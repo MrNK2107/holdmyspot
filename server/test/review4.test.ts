@@ -223,3 +223,29 @@ describe('the ledger shows the server money state', () => {
     for (const m of ['none', 'vaulted', 'held', 'pending-refill', 'voided', 'captured', 'failed', 'refunded', 'reversed']) expect(MONEY_TEXT[m]).toBeTruthy();
   });
 });
+
+describe('model-backed routes are rate limited', () => {
+  it('a burst of client texts to one workspace gets 429 after the per-workspace budget, without reaching the engine', async () => {
+    const ws = new Workspaces();
+    await ws.create('demo');
+    const app = await buildApp({ workspaces: ws, rateLimit: { perWorkspacePerMin: 5, globalPerMin: 100 } });
+    const e = ws.get('demo')!.engine;
+    const codes: number[] = [];
+    for (let i = 0; i < 7; i++) codes.push((await app.inject({ method: 'POST', url: '/api/ws/demo/messages', payload: { clientId: 'sam', text: `hello ${i}` } })).statusCode);
+    expect(codes.slice(0, 5).every((c) => c === 200)).toBe(true);
+    expect(codes.slice(5)).toEqual([429, 429]);
+    expect(e.messages.filter((m) => m.from === 'client' && m.text.startsWith('hello')).length).toBe(5);
+    // the owner's assistant shares the workspace budget; other routes do not
+    expect((await app.inject({ method: 'POST', url: '/api/ws/demo/assistant', payload: { text: 'how was the week?' } })).statusCode).toBe(429);
+    expect((await app.inject('/api/ws/demo/state')).statusCode).toBe(200);
+  });
+
+  it('the global budget caps model calls across many workspaces', async () => {
+    const ws = new Workspaces();
+    const ids = [(await ws.create('a')).engine.id, (await ws.create('b')).engine.id, (await ws.create('c')).engine.id];
+    const app = await buildApp({ workspaces: ws, rateLimit: { perWorkspacePerMin: 5, globalPerMin: 4 } });
+    const codes: number[] = [];
+    for (const id of ids) for (let i = 0; i < 2; i++) codes.push((await app.inject({ method: 'POST', url: `/api/ws/${id}/messages`, payload: { clientId: 'sam', text: 'hi' } })).statusCode);
+    expect(codes.filter((c) => c === 429).length).toBe(2);
+  });
+});
