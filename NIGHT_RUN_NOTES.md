@@ -271,6 +271,7 @@ Second independent adversarial review, on what the money review did not cover: H
 16. **Rate limit bypass via percent-encoding** (my own fix 9): the limiter matched the raw URL, so `/api/ws/demo/%6Dessages` (routed to `/messages`) skipped it. Now matches `req.routeOptions.url` + `req.params.ws`.
 17. **Unbounded event streams** (`app.ts` `/events`): each SSE stream is an engine listener + timer; now 10 per workspace (429 beyond), slot freed on close. Tested with a real listening server.
 18. **Unbounded message history** (`engine.ts` `MAX_MESSAGES` = 500, oldest dropped): every action returns the snapshot with all messages, and the shared `demo` workspace is never evicted.
+19. **Webhook handler errors leaked the message** (`app.ts`): Fastify's default 500 body carried the internal error text; now a plain 500 (PayPal redelivers; fix 7 keeps the event id retryable), reason in the server log.
 
 ### Suspected / not fixed (need a product call or live keys)
 - `workspaces.ts:53-58,123-126`: evicting or resetting a sandbox-mode workspace drops its live holds without voiding them (sandbox wallets stay held up to 29 days; later webhooks go to `unknown_workspace`). Needs a "release all" on evict/reset; product call for the hosted demo.
@@ -278,7 +279,6 @@ Second independent adversarial review, on what the money review did not cover: H
 - `toolkit.ts` HTTP gate (`network(config)`): live toolkit reads (axios) have no timeout; set `config.timeout` in the adapter. Not testable offline.
 - `web/src/api.ts:131`, `App.tsx:110,188`, `BookingPage.tsx:19,30,68,71`: the `?ws=` value is put into API paths without `encodeURIComponent`; a crafted link could aim a button at another route of the same workspace. No ambient authority (the id is the capability), so not exploitable across workspaces; cheap hardening.
 - CSRF: body-less POSTs (`/refund`, `/demo/next`, `/reset`, `/sim/approve`) can be sent cross-site as text/plain; only matters for the public `demo` workspace, which anyone can drive anyway. Add an Origin check if workspaces ever get cookies/auth.
-- `app.ts` webhook route: a handler error answers Fastify's default 500 body with the error message (PayPal is the only verified caller).
 - `/policy/approve` `prose` is not type/size checked (owner-only; stored in the policy).
 - `/audit` exposes the full audit including `placeHold` results with vault ids to anyone holding the workspace id (merchant-side tokens; same capability as the console).
 - **Design: the public booking link is the owner's capability.** `App.tsx:188` shares `/book?ws=<id>` with clients, and `BookingPage.tsx:19` reads `/api/ws/<id>/state` (every client's name, messages, bookings, audit-adjacent data). Anyone holding a booking link can call every owner route of that workspace (approvals, refunds, policy, mode, time, reset). Fine for per-visitor demo workspaces; a real deployment needs a separate public booking id and owner auth.
@@ -288,4 +288,4 @@ Second independent adversarial review, on what the money review did not cover: H
 - Live-mode `paypal.get_order` results (payer name/email) go into the owner's trace and the model context (owner-only, clipped to 800/6000 chars).
 
 ### Verified (review round 2)
-- `npm test` **252 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.
+- `npm test` **253 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.
