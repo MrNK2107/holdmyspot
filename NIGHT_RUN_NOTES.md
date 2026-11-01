@@ -289,3 +289,27 @@ Second independent adversarial review, on what the money review did not cover: H
 
 ### Verified (review round 2)
 - `npm test` **253 passing** (24 files), peak 1.73 GB / 2 GB (close to the cap: split or trim heavy suites before adding many more). `npm run build` passes after every commit (one slip: `b89db83` broke `tsc`, fixed in `8d50d90`), 0.82-0.85 GB / 3 GB. `npm run ui-check` passes (axe 0), 1.13 GB / 2 GB, screenshot churn reverted. `npm run eval` injection money effects 0, 0.28 GB.
+
+## Round 2 follow-up (2026-11-02, 03:43-04:00 IST, same branch, local only)
+
+The open items of "Review round 2". Each: failing test first (`server/test/review5.test.ts`, 19 tests), minimal fix, one commit, `npm run build` after every commit. PITCH.md and the create_refund replay untouched. Line endings kept per file (app.ts, workspaces.ts, rest.ts, gateway.ts, types.ts, SECURITY.md are CRLF).
+
+### Done (`c777bc0..cd8a705`)
+0. `npm test` now runs `vitest run --maxWorkers=2`: peak 0.70-0.85 GB (was 1.73 GB of the 2 GB cap).
+1. **Booking link is no longer the owner capability** (`app.ts`, `workspaces.ts`, web). Each workspace has an owner token (24 random bytes) returned once by `POST /api/workspaces`; owner routes need `x-owner-token` (event stream: `?owner=`), constant-time compare, else 403. The id alone reaches only `GET public` (new: business, services, policy summary, hold amount), `GET slots`, `POST book`, `POST sim/approve/:orderId`, and those answers no longer carry the studio snapshot. Console keeps the token in localStorage (`#owner=` fragment accepted once); "New private demo" stores it. Shared `demo` stays open (public console, guided demo unchanged). Reset keeps the token. ui-check/gallery pass the token via `#owner=`.
+2. **Evict/reset void live holds first** (`Engine.releaseAllHolds`): uncaptured, pending and previously unreleased authorizations; already voided/expired count as released. If PayPal refuses, the workspace is kept (eviction tries the next oldest, else `POST /api/workspaces` 503; reset 409).
+3. **Toolkit live reads time out** (`toolkit.ts`): `config.timeout` = 20 s plus a backstop race; timed-out calls logged with status 0. Test hook `toolkitLiveNetworkForTests` (hung fake).
+4. **Web encodes `?ws=`** (`wsPath()` in `api.ts`) and path ids (approval, booking, order, audit query).
+5. **`PAYMENT.CAPTURE.REFUNDED` recorded** (`onCaptureRefunded`): once per refund id, `refunds[]` + `refundedCents`; money `part-refunded` ("partly refunded") for partial, full refund sets `refundId` and closes refund cards; the owner's refund refunds only the rest; our own refund's webhook is not double counted; refund resources without `custom_id` routed via the `up` link to the capture (`upCaptureId`). Ledger/money strip/agent totals use the refunded amount.
+6. **`PENDING` authorization is not a hold** (`rest.ts holdFromOrder` -> `{status:'PENDING'}`; `onHoldPending` keeps `pendingAuthorizationId`, no `authorizationId`, so no held money, no charge card). An `AUTHORIZATION.CREATED` webhook whose resource status is `PENDING` is not attached; one with `CREATED` (or no status) attaches as the hold.
+7. **Audit retention** (`audit.ts`): newest 5000 per workspace (`AUDIT_MAX_ENTRIES`, >= 100; empty = default), seq keeps counting, `dropped` counter.
+8. SECURITY.md (CRLF kept) and `.env.example` updated.
+
+### Verified
+- `npm test` **272 passing** (25 files), peak 0.85 GB / 2 GB with 2 workers. `npm run build` after every commit, 0.82-0.87 GB / 3 GB. `npx tsc -p web` clean. `npm run ui-check` passes (axe 0), 1.15 GB / 2 GB, screenshot churn reverted. `npm run eval`: injection money effects 0, 0.29 GB.
+
+### Still open
+- PayPal docs not re-checked live (no keys): whether a cleared PENDING authorization emits `PAYMENT.AUTHORIZATION.CREATED` again; if not, a poll of the authorization is needed. A `PENDING` reauthorization result is still mapped to AUTHORIZED in `rest.ts reauthorize`.
+- The front desk's prepare-refund card and the refund-failed card still show the full captured fee after a partial dashboard refund (the refund itself sends only the rest). Left alone: the agent refund path is next to the create_refund replay.
+- Opening a private console in another browser needs the `#owner=` link; there is no "copy owner link" button yet.
+- Owner token is a capability, not a login; CSRF note in SECURITY.md still applies to the open `demo` workspace only.
