@@ -11,7 +11,7 @@
 **Look at these three things** (about 3 minutes, no keys: `npm install && npm run demo`, then open `/?demo=1`):
 
 1. **Refill first, fee last** (beats 7-9): a late cancel is offered to the waitlist; the slot fills only when the claimer's own PayPal hold authorizes, so the canceller pays $0.
-2. **A text cannot move money** (beat 10, *Agent trace* tab): a prompt injection makes the model reach for `create_refund`; it is denied because that tool does not exist in its toolset (offline, this attempt is a scripted red-team replay; the denial path is the same for a live model).
+2. **A text cannot move money** (beat 10, *Agent trace* tab): a prompt injection makes the model reach for `create_refund`; it is denied because that tool does not exist in its toolset (offline, this attempt is a scripted red-team replay; the denial path is the same for a live model). The owner's agent reads PayPal through the official **PayPal Agent Toolkit**, limited to five read tools; the toolkit's money tools are never given ([how](docs/AGENT_TOOLKIT.md)).
 3. **Every cent traced** (*Ledger* tab, AG Grid): each booking's PayPal authorization, capture and refund ids, every API call, and the exact Orders v2 / Payments v2 / Vault v3 request behind each step.
 
 > **Honest status:** payments run on a deterministic PayPal sandbox **simulator** (labelled in the UI). The real PayPal REST adapter is written and tested against scripted HTTP exchanges written from PayPal's API reference (not live recordings), and its requests are previewed in the ledger; it has not yet run against the live sandbox (keys pending). The AI runs on a deterministic offline provider unless an Anthropic key is set. Built for the PayPal "Build What's Next with PayPal and AI" hackathon.
@@ -85,6 +85,8 @@ There is no tool that authorizes, captures, voids or refunds: those exist only i
 
 **The owner can talk to the same agent** ("Ask your front desk" box in the console, `POST /api/ws/:ws/assistant`). Its owner toolset is `list_transactions` and `find_booking` (read only) and `propose_refund`, which creates a **Refund / Keep the fee** card; only the owner's tap makes the engine call PayPal's refund. "How did this week go?" is answered from `list_transactions`; "Alex apologised, refund her fee" finds the capture and prepares the card. Tests: `server/test/assistant.test.ts`.
 
+**PayPal Agent Toolkit (read only).** The owner's agent also gets five tools from PayPal's official [`@paypal/agent-toolkit`](https://github.com/paypal/agent-toolkit) 1.11.0: `paypal.list_transactions`, `paypal.get_order`, `paypal.get_refund`, `paypal.list_disputes`, `paypal.get_dispute`. Before proposing a refund it confirms on PayPal that the capture settled; a weekly summary is cross-checked against PayPal's transaction report. The toolkit's money tools (`create_refund`, `pay_order`, `create_order`, `accept_dispute_claim`) are not given, and three gates keep it that way: the toolkit is configured with read actions only; our wrapper refuses any other name before the toolkit sees it (the toolkit's own `handleToolCall` would dispatch any name, we checked); and an HTTP gate on the toolkit's client lets only GETs out. `PAYPAL_AGENT_TOOLKIT=mcp` serves the same five tools through PayPal's MCP server class, in-process. Client texts never get these tools. In simulator mode the toolkit's real code runs and its GETs are answered from the simulator; against the live sandbox it is untested (no keys yet). Design, research and limits: [`docs/AGENT_TOOLKIT.md`](docs/AGENT_TOOLKIT.md). Tests: `server/test/toolkit.test.ts` (14, including one where a model asks for every toolkit money tool and nothing moves).
+
 Without an API key the agent runs on the deterministic offline provider, which plans the same tool sequence and, for a message carrying a prompt injection, first replays what a manipulated model would try (`create_refund`) so the demo shows the denial. With `AI=anthropic`, Claude picks the tools through structured outputs (`agent_step`). Tests: `server/test/agent.test.ts`.
 
 ### Where we refused to use AI
@@ -99,7 +101,7 @@ Capture ≤ authorized amount; ≤ policy maximum; never below the confidence th
 T−72h hold declined → re-approval link · late cancel before any hold exists → same refill-first path, fee waived automatically if unfilled · refill claimer declined → next candidate · duplicate webhook ignored · low-confidence message → clarifying question · prompt injection → zero money effect (measured: `npm run eval`) · capture after the 3-day honor period → reauthorize first, honest error if refused.
 
 ## Configuration
-See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
+See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real PayPal sandbox. `PAYPAL_AGENT_TOOLKIT` = unset (toolkit function calling), `mcp` (PayPal's MCP server class) or `off`. `AI=anthropic` + `ANTHROPIC_API_KEY` uses Claude (`claude-sonnet-5-5` by default) with structured outputs. `server/src/scripts/sandbox-smoke.ts` runs the Day-1 PayPal spikes.
 
 ## Deploy on Render
 
@@ -108,11 +110,12 @@ See `.env.example`. `PAYMENTS=sandbox` + `PAYPAL_CLIENT_ID/SECRET` uses real Pay
 For the real PayPal sandbox and Claude, set `PAYMENTS=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `AI=anthropic` and `ANTHROPIC_API_KEY` in the Dashboard (they are `sync: false`, never in git). PayPal return/cancel URLs use Render's `RENDER_EXTERNAL_URL` unless `PUBLIC_URL` is set. Point the sandbox app's webhook at `https://<service>.onrender.com/api/paypal/webhook`. State is in memory: the free plan spins down after about 15 idle minutes, which resets the demo. `server/test/app.test.ts` checks the Blueprint against the real scripts and health route.
 
 ## Not built yet (honest list)
-PayPal Agent Toolkit / MCP server (our agent's tools are our own; money stays in the engine); Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
+The PayPal Agent Toolkit is used for reads only, by design (money stays in the engine) and is not yet run against the live sandbox; Bryntum Scheduler (licence check pending; hand-built week grid for now); policy-compiler eval on 15 real policies; persistence (state is in memory per demo workspace).
 
 ## Tools
 - PayPal Orders v2 (intent=AUTHORIZE, merchant-initiated with `vault_id` + `stored_credential`), Payments v2 (capture, void, reauthorize, refund), Vault v3 (setup token → payment token for bookings more than 72h out), webhooks (signature-verified; the endpoint refuses events when no `PAYPAL_WEBHOOK_ID` is configured).
 - Claude (Anthropic API) for policy compilation, the front desk agent's tool choice, message classification, waitlist parsing/ranking and reply drafting, behind a provider interface with a deterministic offline provider for tests and keyless demos.
+- PayPal Agent Toolkit (`@paypal/agent-toolkit` 1.11.0, Apache-2.0 per its repo) for the owner agent's five read-only PayPal tools, optionally through its MCP server class (`@modelcontextprotocol/sdk`).
 - AG Grid Community (MIT) for the money ledger; Render Blueprint for hosting.
 
 ## Licence
