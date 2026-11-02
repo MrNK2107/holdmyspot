@@ -553,7 +553,7 @@ export class Engine {
       if (r.status === 'AUTHORIZED' && r.authorizationId) {
         b.reauthorized = true;
         await this.onAuthorized(b, r.authorizationId);
-      }
+      } else if (r.status === 'PENDING' && r.authorizationId) this.onReauthPending(b, r.authorizationId, r.issue);
       else await this.onHoldDeclined(b, r.issue ?? 'DECLINED');
       return;
     }
@@ -1139,12 +1139,24 @@ export class Engine {
     return this.excusals.filter((e) => e.clientId === clientId && e.at >= since).length;
   }
 
+  /**
+   * PayPal created the reauthorization but is reviewing it. The current authorization stays the hold (it is valid
+   * until its 29-day expiry); the new one is tracked as pending so evict/reset voids it, and its CREATED webhook
+   * swaps it in as the successor (no void of the parent). PayPal allows one reauthorization, so no second try.
+   */
+  private onReauthPending(b: Booking, authorizationId: string, reason?: string): void {
+    b.reauthorized = true;
+    b.pendingAuthorizationId = authorizationId;
+    this.audit.add('paypal', `reauthorization ${authorizationId} is under review at PayPal (${reason ?? 'PENDING'}); hold ${b.authorizationId} stays in place`, { bookingId: b.id });
+    this.emit('state');
+  }
+
   private async reauthorize(b: Booking, simulateDecline = false): Promise<ReauthorizeResult> {
     const parent = b.authorizationId!;
     this.reauthParents.add(parent);
     try {
       const r = await this.gateway.reauthorize(parent, b.holdCents, this.intentKey(b, 'reauth', parent), simulateDecline);
-      if (r.status !== 'AUTHORIZED') this.reauthParents.delete(parent);
+      if (r.status === 'DECLINED') this.reauthParents.delete(parent);
       return r;
     } catch (err) {
       this.reauthParents.delete(parent);
@@ -1512,9 +1524,12 @@ export class Engine {
       // PayPal allows one reauthorization per authorization; after that we capture as-is (best effort)
       const r = await this.reauthorize(b);
       this.audit.add('paypal', `honor period over: reauthorize first → ${r.status}`, { bookingId: b.id, data: r });
-      if (r.status !== 'AUTHORIZED' || !r.authorizationId) throw new PaymentsError(r.issue ?? 'REAUTHORIZE_FAILED', 'could not refresh the hold before capture');
-      b.reauthorized = true;
-      await this.onAuthorized(b, r.authorizationId);
+      if (r.status === 'PENDING' && r.authorizationId) this.onReauthPending(b, r.authorizationId, r.issue); // capture the current hold as-is
+      else {
+        if (r.status !== 'AUTHORIZED' || !r.authorizationId) throw new PaymentsError(r.issue ?? 'REAUTHORIZE_FAILED', 'could not refresh the hold before capture');
+        b.reauthorized = true;
+        await this.onAuthorized(b, r.authorizationId);
+      }
     }
     const r = await this.gateway.capture({
       requestId: this.intentKey(b, 'capture', b.authorizationId),

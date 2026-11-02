@@ -246,6 +246,8 @@ export class PayPalRestGateway implements PaymentsGateway {
     );
     if (r.status === 422) return { status: 'DECLINED', issue: PayPalRestGateway.issueOf(r.json) };
     if (r.status >= 300) PayPalRestGateway.fail(r.status, r.json);
+    // under review (e.g. PENDING_REVIEW): not a hold until PayPal reports it CREATED (AUTHORIZATION.CREATED webhook)
+    if (r.json.status === 'PENDING') return { status: 'PENDING', authorizationId: r.json.id, issue: r.json.status_details?.reason ?? 'PENDING' };
     const created = r.json.create_time ? Date.parse(r.json.create_time) : this.now();
     return { status: 'AUTHORIZED', authorizationId: r.json.id, honorPeriodEndsAt: created + 3 * DAY };
   }

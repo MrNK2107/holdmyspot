@@ -47,7 +47,8 @@ export type CaptureResult =
   | { status: 'DECLINED'; issue: string };
 
 export interface ReauthorizeResult {
-  status: 'AUTHORIZED' | 'DECLINED';
+  /** PENDING: PayPal created the reauthorization but is still reviewing it (not a usable hold yet) */
+  status: 'AUTHORIZED' | 'DECLINED' | 'PENDING';
   authorizationId?: string;
   honorPeriodEndsAt?: number;
   issue?: string;
