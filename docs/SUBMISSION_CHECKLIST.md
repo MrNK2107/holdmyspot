@@ -26,7 +26,7 @@ Deadline: **13 Nov 2026, 01:30 IST** on Devpost. Last full re-check: 2026-11-02 
    - Built with.
    - Resolve every `[TODO]`: links, the "Honest status" after the sandbox run, the AI-tool disclosure wording for development, and the eval numbers (keep the offline numbers, or rerun `npm run eval` with `AI=anthropic`).
    - Make the repo public, with LICENSE (MIT) visible in About.
-6. **Gallery upload order:** thumbnail `docs/gallery/thumbnail.png` (3:2), then `01-week.png`, `02-policy.png`, `03-refill.png`, `04-agent-denied.png`, `05-owner-approval.png`, `06-ledger.png`. Use the captions in DEVPOST_SUBMISSION.md. If you have time after the sandbox run, re-shoot with `npm run gallery`.
+6. **Gallery upload order:** thumbnail `docs/gallery/thumbnail.png` (3:2), then `01-week.png`, `02-policy.png`, `03-refill.png`, `04-agent-denied.png`, `05-owner-approval.png`, `06-ledger.png`, `07-evals.png`. Use the captions in DEVPOST_SUBMISSION.md. If you have time after the sandbox run, re-shoot with `npm run gallery`.
 
 ## Open decisions (yours)
 

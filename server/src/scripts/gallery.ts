@@ -118,6 +118,16 @@ try {
   await open('&tab=ledger', '.ag-row');
   await take({ file: '06-ledger.png', n: '06', title: 'Every cent, traced', sub: 'AG Grid ledger: holds, captures, refunds and the PayPal ids behind them' });
 
+  // 7. The eval table: every case behind the AI's numbers, misses first.
+  await open('&tab=agent', '.eval-card .ag-row');
+  await take(
+    { file: '07-evals.png', n: '07', title: 'Measured, misses included', sub: '70 eval cases in AG Grid. Prompt injections moved $0; each miss shows its money effect' },
+    async () => {
+      await page.locator('.eval-card').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+      await page.waitForTimeout(300);
+    },
+  );
+
   for (const s of shots) await frame(browser, resolve(raw, s.file), s.file, s.n, s.title, s.sub);
 
   // Thumbnail (3:2): title card next to the refill capture.

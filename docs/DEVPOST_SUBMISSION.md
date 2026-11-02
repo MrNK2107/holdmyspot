@@ -16,6 +16,7 @@ Framed 1920x1080 images in `docs/gallery/` (regenerate with `npm run gallery`); 
 4. `04-agent-denied.png`: A text cannot move money. A prompt injection reaches for `create_refund`: denied, not in the agent's toolset.
 5. `05-owner-approval.png`: Only her tap charges. Alex no-showed; the engine proposes the $20 capture and Priya decides.
 6. `06-ledger.png`: Every cent, traced. AG Grid ledger with the PayPal authorization, capture and refund ids.
+7. `07-evals.png`: Measured, misses included. All 70 eval cases in AG Grid: prompt injections moved $0, and each miss shows what it would have meant for money.
 
 All images show the PayPal simulator and the offline AI provider (labelled in the top bar). [TODO re-shoot on the live sandbox if keys arrive.]
 

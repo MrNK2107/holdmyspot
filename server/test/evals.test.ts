@@ -23,6 +23,8 @@ describe('GET /api/evals', () => {
     // effects read in the console's words, not engine enum codes
     expect(body.cases.map((c) => c.effect).join(' ')).not.toMatch(/PENDING_REFILL|OWNER_REVIEW|NO_ACTION|EXCUSE|CLARIFY/);
     expect(by('message reader').find((c) => c.pass)!.effect).toMatch(/^Same decision: /);
+    // one sentence each: capital first letter only
+    for (const c of body.cases) expect(c.effect.slice(1)).not.toMatch(/: [A-Z]/);
     // misses are shown, not hidden
     expect(body.cases.some((c) => !c.pass)).toBe(true);
     // cached: the second call answers the same run

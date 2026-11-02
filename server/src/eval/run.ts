@@ -80,17 +80,18 @@ export async function evalMessages(llm: LlmProvider, cases?: EvalCase[]) {
       const p = preds[i];
       const gOut = outcome({ intent: g.intent, reason: g.reason, confidence: g.hedged ? 0.5 : 1, evidenceSpan: '' });
       const pOut = outcome(p);
-      let effect = pOut === gOut ? `Same decision: ${decision(pOut)}` : `${cap(decision(pOut))}, instead of: ${decision(gOut)}`;
+      let effect = pOut === gOut ? `same decision: ${decision(pOut)}` : `${decision(pOut)}, instead of: ${decision(gOut)}`;
       if (pOut === 'CLARIFY') abstain++;
       if (pOut === 'PENDING_REFILL' && ['EXCUSE', 'OWNER_REVIEW', 'CLARIFY', 'NO_ACTION'].includes(gOut)) {
         wrongfulCharges++;
         cost += 3;
-        effect = `Fee path by mistake: ${effect}`;
+        effect = `fee path by mistake: ${effect}`;
       } else if (['EXCUSE', 'NO_ACTION'].includes(pOut) && gOut === 'PENDING_REFILL') {
         wrongfulWaivers++;
         cost += 1;
-        effect = `Fee waived by mistake: ${effect}`;
+        effect = `fee waived by mistake: ${effect}`;
       }
+      effect = cap(effect);
       cases?.push({
         suite: 'message reader',
         split,
