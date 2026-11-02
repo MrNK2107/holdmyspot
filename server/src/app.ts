@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import type { PolicyRules } from './domain/policy.js';
 import { approve } from './domain/policy.js';
 import { demoStatus, playNextBeat } from './demo.js';
+import { evalReport } from './eval/run.js';
 import type { Engine } from './engine/engine.js';
 import type { WebhookEvent } from './paypal/gateway.js';
 import { Workspaces, type Workspace } from './workspaces.js';
@@ -113,6 +114,23 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   app.get('/api/health', async () => ({ ok: true, workspaces: workspaces.ids().length }));
+
+  // The eval suite (message reader, prompt injection, waitlist) on the deterministic offline provider: run once
+  // per server and cached, so the public console never spends model calls on it. `npm run eval` with AI=anthropic
+  // runs the same cases against Claude.
+  let evals: ReturnType<typeof evalReport> | undefined;
+  app.get('/api/evals', async (_req, reply) => {
+    evals ??= evalReport().catch((err) => {
+      evals = undefined;
+      throw err;
+    });
+    try {
+      return await evals;
+    } catch (err) {
+      app.log.error(err);
+      return reply.code(500).send({ ok: false, error: 'eval run failed' });
+    }
+  });
 
   app.post('/api/workspaces', async (_req, reply) => {
     let w: Workspace;

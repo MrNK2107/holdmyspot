@@ -1,47 +1,9 @@
-import {
-  CellStyleModule,
-  ClientSideRowModelModule,
-  type ColDef,
-  type ColGroupDef,
-  CsvExportModule,
-  type GridApi,
-  ModuleRegistry,
-  NumberFilterModule,
-  PinnedRowModule,
-  QuickFilterModule,
-  RowStyleModule,
-  TextFilterModule,
-  TooltipModule,
-  themeQuartz,
-} from 'ag-grid-community';
+import { type ColDef, type ColGroupDef, type GridApi } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Api, type AuditEntry, type BookingView, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { theme } from './grid';
 import { MONEY_TEXT, bookingStateLabel, ledgerAmounts } from './money';
-
-ModuleRegistry.registerModules([
-  ClientSideRowModelModule,
-  TextFilterModule,
-  TooltipModule,
-  NumberFilterModule,
-  QuickFilterModule,
-  CsvExportModule,
-  PinnedRowModule,
-  CellStyleModule,
-  RowStyleModule,
-]);
-
-const theme = themeQuartz.withParams({
-  accentColor: '#6b3fa0',
-  backgroundColor: '#fffdf9',
-  foregroundColor: '#1f1b24',
-  borderColor: '#e6dfd5',
-  headerBackgroundColor: '#f6f3ee',
-  fontFamily: 'inherit',
-  fontSize: 13,
-  rowHeight: 38,
-  headerHeight: 38,
-});
 
 interface Row {
   id: string;

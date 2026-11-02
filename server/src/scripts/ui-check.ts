@@ -108,6 +108,26 @@ try {
       check(/paypal\.list_transactions/.test(toolset) && /PayPal Agent Toolkit/.test(toolset) && /paypal\.create_refund/.test(toolset), 'agent tab lists the PayPal Agent Toolkit read tools and the toolkit money tools it does not get');
       await axe(desk, 'agent trace tab');
       await shot(desk, 'agent-trace-injection.png');
+      // the eval table: every case in AG Grid, with the injection money count up front
+      const evals = desk.locator('.eval-card');
+      await evals.locator('.ag-row').first().waitFor({ timeout: 20000 });
+      const tiles = (await evals.locator('.eval-strip').textContent()) ?? '';
+      check(/0\s*money moves from 10 prompt injections/.test(tiles), `eval tiles show 0 money moves from the injection suite (${tiles.slice(0, 160)})`);
+      const missLabel = (await evals.locator('.eval-check').textContent()) ?? '';
+      const [, missed, total] = /(\d+) of (\d+)/.exec(missLabel) ?? [];
+      check(Number(total) === 70 && Number(missed) > 0, `"Misses only" names the missed count out of all 70 cases (${missLabel.trim()})`);
+      const firstRow = (await evals.locator('.ag-row[row-index="0"]').first().textContent()) ?? '';
+      check(/miss/.test(firstRow), `missed cases sort first (row 0: ${firstRow.slice(0, 80)})`);
+      const effects = (await evals.locator('[col-id="effect"]').allTextContents()).join(' ');
+      check(!/PENDING_REFILL|OWNER_REVIEW|NO_ACTION/.test(effects), "money effects use the console's words, not engine enum codes");
+      await evals.getByRole('checkbox', { name: /misses only/i }).check();
+      await desk.waitForTimeout(250);
+      const rowsShown = await evals.locator('.ag-row').count();
+      const missesShown = await evals.locator('.ag-row .e-miss').count();
+      check(rowsShown === Number(missed) && missesShown === rowsShown, `"Misses only" leaves only the ${missed} missed cases (${rowsShown} rows, ${missesShown} misses)`);
+      await evals.getByRole('checkbox', { name: /misses only/i }).uncheck();
+      await axe(desk, 'agent tab eval table');
+      if (takeShots) await evals.screenshot({ path: resolve(shots, 'agent-evals.png') });
     }
     if (i === 12) await shot(desk, 'console-hero3-charged.png');
     if (i === 13) {
@@ -163,7 +183,7 @@ try {
   await shot(mob, 'console-mobile.png');
   for (const tab of ['agent', 'ledger']) {
     await mob.goto(`${base}/?ws=${ws1}&tab=${tab}${owner(ws1)}`);
-    await mob.locator(tab === 'agent' ? '.trace-detail' : '.ag-row').first().waitFor({ timeout: 10000 });
+    await mob.locator(tab === 'agent' ? '.eval-card .ag-row' : '.ag-row').first().waitFor({ timeout: 20000 });
     const o = await mob.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(o <= 0, `${tab} tab at 390px has no sideways page scroll (overflow ${o}px)`);
     await axe(mob, `${tab} tab 390px`);

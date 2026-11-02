@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { type AgentRun, type Snapshot, type TraceStep, fmtDay, fmtTime } from './api';
+
+// AG Grid loads only when the trace tab is open (the console stays light)
+const Evals = lazy(() => import('./Evals').then((m) => ({ default: m.Evals })));
 
 const ACCESS_LABEL: Record<string, string> = {
   read: 'read only',
@@ -227,6 +230,22 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
           </section>
         )}
       </div>
+      <section className="card eval-card" aria-labelledby="eval-h">
+        <h2 id="eval-h">How the front desk is measured</h2>
+        <p className="muted">
+          The same agent, run on labelled client texts it was not tuned on, on prompt injections sent through a real engine and the PayPal simulator, and on waitlist requests.
+          Every case is listed, misses included.
+        </p>
+        <Suspense
+          fallback={
+            <div className="loading" role="status">
+              <span className="spinner" aria-hidden /> Loading the eval table…
+            </div>
+          }
+        >
+          <Evals />
+        </Suspense>
+      </section>
     </main>
   );
 }
