@@ -4,10 +4,10 @@ Deadline: **13 Nov 2026, 01:30 IST** on Devpost. Last full re-check: 2026-11-02 
 
 ## Done (verified 2026-11-02)
 
-- `npm test`: 278 tests in 26 files pass (272 at the fresh-clone check below; 6 added on 2026-11-02 morning: partial-refund cards, PENDING reauthorization).
+- `npm test`: 279 tests in 27 files pass (272 at the fresh-clone check below; 7 added on 2026-11-02 morning: partial-refund cards, PENDING reauthorization, the eval table route).
 - `npm run demo` from a fresh clone: builds and serves on 18080 (`PORT=` to change). All 13 guided-demo beats played over HTTP on the shared `demo` workspace (open console) and on a private workspace (owner token), plus a second run after reset. Every beat succeeds; final totals are $20 charged and $20 refunded, with no open cards.
 - Guided demo in headless Chromium, on both a private and the shared workspace: at every beat the week-grid money chips, the selected booking's chip and the money strip match `/state`. The ledger totals row matches the server totals ($100 held, $20 charged, $20 refunded, $0 kept). The owner token works as intended: the console keeps access after a reload, and a fresh browser with only the booking link sees "owner access needed" and no bookings.
-- `npm run ui-check`: passes, 0 axe violations on 14 screens. It now also fails on any browser console error on the desktop console. This caught AG Grid error #200: the tooltip module was missing, so the "Kept (net)" header tooltip and the Refill tooltips did not show. Fixed.
+- `npm run ui-check`: passes, 0 axe violations on 15 screens (the 15th is the new eval table on the Agent trace tab, also checked for misses-first order, the "Misses only" filter and plain-language money effects). It now also fails on any browser console error on the desktop console. This caught AG Grid error #200: the tooltip module was missing, so the "Kept (net)" header tooltip and the Refill tooltips did not show. Fixed.
 - `npm run eval`: intent F1 1.0, reason F1 0.857, injection money effects 0 (10 cases, 16 denied tool calls), waitlist 20/20 (offline provider).
 - `npm run build` passes after every commit.
 - Gallery (`npm run gallery`) re-shot because the legend now lists "partly refunded" (01, 03, 05, thumbnail changed). All six captions still describe what the images show.
