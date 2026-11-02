@@ -341,3 +341,22 @@ End-to-end re-verification for submission after the money/security passes. No ne
 
 ### Still open
 - Everything in `docs/SUBMISSION_CHECKLIST.md` "Your steps" and "Open decisions". Nothing has run against the live PayPal sandbox yet.
+
+## 2026-11-02 morning pass (08:30-09:10 IST, same branch, local only)
+
+Goal: raise winning potential. Tests first for each change (user asked for TDD and a really good UI).
+
+### Done (`b0d024e..46a7feb`)
+- **Partial-refund cards** (`review6.test.ts`): the prepared, open and retry refund cards name the remaining amount after a partial PayPal dashboard refund. The create_refund replay was not touched.
+- **PENDING reauthorization** (`rest.ts`, engine): PayPal reviewing a reauthorization no longer replaces a valid hold. The current authorization stays, the new one is tracked as pending (evict/reset voids it), and its CREATED webhook swaps it in without voiding the parent. A capture whose reauthorization is PENDING captures the current hold as-is.
+- **Copy owner link** button (private workspaces only): the `#owner=` link for another browser.
+- **PITCH.md** rewritten as the HoldMySpot pitch (the Casefile text is in git history).
+- **Eval table** on the Agent trace tab ("How the front desk is measured"): all 70 eval cases in AG Grid, misses first, effects in plain words, suite filter, "Misses only (2 of 70)", search, CSV. `GET /api/evals` always runs the offline provider, once per server, and caches the result (no model spend). AG Grid setup is shared in `web/src/grid.ts`; `RowAutoHeightModule` is registered for wrapped rows. ui-check asserts the tiles, the misses-first order, the filter and the plain-language effects, and runs axe on 15 screens.
+- **Gallery 07** `07-evals.png` added; 01-06 and the thumbnail are unchanged.
+
+### Verified
+- `npm test`: 279 passing (27 files). `npm run build` clean. `npm run ui-check` passes. `npm run eval`: injection money effects 0.
+
+### Notes
+- Sponsor prizes: the rules allow only one sponsor prize per project, and AG Grid is the target, so APIMatic/Channel3 were not added.
+- The impeccable detector flags four older `border-left` state bars (week-grid events, trace step rails). They were left as they are: they code state, and they are outside this pass.
