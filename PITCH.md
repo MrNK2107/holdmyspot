@@ -1,27 +1,31 @@
-# Casefile — elevator pitch (working name)
+# HoldMySpot: elevator pitch
 
-**One line:** Casefile is an AI assistant that fights unfair PayPal disputes for small sellers, so they stop losing money they already earned.
+**One line:** HoldMySpot is an AI front desk for solo appointment pros that holds the no-show fee with PayPal, reads "can't make it" texts the way a person would, and refills the slot before anyone is charged.
+
+**Tagline:** Fair, without the fight.
 
 ## 30-second pitch
 
-Maya sells handmade jewelry online. She ships a $120 necklace, the tracking says "delivered", and two weeks later the buyer tells PayPal "I never got it."
-Now Maya has a deadline, a pile of screenshots to dig through, and a form she doesn't understand. Big companies pay dispute-fighting firms to handle this. Maya is on her own, so she often gives up, and loses the necklace, the money, and a fee on top.
+Priya runs a one-chair nail studio and books by text and Instagram DM. About 1 visit in 25 is a no-show and 1 in 9 is cancelled late. She wrote a cancellation policy, but she almost never enforces it: charging a regular whose kid was sick feels wrong, and when she does try, the card declines after the fact.
 
-**Casefile is the dispute expert Maya can't afford.**
-The moment a buyer complains, Casefile gathers her proof — the tracking, the messages, the order details — writes a clear response in PayPal's language, and asks her for one tap to send it.
-It also warns her *before* she ships, when an order looks like trouble.
-And when the buyer is actually right, it tells her to refund — because good advice sometimes means not fighting.
+**HoldMySpot holds the fee, not the grudge.**
+Every visit carries a $20 PayPal authorization, not a charge. When a client texts "can't make it", the AI reads the reason; a policy engine Priya approved decides what happens. A sick kid releases the hold. A late cancel goes to the waitlist first, and if someone else's PayPal hold authorizes, the canceller pays nothing. Money only moves when Priya taps.
 
-**Casefile: you made the sale. We help you keep it.**
+**HoldMySpot: the empty chair gets refilled, the regular keeps her dignity, and Priya gets paid when it is fair.**
 
 ## The three moments it shows up
 
-1. **Before shipping** — "Careful: this buyer wants it sent to a different address. If you do that, PayPal won't protect you."
-2. **When a complaint arrives** — "A buyer says they never received order #1042. I've prepared your case with the delivery proof. Send it?"
-3. **When the seller is wrong** — "The item was damaged in the photos you shared. Refunding now avoids the fee and keeps your rating."
+1. **Three days before the visit:** "Jordan's PayPal hold was declined. I sent him a link to approve it again." (Caught on Tuesday, not at the door on Friday.)
+2. **When a client cancels late:** "Maya can't make it. Chris took her slot and his hold authorized, so I released Maya's. Late cancel, $0 lost, $0 charged."
+3. **When someone just doesn't show:** "Alex didn't come. Charge the $20 from the hold you already have?" One tap. Refund is one more.
 
-## Why it matters
+## Why it can be trusted with money
 
-- Millions of small sellers — side hustlers, crafters, resellers — use PayPal and handle disputes alone.
-- Each dispute costs a fee (about $15–$20) on top of the lost sale.
-- The companies that do this for businesses are built for big merchants and take a cut of what they win back. Small sellers are left out.
+- The AI only labels messages and proposes. It has no tool that authorizes, captures, voids or refunds; a prompt injection that asks for a refund is logged as denied and moves nothing (measured: `npm run eval`).
+- A deterministic engine enforces the owner's rules: capture never above the hold or the policy fee, never without the owner's tap, silence never charges.
+- The owner's agent reads PayPal through the official PayPal Agent Toolkit, limited to read tools.
+- Every cent is traced: each booking's PayPal authorization, capture and refund ids sit in an AG Grid ledger next to the exact REST request behind each step.
+
+## Why PayPal is central, not a checkout button
+
+Orders v2 with `intent=AUTHORIZE`, Vault v3 for saving the wallet now and holding later, a merchant-initiated authorization 72 hours out, void, capture, reauthorize, refund, and webhooks. The product is the authorization lifecycle; take PayPal out and there is nothing left.

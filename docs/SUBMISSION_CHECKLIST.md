@@ -4,7 +4,7 @@ Deadline: **13 Nov 2026, 01:30 IST** on Devpost. Last full re-check: 2026-11-02 
 
 ## Done (verified 2026-11-02)
 
-- `npm test`: 272 tests in 25 files pass, also from a fresh clone (`npm ci --offline` then `npm test`).
+- `npm test`: 278 tests in 26 files pass (272 at the fresh-clone check below; 6 added on 2026-11-02 morning: partial-refund cards, PENDING reauthorization).
 - `npm run demo` from a fresh clone: builds and serves on 18080 (`PORT=` to change). All 13 guided-demo beats played over HTTP on the shared `demo` workspace (open console) and on a private workspace (owner token), plus a second run after reset. Every beat succeeds; final totals are $20 charged and $20 refunded, with no open cards.
 - Guided demo in headless Chromium, on both a private and the shared workspace: at every beat the week-grid money chips, the selected booking's chip and the money strip match `/state`. The ledger totals row matches the server totals ($100 held, $20 charged, $20 refunded, $0 kept). The owner token works as intended: the console keeps access after a reload, and a fresh browser with only the booking link sees "owner access needed" and no bookings.
 - `npm run ui-check`: passes, 0 axe violations on 14 screens. It now also fails on any browser console error on the desktop console. This caught AG Grid error #200: the tooltip module was missing, so the "Kept (net)" header tooltip and the Refill tooltips did not show. Fixed.
@@ -30,7 +30,7 @@ Deadline: **13 Nov 2026, 01:30 IST** on Devpost. Last full re-check: 2026-11-02 
 
 ## Open decisions (yours)
 
-- **PITCH.md** still describes the old "Casefile" idea. Delete it or rewrite it before the repo goes public.
+- **PITCH.md** was rewritten on 2026-11-02 as the HoldMySpot pitch (the old Casefile text is in git history). Keep it, or delete it if you do not want a pitch file in the repo.
 - **`create_refund` replay.** For prompt-injection texts, the offline provider deliberately requests `create_refund` (denied), so the guard is visible in beat 10. The trace and DEMO_SCRIPT label it as a red-team replay. Keep it, or remove it (one `if` in `server/src/ai/fake.ts` `agentStep`).
 - **Bryntum Scheduler.** The licence check is still pending, so the week grid is hand-built. Ship the hand-built grid (the README says so), or add Bryntum if a free hackathon licence is confirmed.
-- **Partial-refund cards.** After a partial refund made in the PayPal dashboard, the front desk's prepare-refund card and the refund-failed card still show the full captured fee. The refund itself sends only the rest. The code sits next to the agent refund path and the replay, so it is left for your call. It never shows in the seeded demo.
+- **Partial-refund cards:** fixed on 2026-11-02 (`server/test/review6.test.ts`). The prepared, open and retry refund cards now name the remaining amount. The create_refund replay was not touched.
