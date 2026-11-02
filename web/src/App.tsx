@@ -249,6 +249,7 @@ export function App() {
         >
           New private demo
         </button>
+        {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
       </nav>
 
       {demoOn && s.paymentsMode === 'mock' && <DemoBar api={api} s={s} busy={busy} run={run} applyView={applyView} />}
@@ -316,6 +317,30 @@ export function App() {
  * an owner tap) and points the console at the booking and phone thread the narration talks about.
  * Keyboard: → or N. Optional ?autoplay=<seconds> advances on its own.
  */
+/** The private console's link for another browser or device: the owner token rides in the fragment (never sent to the server in the URL). */
+function CopyOwnerLink({ ws, token }: { ws: string; token: string }) {
+  const [done, setDone] = useState<'copied' | 'failed' | null>(null);
+  const link = `${location.origin}/?ws=${encodeURIComponent(ws)}#owner=${encodeURIComponent(token)}`;
+  return (
+    <button
+      className="ghost"
+      title="Opens this private console in another browser. Keep it to yourself: it gives full owner access. Share the client booking page instead."
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(link);
+          setDone('copied');
+        } catch {
+          window.prompt('Copy the owner link (full owner access):', link);
+          setDone('failed');
+        }
+        setTimeout(() => setDone(null), 2500);
+      }}
+    >
+      <span aria-live="polite">{done === 'copied' ? 'Owner link copied' : 'Copy owner link'}</span>
+    </button>
+  );
+}
+
 function DemoBar({
   api,
   s,
