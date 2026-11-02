@@ -644,6 +644,14 @@ export class Engine {
     if (b.refundedCents >= fee && !b.refundId) {
       b.refundId = e.resource.id;
       for (const a of this.openApprovals()) if (a.bookingId === b.id && a.kind === 'refund') a.resolved = 'stale';
+    } else {
+      // an open refund card now sends only the rest: show that amount, not the fee it was made for
+      for (const a of this.openApprovals()) {
+        if (a.bookingId !== b.id || a.kind !== 'refund') continue;
+        const r = this.refundRest(b);
+        a.feeCents = r.cents;
+        a.prompt = `${a.prompt.replace(/ \(\$[\d.]+ already refunded in PayPal; this sends the remaining \$[\d.]+\)$/, '')} ($${(r.refunded / 100).toFixed(2)} already refunded in PayPal; this sends the remaining $${(r.cents / 100).toFixed(2)})`;
+      }
     }
     this.emit('state');
   }
@@ -661,13 +669,15 @@ export class Engine {
     }
     b.refundId = undefined;
     this.refundRetries.set(b.id, (this.refundRetries.get(b.id) ?? 0) + 1);
-    const fee = b.capturedCents ?? b.holdCents;
+    const rest = this.refundRest(b);
     this.audit.add('engine', `money: refund ${refundId} failed at PayPal; the fee is still collected`, { bookingId: b.id });
     this.addApproval({
       kind: 'refund',
       bookingId: b.id,
-      prompt: `PayPal refund ${refundId} of ${this.client(b.clientId).name}'s $${(fee / 100).toFixed(0)} fee failed; the fee is still collected. Try the refund again?`,
-      feeCents: fee,
+      prompt: rest.refunded
+        ? `PayPal refund ${refundId} of the remaining $${(rest.cents / 100).toFixed(2)} of ${this.client(b.clientId).name}'s fee failed ($${(rest.refunded / 100).toFixed(2)} was already refunded in PayPal); $${(rest.cents / 100).toFixed(2)} is still collected. Try the refund again?`
+        : `PayPal refund ${refundId} of ${this.client(b.clientId).name}'s $${(rest.fee / 100).toFixed(0)} fee failed; the fee is still collected. Try the refund again?`,
+      feeCents: rest.cents,
       suggested: 'refund',
       options: ['refund', 'keep'],
     });
@@ -977,17 +987,19 @@ export class Engine {
           if (b.refundId) return { error: 'that fee is already refunded' };
           const open = this.openApprovals().find((a) => a.kind === 'refund' && a.bookingId === b.id);
           if (open) return { status: 'awaiting_owner', approvalId: open.id };
-          const fee = b.capturedCents ?? b.holdCents;
+          const rest = this.refundRest(b);
           card = this.addApproval({
             kind: 'refund',
             bookingId: b.id,
-            prompt: `Front desk proposes: refund ${this.client(b.clientId).name}'s ${`$${(fee / 100).toFixed(0)}`} fee (capture ${b.captureId}).`,
-            feeCents: fee,
+            prompt: rest.refunded
+              ? `Front desk proposes: refund the remaining $${(rest.cents / 100).toFixed(2)} of ${this.client(b.clientId).name}'s $${(rest.fee / 100).toFixed(0)} fee (capture ${b.captureId}; $${(rest.refunded / 100).toFixed(2)} already refunded in PayPal).`
+              : `Front desk proposes: refund ${this.client(b.clientId).name}'s ${`$${(rest.fee / 100).toFixed(0)}`} fee (capture ${b.captureId}).`,
+            feeCents: rest.cents,
             suggested: 'refund',
             options: ['refund', 'keep'],
           });
           run.bookingId = b.id;
-          return { status: 'awaiting_owner', approvalId: card.id };
+          return { status: 'awaiting_owner', approvalId: card.id, refundCents: rest.cents };
         },
       },
       // PayPal's own read tools via the official Agent Toolkit (allow-listed GETs; see paypal/toolkit.ts)
@@ -1519,6 +1531,13 @@ export class Engine {
     await this.reply(b, b.cancelledAt ? 'charged' : 'charged_no_show', { fee: `$${(feeCents / 100).toFixed(0)}` });
   }
 
+  /** What a refund of this booking sends: the captured fee less any part already refunded (e.g. in the PayPal dashboard). */
+  private refundRest(b: Booking): { fee: number; refunded: number; cents: number } {
+    const fee = b.capturedCents ?? b.holdCents;
+    const refunded = Math.min(fee, b.refundedCents ?? 0);
+    return { fee, refunded, cents: fee - refunded };
+  }
+
   /** Owner relents after a capture. */
   async refund(bookingId: string): Promise<Booking> {
     const b = this.booking(bookingId);
@@ -1527,8 +1546,7 @@ export class Engine {
     if (b.paymentIssue) throw new Error(`no collected fee to refund: ${b.paymentIssue}`);
     const retry = this.refundRetries.get(b.id) ?? 0;
     // a part may already be refunded in the PayPal dashboard: refund the rest (PayPal refuses more than captured)
-    const fee = b.capturedCents ?? b.holdCents;
-    const rest = fee - (b.refundedCents ?? 0);
+    const { fee, cents: rest } = this.refundRest(b);
     const r = await this.gateway.refund(b.captureId, rest, this.intentKey(b, 'refund', retry ? `${b.captureId}-retry${retry}` : b.captureId));
     b.refundId = r.refundId;
     (b.refunds ??= []).push({ id: r.refundId, cents: r.amountCents });

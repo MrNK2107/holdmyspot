@@ -273,7 +273,7 @@ function ownerStep(
     const p = result('propose_refund');
     const answer = p.error
       ? `I can't set up that refund: ${String(p.error)}.`
-      : `Ready: refund ${dollars(b.capturedCents)} to ${String(b.client)} (capture ${String(b.captureId)}). Tap "Refund" in Needs you to send it.`;
+      : `Ready: refund ${dollars(p.refundCents ?? b.capturedCents)} to ${String(b.client)} (capture ${String(b.captureId)}). Tap "Refund" in Needs you to send it.`;
     return call('finish', { answer }, 'Tell the owner what is waiting for her.');
   }
   if (!called('list_transactions')) return call('list_transactions', {}, "Pull this week's PayPal activity before answering.");
