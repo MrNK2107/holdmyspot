@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GeminiProvider, toGeminiSchema, type FetchFn } from '../src/ai/gemini.js';
+import { GeminiKeyPool, GeminiProvider, parseGeminiKeys, toGeminiSchema, type FetchFn } from '../src/ai/gemini.js';
 import { NoAiProvider } from '../src/ai/noai.js';
 import { SCHEMAS } from '../src/ai/anthropic.js';
 import { configFromEnv } from '../src/config.js';
@@ -88,5 +88,99 @@ describe('AI selection from the environment', () => {
   it('the simulator keeps the offline provider; AI=gemini without a key is an error', () => {
     expect(configFromEnv({}).aiMode).toBe('fake');
     expect(() => configFromEnv({ AI: 'gemini' })).toThrow(/GEMINI_API_KEY/);
+  });
+});
+
+describe('Gemini key rotation (several free-tier keys)', () => {
+  const K = ['AIza-key-one', 'AIza-key-two', 'AIza-key-three'];
+  const rate = (msg = 'Resource has been exhausted (e.g. check quota).') => ({ ok: false, status: 429, json: async () => ({ error: { status: 'RESOURCE_EXHAUSTED', message: msg } }) });
+  const ok = () => reply({ text: 'hi' });
+  const input = { clientName: 'A', situation: 's', facts: {} };
+  const recorder = (answers: Array<(key: string) => unknown>) => {
+    const used: string[] = [];
+    const fetch: FetchFn = async (_u, init) => {
+      const key = init.headers['x-goog-api-key'];
+      used.push(key);
+      return (answers[used.length - 1] ?? answers[answers.length - 1])(key) as any;
+    };
+    return { fetch, used };
+  };
+
+  it('switches to the next key on a rate limit, and stays on the working key afterwards', async () => {
+    const { fetch, used } = recorder([() => rate(), () => ok(), () => ok()]);
+    const p = new GeminiProvider({ apiKeys: K, fetch });
+    await p.run('draft_reply', input);
+    await p.run('draft_reply', input);
+    expect(used).toEqual([K[0], K[1], K[1]]); // one wasted call on key one, then sticky on key two
+  });
+
+  it('does not hit a limited key again until its cooldown has passed', async () => {
+    let t = 1_000_000;
+    const pool = new GeminiKeyPool(K.slice(0, 2), () => t);
+    const { fetch, used } = recorder([() => rate(), () => rate(), () => ok()]);
+    const p = new GeminiProvider({ keys: pool, fetch });
+    await expect(p.run('draft_reply', input)).rejects.toThrow(/rate limited on all 2 keys/); // 2 calls, both limited
+    expect(used).toHaveLength(2);
+    await expect(p.run('draft_reply', input)).rejects.toThrow(/rate limited on all 2 keys/); // zero calls: all cooling
+    expect(used).toHaveLength(2);
+    t += 66_000; // per-minute limit has reset
+    await p.run('draft_reply', input);
+    expect(used).toHaveLength(3);
+  });
+
+  it('honours the retry delay Gemini reports, and rests a key for an hour on a daily quota', async () => {
+    let t = 0;
+    const pool = new GeminiKeyPool(K.slice(0, 2), () => t);
+    const retry = { ok: false, status: 429, json: async () => ({ error: { message: 'slow down', details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '7s' }] } }) };
+    const { fetch, used } = recorder([() => retry, () => ok(), () => ok(), () => ok()]);
+    const p = new GeminiProvider({ keys: pool, fetch });
+    await p.run('draft_reply', input); // key one limited for 7s, key two answers
+    t = 8_000;
+    await p.run('draft_reply', input); // stays on key two (sticky); key one is free again but not needed
+    expect(used.slice(0, 2)).toEqual([K[0], K[1]]);
+    const daily = new GeminiKeyPool(['a', 'b'], () => t);
+    daily.limit(0, 3_600_000);
+    t += 61_000;
+    expect(daily.pick()).toBe(1); // key a still resting
+  });
+
+  it('retires a key Gemini says is invalid and keeps going on the others', async () => {
+    const bad = { ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid. Please pass a valid API key.' } }) };
+    const { fetch, used } = recorder([() => bad, () => ok(), () => ok()]);
+    const p = new GeminiProvider({ apiKeys: K, fetch });
+    await p.run('draft_reply', input);
+    await p.run('draft_reply', input);
+    expect(used).toEqual([K[0], K[1], K[1]]);
+  });
+
+  it('reports a clear message when every key is invalid, without echoing any key', async () => {
+    const bad = { ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid.' } }) };
+    const { fetch } = recorder([() => bad]);
+    const err = (await new GeminiProvider({ apiKeys: K, fetch }).run('draft_reply', input).catch((e: Error) => e)) as Error;
+    expect(err.message).toMatch(/no working Gemini key/i);
+    for (const k of K) expect(err.message).not.toContain(k);
+  });
+
+  it('does not rotate on errors a different key cannot fix', async () => {
+    const blocked: FetchFn = async () => ({ ok: true, status: 200, json: async () => ({ promptFeedback: { blockReason: 'SAFETY' } }) });
+    const used: string[] = [];
+    const spy: FetchFn = (u, i) => { used.push(i.headers['x-goog-api-key']); return blocked(u, i); };
+    await expect(new GeminiProvider({ apiKeys: K, fetch: spy }).run('draft_reply', input)).rejects.toThrow(/blocked draft_reply/);
+    expect(used).toHaveLength(1);
+  });
+
+  it('parses GEMINI_API_KEYS (commas, spaces, new lines) with GEMINI_API_KEY, dropping duplicates', () => {
+    expect(parseGeminiKeys({ GEMINI_API_KEYS: ' a1 ,b2' + String.fromCharCode(10) + 'c3;  a1 ', GEMINI_API_KEY: 'd4' })).toEqual(['a1', 'b2', 'c3', 'd4']);
+    expect(parseGeminiKeys({})).toEqual([]);
+  });
+
+  it('configFromEnv uses the pool: one key pool shared by every studio provider', () => {
+    const sandbox = { PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'i', PAYPAL_CLIENT_SECRET: 's' };
+    const cfg = configFromEnv({ ...sandbox, GEMINI_API_KEYS: 'k1,k2,k3' });
+    expect(cfg.aiMode).toBe('gemini:gemini-2.5-flash');
+    const a: any = (cfg.deps.llm as any)();
+    const b: any = (cfg.deps.llm as any)();
+    expect(a.pool).toBe(b.pool);
+    expect(a.pool.size).toBe(3);
   });
 });

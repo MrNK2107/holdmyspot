@@ -1,5 +1,5 @@
 import { AnthropicProvider } from './ai/anthropic.js';
-import { GeminiProvider } from './ai/gemini.js';
+import { GeminiKeyPool, GeminiProvider, parseGeminiKeys } from './ai/gemini.js';
 import { NoAiProvider } from './ai/noai.js';
 import { PayPalRestGateway } from './paypal/rest.js';
 import type { WorkspaceDeps } from './workspaces.js';
@@ -65,12 +65,15 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     if (webhookId) webhookVerifier = (headers, event, rawBody) => gw.verifyWebhook(headers, event, webhookId, rawBody);
   }
   // AI defaults: with real payments, Gemini if a key is set, else an honest "not configured" provider; the simulator keeps the offline provider
-  const ai = env.AI || (env.PAYMENTS === 'sandbox' ? (env.GEMINI_API_KEY ? 'gemini' : env.ANTHROPIC_API_KEY ? 'anthropic' : 'none') : 'fake');
+  const geminiKeys = parseGeminiKeys(env);
+  const ai = env.AI || (env.PAYMENTS === 'sandbox' ? (geminiKeys.length ? 'gemini' : env.ANTHROPIC_API_KEY ? 'anthropic' : 'none') : 'fake');
   let aiMode = 'fake';
   if (ai === 'gemini') {
-    if (!env.GEMINI_API_KEY) throw new Error('AI=gemini needs GEMINI_API_KEY');
+    if (!geminiKeys.length) throw new Error('AI=gemini needs GEMINI_API_KEY (or several in GEMINI_API_KEYS)');
     const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-    deps.llm = () => new GeminiProvider({ apiKey: env.GEMINI_API_KEY!, model });
+    // one pool for every studio's provider, so a rate limit found by one is known to all
+    const pool = new GeminiKeyPool(geminiKeys);
+    deps.llm = () => new GeminiProvider({ keys: pool, model });
     aiMode = `gemini:${model}`;
   } else if (ai === 'none') {
     deps.llm = () => new NoAiProvider();

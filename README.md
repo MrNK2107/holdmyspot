@@ -137,7 +137,7 @@ With `PAYMENTS=sandbox` the app runs on the **real PayPal sandbox** and the **re
 |---|---|
 | `PAYMENTS=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Real PayPal sandbox (use a **US** sandbox business account for USD) |
 | `PAYPAL_WEBHOOK_ID` | Real PayPal webhooks (the deployed URL's `/api/paypal/webhook`) |
-| `GEMINI_API_KEY` (optional `GEMINI_MODEL`) | The front-desk AI. With real payments, Gemini is used automatically when the key is set |
+| `GEMINI_API_KEYS` (comma or new-line separated; or a single `GEMINI_API_KEY`; optional `GEMINI_MODEL`) | The front-desk AI. With real payments, Gemini is used automatically when a key is set. With several free-tier keys, the server stays on one until Gemini rate-limits it (HTTP 429), then switches to the next and rests the limited key until its cooldown (Gemini's own retry delay, else 65 s; 1 h for a daily quota). Invalid keys are skipped. If every key is limited, the text goes to the owner to read, as with no AI |
 | no AI key | Honest fallback: texts are not classified, clients get a plain acknowledgement, the owner reads them in the Inbox |
 | `CLOCK=demo` | Forces the simulated clock (the simulator demo uses it by default) |
 
