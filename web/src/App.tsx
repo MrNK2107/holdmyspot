@@ -824,7 +824,7 @@ function Phone({
           send(text);
         }}
       >
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Text Priya…" aria-label="Message" />
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Text ${s.owner}…`} aria-label="Message" />
         <button disabled={busy || !text.trim()}>Send</button>
       </form>
     </div>

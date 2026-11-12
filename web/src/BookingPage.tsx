@@ -14,6 +14,8 @@ export function BookingPage({ ws }: { ws: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  // PayPal's approval page redirects back with ?approved=1 (see the server's /paypal/return)
+  const returnedFromPayPal = new URLSearchParams(location.search).get('approved') === '1';
 
   useEffect(() => {
     fetch(wsPath(ws, '/public'))
@@ -83,7 +85,19 @@ export function BookingPage({ ws }: { ws: string }) {
         </div>
       </header>
 
-      {booked?.state === 'HELD' || booked?.state === 'VAULTED' ? (
+      {!booked && returnedFromPayPal ? (
+        // PayPal sent the browser back here: the booking itself is not in this page's memory any more, so confirm in general terms
+        <section className="book-card done" role="status">
+          <h2>You're booked</h2>
+          <p>PayPal approved the hold. It is not a charge: it only reserves {usd(hold)} until your visit.</p>
+          <p className="muted">
+            {s.owner} sees your visit on the schedule. Questions or changes? Just text {s.owner}.
+          </p>
+          <a className="button" href={`/book?ws=${encodeURIComponent(ws)}`}>
+            Book another visit
+          </a>
+        </section>
+      ) : booked?.state === 'HELD' || booked?.state === 'VAULTED' ? (
         <section className="book-card done">
           <h2>You're booked</h2>
           <p>
