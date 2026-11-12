@@ -250,7 +250,12 @@ export function AgentTraceView({ s }: { s: Snapshot }) {
   );
 }
 
-const ASK_EXAMPLES = ['How did this week go?', 'Alex apologised, refund her fee'];
+/** Example questions: the simulator demo has Alex; a real studio asks about its own clients. */
+const askExamples = (s: Snapshot) => {
+  if (s.clockMode === 'demo') return ['How did this week go?', 'Alex apologised, refund her fee'];
+  const first = s.bookings.find((b) => b.money === 'captured')?.clientName.split(' ')[0];
+  return ['How did this week go?', first ? `${first} apologised, refund their fee` : 'Which holds are still open?'];
+};
 
 /** The owner talks to the same agent. Anything that would move money comes back as a card to tap. */
 export function AskFrontDesk({
@@ -301,7 +306,7 @@ export function AskFrontDesk({
         </button>
       </form>
       <div className="ask-examples">
-        {ASK_EXAMPLES.map((q) => (
+        {askExamples(s).map((q) => (
           <button key={q} className="ask-chip" disabled={busy || sending} onClick={() => send(q)}>
             {q}
           </button>

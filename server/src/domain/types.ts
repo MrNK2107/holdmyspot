@@ -27,6 +27,8 @@ export interface Client {
   vaultId?: string;
   /** Sandbox persona flag: holds for this client are declined (PayPal negative testing). */
   sandboxDecline?: boolean;
+  /** secret in the client's private link (see /me): view their own visits and message the studio */
+  token?: string;
 }
 
 export interface Booking {

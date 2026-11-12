@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { AuditLog } from '../audit.js';
 import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
 import { DEFAULT_HOURS, validateHours, type StudioHours } from '../domain/hours.js';
@@ -353,9 +353,48 @@ export class Engine {
   newClient(name: string): Client {
     const clean = name.trim().slice(0, 40);
     if (!clean) throw new Error('name is required');
-    const c: Client = { id: this.nextId('cl'), name: clean };
+    const c: Client = { id: this.nextId('cl'), name: clean, token: randomBytes(18).toString('base64url') };
     this.addClient(c);
     return c;
+  }
+
+  /** The client behind a private link token (constant-time compare per client). */
+  clientByToken(token: string): Client | undefined {
+    if (typeof token !== 'string' || token.length < 10 || token.length > 64) return undefined;
+    const given = Buffer.from(token);
+    for (const c of this.clients.values()) {
+      if (!c.token) continue;
+      const want = Buffer.from(c.token);
+      if (want.length === given.length && timingSafeEqual(want, given)) return c;
+    }
+    return undefined;
+  }
+
+  /** What one client may see about themself: their visits, their thread, and where to re-approve a hold. Nothing about anyone else. */
+  clientPortal(c: Client) {
+    const mine = [...this.bookings.values()].filter((b) => b.clientId === c.id).sort((a, b) => a.start - b.start);
+    return {
+      name: c.name,
+      business: this.businessName,
+      owner: this.ownerName,
+      timeZone: this.timeZone,
+      now: this.now(),
+      aiProvider: this.frontdesk.providerName,
+      bookings: mine.map((b) => ({
+        id: b.id,
+        serviceName: this.services.get(b.serviceId)?.name ?? b.serviceId,
+        start: b.start,
+        end: b.end,
+        state: b.state,
+        holdCents: b.holdCents,
+        held: !!b.authorizationId && ['HELD', 'PENDING_REFILL'].includes(b.state),
+        captured: !!b.captureId,
+        refunded: !!b.refundId || !!b.refundedCents,
+        capturedCents: b.capturedCents,
+        approvalLink: ['BOOKED', 'HOLD_FAILED'].includes(b.state) ? b.approvalLink : undefined,
+      })),
+      messages: this.messages.filter((m) => m.clientId === c.id),
+    };
   }
 
   async addWaitlist(clientId: string, text: string): Promise<WaitlistEntry> {

@@ -1,13 +1,15 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
-import { FirstBooking, SetupWizard } from './Onboarding';
-import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
+import { SetupWizard } from './Onboarding';
+import { GettingStarted, Inbox, Journey, NoAiNote, ScreenGuide, StudioTab } from './Studio';
+import { Icon } from './Icon';
+import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, localMidnight, setZone, usd } from './api';
 
 // AG Grid is only loaded when the ledger tab opens
 const Ledger = lazy(() => import('./Ledger').then((m) => ({ default: m.Ledger })));
 
-type Tab = 'console' | 'policy' | 'agent' | 'ledger';
-const TABS: Tab[] = ['console', 'policy', 'agent', 'ledger'];
+type Tab = 'console' | 'inbox' | 'policy' | 'agent' | 'ledger' | 'studio';
+const TABS: Tab[] = ['console', 'inbox', 'policy', 'agent', 'ledger', 'studio'];
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -175,6 +177,8 @@ export function App() {
     );
   }
 
+  setZone(s.timeZone);
+  const real = s.clockMode === 'real';
   const sel = s.bookings.find((b) => b.id === selected) ?? null;
 
   const modeSelect = (
@@ -238,39 +242,57 @@ export function App() {
           </div>
         </div>
         {!setupOn && (
-        <nav className="tabs" aria-label="Views">
-          <button className={tab === 'console' ? 'on' : ''} onClick={() => setTab('console')}>
-            Schedule
-          </button>
-          <button className={tab === 'policy' ? 'on' : ''} onClick={() => setTab('policy')}>
-            Policy <span className="pill">v{s.policy.version}</span>
-          </button>
-          <button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>
-            Agent trace <span className="pill">{s.agentRuns?.length ?? 0}</span>
-          </button>
-          <button className={tab === 'ledger' ? 'on' : ''} onClick={() => setTab('ledger')}>
-            Ledger
-          </button>
-        </nav>
+          <nav className="tabs" aria-label="Views">
+            <button className={tab === 'console' ? 'on' : ''} onClick={() => setTab('console')}>
+              Schedule
+            </button>
+            <button className={tab === 'inbox' ? 'on' : ''} onClick={() => setTab('inbox')}>
+              Inbox {s.messages.some((m) => m.from === 'client') && <span className="pill">{new Set(s.messages.map((m) => m.clientId)).size}</span>}
+            </button>
+            <button className={tab === 'policy' ? 'on' : ''} onClick={() => setTab('policy')}>
+              Policy <span className="pill">v{s.policy.version}</span>
+            </button>
+            <button className={tab === 'ledger' ? 'on' : ''} onClick={() => setTab('ledger')}>
+              Ledger
+            </button>
+            <button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>
+              Activity <span className="pill">{s.agentRuns?.length ?? 0}</span>
+            </button>
+            <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
+              Studio
+            </button>
+          </nav>
         )}
         <div className="clock">
-          <div className="clock-label">Demo clock</div>
-          <div className="clock-time">
-            {fmtDay(s.now)} · {fmtTime(s.now)}
-          </div>
+          <div className="clock-label">{real ? 'Studio time' : 'Demo clock'}</div>
+          <div className="clock-time">{real ? <LiveClock /> : `${fmtDay(s.now)} · ${fmtTime(s.now)}`}</div>
         </div>
         <a className="booklink" href={`/book?ws=${encodeURIComponent(ws)}`} target="_blank" rel="noreferrer">
           Client booking page ↗
         </a>
         <div className="badges">
-          <span className={`badge ${s.paymentsMode}`}>{s.paymentsMode === 'mock' ? 'PayPal simulator' : 'PayPal sandbox'}</span>
-          <span className="badge ai" title={s.aiProvider === 'fake' ? 'Deterministic offline provider: same tools and schemas as Claude, no API key needed' : undefined}>
-            AI: {s.aiProvider === 'fake' ? 'offline provider' : s.aiProvider}
+          <span className={`badge ${s.paymentsMode}`} title={s.paymentsMode === 'mock' ? 'Built-in simulator, no PayPal account involved' : 'Real PayPal sandbox: real PayPal screens, test money only'}>
+            {s.paymentsMode === 'mock' ? 'PayPal simulator' : 'PayPal sandbox'}
+          </span>
+          <span
+            className={`badge ai${s.aiProvider === 'none' ? ' warn' : ''}`}
+            title={s.aiProvider === 'fake' ? 'Deterministic offline provider: same tools and schemas, no API key needed' : s.aiProvider === 'none' ? 'No AI key is set on the server: client texts come to you to read, and the policy compiler is off' : `The front desk runs on ${s.aiProvider}`}
+          >
+            AI: {s.aiProvider === 'fake' ? 'offline provider' : s.aiProvider === 'none' ? 'not configured' : s.aiProvider.split(':')[0]}
           </span>
         </div>
       </header>
 
-      {!setupOn && (s.paymentsMode === 'mock' ? (
+      {!setupOn && (real ? (
+        <nav className="travel" aria-label="Studio controls">
+          {modeSelect}
+          <span className="spacer" />
+          {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+          <a className="button ghost" href="/">
+            New studio
+          </a>
+        </nav>
+      ) : s.paymentsMode === 'mock' ? (
         <nav className="travel" aria-label="Demo clock and controls">
           {travelTools}
           <span className="spacer" />
@@ -311,17 +333,19 @@ export function App() {
       )}
 
       {setupOn ? (
-        <SetupWizard s={s} ws={ws} api={api} onFinish={finishSetup} policyEditor={<PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} embedded />} />
+        <SetupWizard s={s} ws={ws} api={api} onState={(st) => setS(st)} onFinish={finishSetup} policyEditor={<PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} embedded />} />
       ) : tab === 'console' ? (
-        <main className={`console${s.clients.length ? '' : ' no-phone'}`}>
+        <main className={`console${s.clients.length && !real ? '' : ' no-phone'}`}>
           <section className="schedule">
-            {s.bookings.length === 0 && <FirstBooking s={s} ws={ws} />}
+            <GettingStarted s={s} ws={ws} onGo={setTab} />
+            {s.bookings.length > 0 && <ScreenGuide ws={ws} />}
             <MoneyStrip s={s} />
             <WeekGrid s={s} selected={selected} onSelect={setSelected} />
             <Legend />
           </section>
           <aside className="side" aria-label="Approvals and booking details">
             <Approvals s={s} busy={busy} onResolve={(id, c) => run(() => api.resolve(id, c))} onSelect={setSelected} />
+            <NoAiNote s={s} />
             <AskFrontDesk s={s} busy={busy} onAsk={(t) => api.ask(t)} onState={setS} />
             <AgentTraceCard s={s} selected={selected} onOpen={() => setTab('agent')} />
             {sel ? (
@@ -330,12 +354,22 @@ export function App() {
               <div className="card muted">Select a booking to see its money timeline.</div>
             )}
           </aside>
-          {s.clients.length > 0 && (
+          {s.clients.length > 0 && !real && (
             <aside className="phone-col" aria-label="Client text messages">
               <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
             </aside>
           )}
         </main>
+      ) : tab === 'inbox' ? (
+        <Inbox
+          s={s}
+          onSelect={(id) => {
+            setSelected(id);
+            setTab('console');
+          }}
+        />
+      ) : tab === 'studio' ? (
+        <StudioTab s={s} ws={ws} api={api} onState={(st) => setS(st)} />
       ) : tab === 'policy' ? (
         <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} autoCompile={demoOn} />
       ) : tab === 'agent' ? (
@@ -479,62 +513,97 @@ function DemoBar({
 }
 
 function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | null; onSelect: (id: string) => void }) {
-  const day0 = Date.UTC(2026, 10, 2);
-  const days = Array.from({ length: 6 }, (_, i) => day0 + i * DAY);
-  const hours = Array.from({ length: GRID_END_H - GRID_START_H }, (_, i) => GRID_START_H + i);
-  const nowDay = Math.floor((s.now - day0) / DAY);
-  const nowH = ((s.now % DAY) / HOUR - GRID_START_H) * ROW;
+  const real = s.clockMode === 'real';
+  const [page, setPage] = useState(0); // weeks away from the current one (real studios)
+  const nDays = real ? 7 : 6;
+  const today0 = real ? localMidnight(s.now) : Date.UTC(2026, 10, 2);
+  const anchor = today0 + page * 7 * DAY;
+  const days = Array.from({ length: nDays }, (_, i) => (real ? localMidnight(anchor + i * DAY + 12 * HOUR) : anchor + i * DAY));
+  const endOf = (d: number) => (real ? localMidnight(d + 30 * HOUR) : d + DAY);
+  // the hours on show: opening hours, stretched to include any visit outside them
+  let startH = real ? s.hours.openHour : GRID_START_H;
+  let endH = real ? s.hours.closeHour : GRID_END_H;
+  for (const b of s.bookings) {
+    const d = days.find((x) => b.start >= x && b.start < endOf(x));
+    if (d !== undefined) {
+      startH = Math.min(startH, Math.floor((b.start - d) / HOUR));
+      endH = Math.max(endH, Math.ceil((b.end - d) / HOUR));
+    }
+  }
+  startH = Math.max(0, startH);
+  endH = Math.min(24, Math.max(endH, startH + 1));
+  const hours = Array.from({ length: endH - startH }, (_, i) => startH + i);
+  const nowDay = days.findIndex((d) => s.now >= d && s.now < endOf(d));
+  const nowH = nowDay >= 0 ? ((s.now - days[nowDay]) / HOUR - startH) * ROW : -1;
   return (
-    <div className="grid" style={{ ['--rows' as string]: hours.length, ['--row' as string]: `${ROW}rem` }}>
-      <div className="grid-corner" />
-      {days.map((d) => (
-        <div key={d} className={`grid-day ${Math.floor((s.now - day0) / DAY) === (d - day0) / DAY ? 'today' : ''}`}>
-          {fmtDay(d)}
+    <>
+      {real && (
+        <div className="week-nav">
+          <button onClick={() => setPage(page - 1)} aria-label="Previous week">
+            <Icon name="arrow" size={14} />
+          </button>
+          <button disabled={page === 0} onClick={() => setPage(0)}>
+            Today
+          </button>
+          <button onClick={() => setPage(page + 1)} aria-label="Next week">
+            <Icon name="arrow" size={14} />
+          </button>
+          <span className="muted">
+            {fmtDay(days[0])} to {fmtDay(days[days.length - 1])}
+          </span>
         </div>
-      ))}
-      <div className="grid-hours">
-        {hours.map((h) => (
-          <div key={h} className="grid-hour">
-            {h > 12 ? h - 12 : h} {h >= 12 ? 'PM' : 'AM'}
+      )}
+      <div className="grid" style={{ ['--rows' as string]: hours.length, ['--row' as string]: `${ROW}rem`, ['--cols' as string]: nDays }}>
+        <div className="grid-corner" />
+        {days.map((d, i) => (
+          <div key={d} className={`grid-day ${i === nowDay ? 'today' : ''}`}>
+            {i === nowDay && real ? 'Today' : fmtDay(d)}
+          </div>
+        ))}
+        <div className="grid-hours">
+          {hours.map((h) => (
+            <div key={h} className="grid-hour">
+              {h % 12 === 0 ? 12 : h % 12} {h >= 12 && h < 24 ? 'PM' : 'AM'}
+            </div>
+          ))}
+        </div>
+        {days.map((d, i) => (
+          <div key={d} className="grid-col">
+            {hours.map((h) => (
+              <div key={h} className="grid-cell" />
+            ))}
+            {i === nowDay && nowH >= 0 && nowH <= hours.length * ROW && <div className="now-line" style={{ top: `${nowH}rem` }} />}
+            {s.bookings
+              .filter((b) => b.start >= d && b.start < endOf(d) && !(b.refillOfBookingId && b.state === 'CANCELLED_EARLY'))
+              .map((b) => {
+                const top = ((b.start - d) / HOUR - startH) * ROW;
+                const h = ((b.end - b.start) / HOUR) * ROW;
+                const overlap = s.bookings.some((o) => o.refillOfBookingId === b.id && o.state !== 'CANCELLED_EARLY');
+                const isRefill = !!b.refillOfBookingId;
+                return (
+                  <button
+                    key={b.id}
+                    className={`event m-${b.money} ${selected === b.id ? 'sel' : ''} ${overlap ? 'half-left' : ''} ${isRefill ? 'half-right' : ''}`}
+                    style={{ top: `${top}rem`, height: `calc(${h}rem - 3px)` }}
+                    onClick={() => onSelect(b.id)}
+                    title={`${b.clientName} · ${b.serviceName} · ${b.state}`}
+                  >
+                    <span className="ev-row">
+                      <span className="ev-name">{b.clientName.split(' ')[0]}</span>
+                      <span className="ev-time">{fmtTime(b.start)}</span>
+                    </span>
+                    <span className="ev-svc">{b.serviceName}</span>
+                    <span className="chip">
+                      {MONEY_LABEL[b.money]}
+                      {chipAmount(b)}
+                    </span>
+                  </button>
+                );
+              })}
           </div>
         ))}
       </div>
-      {days.map((d, i) => (
-        <div key={d} className="grid-col">
-          {hours.map((h) => (
-            <div key={h} className="grid-cell" />
-          ))}
-          {i === nowDay && nowH >= 0 && nowH <= hours.length * ROW && <div className="now-line" style={{ top: `${nowH}rem` }} />}
-          {s.bookings
-            .filter((b) => b.start >= d && b.start < d + DAY && !(b.refillOfBookingId && b.state === 'CANCELLED_EARLY'))
-            .map((b) => {
-              const top = ((b.start - d) / HOUR - GRID_START_H) * ROW;
-              const h = ((b.end - b.start) / HOUR) * ROW;
-              const overlap = s.bookings.some((o) => o.refillOfBookingId === b.id && o.state !== 'CANCELLED_EARLY');
-              const isRefill = !!b.refillOfBookingId;
-              return (
-                <button
-                  key={b.id}
-                  className={`event m-${b.money} ${selected === b.id ? 'sel' : ''} ${overlap ? 'half-left' : ''} ${isRefill ? 'half-right' : ''}`}
-                  style={{ top: `${top}rem`, height: `calc(${h}rem - 3px)` }}
-                  onClick={() => onSelect(b.id)}
-                  title={`${b.clientName} · ${b.serviceName} · ${b.state}`}
-                >
-                  <span className="ev-row">
-                    <span className="ev-name">{b.clientName.split(' ')[0]}</span>
-                    <span className="ev-time">{fmtTime(b.start)}</span>
-                  </span>
-                  <span className="ev-svc">{b.serviceName}</span>
-                  <span className="chip">
-                    {MONEY_LABEL[b.money]}
-                    {chipAmount(b)}
-                  </span>
-                </button>
-              );
-            })}
-        </div>
-      ))}
-    </div>
+    </>
   );
 }
 
@@ -693,6 +762,7 @@ function BookingPanel({
           {chipAmount(b)}
         </span>
       </div>
+      <Journey b={b} now={s.now} />
       <p className={`money-explain m-${b.money}`}>{MONEY_EXPLAIN[b.money]}</p>
       <dl className="facts">
         <dt>State</dt>
@@ -932,5 +1002,19 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false, embedded = fals
         )}
       </section>
     </Root>
+  );
+}
+
+/** The studio's current time, ticking: a real studio shows real time. */
+function LiveClock() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <>
+      {fmtDay(now)} · {fmtTime(now)}
+    </>
   );
 }

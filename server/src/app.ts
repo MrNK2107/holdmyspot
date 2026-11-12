@@ -79,7 +79,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // The workspace id is the public booking link. Only these routes are reachable with it alone; every other
   // workspace route needs the owner token (header x-owner-token; the event stream may pass ?owner= because
   // EventSource cannot set headers). The shared `demo` workspace is an open public console.
-  const clientRoutes = ['/api/ws/:ws/public', '/api/ws/:ws/slots', '/api/ws/:ws/book', '/api/ws/:ws/sim/approve/:orderId'];
+  const clientRoutes = [
+    '/api/ws/:ws/public',
+    '/api/ws/:ws/slots',
+    '/api/ws/:ws/book',
+    '/api/ws/:ws/sim/approve/:orderId',
+    // a client's private link: their own visits and thread only
+    '/api/ws/:ws/me/:token',
+    '/api/ws/:ws/me/:token/messages',
+  ];
   const sameToken = (given: unknown, want: string) => {
     if (typeof given !== 'string') return false;
     const a = Buffer.from(given);
@@ -107,13 +115,18 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       return;
     }
     const wsId = (req.params as { ws?: string }).ws;
-    const limited = ['/api/ws/:ws/messages', '/api/ws/:ws/assistant', '/api/ws/:ws/policy/compile', '/api/ws/:ws/book', '/api/ws/:ws/reset'];
+    const limited = ['/api/ws/:ws/messages', '/api/ws/:ws/me/:token/messages', '/api/ws/:ws/assistant', '/api/ws/:ws/policy/compile', '/api/ws/:ws/book', '/api/ws/:ws/reset'];
     if (route && limited.includes(route) && wsId && workspaces.get(wsId) && !allowModelCall(wsId)) {
       return reply.code(429).send({ ok: false, error: 'too many requests: try again in a minute' });
     }
   });
 
   app.get('/api/health', async () => ({ ok: true, workspaces: workspaces.ids().length }));
+  // what this server runs on, for the welcome page (no studio data)
+  app.get('/api/config', async () => {
+    const s = workspaces.get('demo')?.engine.snapshot();
+    return { payments: s?.paymentsMode ?? 'mock', ai: s?.aiProvider ?? 'fake', clock: s?.clockMode ?? 'demo' };
+  });
 
   // The eval suite (message reader, prompt injection, waitlist) on the deterministic offline provider: run once
   // per server and cached, so the public console never spends model calls on it. `npm run eval` with AI=anthropic
@@ -152,6 +165,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       business: s.business,
       owner: s.owner,
       paymentsMode: s.paymentsMode,
+      timeZone: s.timeZone,
+      clockMode: s.clockMode,
       services: s.services,
       policy: { version: s.policy.version, hash: s.policy.hash, summary: s.policy.summary, rules: { holdCents: s.policy.rules.holdCents } },
     };
@@ -227,7 +242,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     act(req.params.ws, reply, async (e) => {
       if (!e.freeSlots(req.body.serviceId, 12).includes(req.body.start)) throw new Error('that time is no longer free');
       const c = e.newClient(req.body.name);
-      return e.createBooking({ clientId: c.id, serviceId: req.body.serviceId, start: req.body.start });
+      const b = await e.createBooking({ clientId: c.id, serviceId: req.body.serviceId, start: req.body.start });
+      // the token is the client's private link: returned once, to the browser that booked
+      return { ...b, clientToken: c.token };
     }, { client: true }),
   );
 
@@ -259,6 +276,30 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
       if (!Number.isFinite(target) || target < e.now() || target > e.now() + 400 * 86_400_000) throw new Error('time travel needs a target between now and 400 days ahead');
       return e.clock.advanceTo(target);
     }),
+  );
+
+  // a client's own page: their visits and a thread with the studio (the link is the secret; nothing here shows other clients)
+  app.get<{ Params: { ws: string; token: string } }>('/api/ws/:ws/me/:token', async (req, reply) => {
+    const w = await ws(req.params.ws, reply);
+    if (!w) return;
+    const c = w.engine.clientByToken(req.params.token);
+    if (!c) return reply.code(404).send({ ok: false, error: 'this link is not valid: open the one from your booking' });
+    return w.engine.clientPortal(c);
+  });
+  app.post<{ Params: { ws: string; token: string }; Body: { text?: unknown } }>('/api/ws/:ws/me/:token/messages', async (req, reply) =>
+    act(
+      req.params.ws,
+      reply,
+      async (e) => {
+        const c = e.clientByToken(req.params.token);
+        if (!c) throw new Error('this link is not valid: open the one from your booking');
+        const text = typeof req.body?.text === 'string' ? req.body.text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 500) : '';
+        if (!text) throw new Error('write a message first');
+        await e.receiveMessage(c.id, text);
+        return e.clientPortal(c);
+      },
+      { client: true },
+    ),
   );
 
   // the owner's studio setup: services and opening hours

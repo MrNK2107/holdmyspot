@@ -1,8 +1,16 @@
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { type Api, type Snapshot, rememberOwnerToken, usd } from './api';
+import { Icon } from './Icon';
+import { HoursEditor, ServicesEditor } from './Studio';
 
 /** Where the owner shares the studio: the public booking page for this workspace. */
 export const bookingLink = (ws: string) => `${location.origin}/book?ws=${encodeURIComponent(ws)}`;
+
+interface ServerConfig {
+  payments: 'mock' | 'sandbox';
+  ai: string;
+  clock: 'real' | 'demo';
+}
 
 /** First screen at `/`: what the product does, and the one thing to do next (create a studio). */
 export function Welcome() {
@@ -10,6 +18,13 @@ export function Welcome() {
   const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cfg, setCfg] = useState<ServerConfig | null>(null);
+  useEffect(() => {
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then(setCfg)
+      .catch(() => undefined);
+  }, []);
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -19,7 +34,8 @@ export function Welcome() {
       const r = await fetch('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business, owner }),
+        // the studio runs in the time zone of the browser that creates it
+        body: JSON.stringify({ business, owner, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? r.statusText);
@@ -46,17 +62,33 @@ export function Welcome() {
           <p className="lede">
             HoldMySpot puts a PayPal hold on every booking, reads “can’t make it” texts the way a person would, and only moves money when you tap.
           </p>
-          <ul className="moments">
+          <ol className="how-it-works" aria-label="How it works">
             <li>
-              <strong>Three days before.</strong> A declined hold is caught on Tuesday, not at the door on Friday.
+              <span className="hw-n">1</span>
+              <span>
+                <strong>A client books and approves a hold.</strong> It reserves the fee on their own PayPal. Nothing is charged.
+              </span>
             </li>
             <li>
-              <strong>A late cancel.</strong> Your waitlist fills the slot first, so the client who cancelled pays nothing.
+              <span className="hw-n">2</span>
+              <span>
+                <strong>Life happens.</strong> A late cancel goes to your waitlist first. A sick child gets excused. You see every proposal before it acts.
+              </span>
             </li>
             <li>
-              <strong>A no-show.</strong> One tap charges the hold you already have. Another refunds it.
+              <span className="hw-n">3</span>
+              <span>
+                <strong>You tap, or you don’t.</strong> A no-show is one tap to charge the hold you already have. A change of heart is one tap to refund.
+              </span>
             </li>
-          </ul>
+          </ol>
+          {cfg && (
+            <p className="honesty" role="note">
+              <Icon name="info" size={16} />
+              {cfg.payments === 'sandbox' ? 'Runs on the real PayPal sandbox: real PayPal screens, test money only.' : 'Runs on a built-in PayPal simulator: no PayPal account needed.'}{' '}
+              {cfg.ai === 'none' ? 'AI is not configured on this server, so client texts come to you to read.' : cfg.ai === 'fake' ? 'The AI is an offline stand-in.' : `AI: ${cfg.ai.split(':')[0]}.`}
+            </p>
+          )}
         </section>
         <section className="welcome-card" aria-labelledby="create-h">
           <h2 id="create-h">Create your studio</h2>
@@ -79,20 +111,23 @@ export function Welcome() {
             </button>
           </form>
           <p className="muted small">No password. Your studio opens in this browser; later you can copy a private link to open it on another device.</p>
-          <p className="alt">
-            Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
-          </p>
+          {cfg?.payments === 'mock' && (
+            <p className="alt">
+              Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
+            </p>
+          )}
         </section>
       </main>
     </div>
   );
 }
 
-/** The booking link with Copy and Open: used in the last setup step and on an empty schedule. */
-export function ShareLink({ ws }: { ws: string }) {
+/** The booking link with Copy and Open: used in setup, on the Studio tab and in the getting-started guide. */
+export function ShareLink({ ws, onUse }: { ws: string; onUse?: () => void }) {
   const link = bookingLink(ws);
   const [done, setDone] = useState<'copied' | 'failed' | null>(null);
   const copy = async () => {
+    onUse?.();
     try {
       await navigator.clipboard.writeText(link);
       setDone('copied');
@@ -107,40 +142,28 @@ export function ShareLink({ ws }: { ws: string }) {
       <button className="primary" onClick={copy}>
         {done === 'copied' ? 'Copied' : done === 'failed' ? 'Select and copy' : 'Copy link'}
       </button>
-      <a className="button" href={link} target="_blank" rel="noreferrer">
+      <a className="button" href={link} target="_blank" rel="noreferrer" onClick={() => onUse?.()}>
         Open booking page ↗
       </a>
     </div>
   );
 }
 
-/** Shown on the schedule until the first booking exists. */
-export function FirstBooking({ s, ws }: { s: Snapshot; ws: string }) {
-  const hold = s.policy.rules.holdCents;
-  return (
-    <section className="card first-booking" aria-labelledby="fb-h">
-      <h2 id="fb-h">Get your first booking</h2>
-      <p>
-        Send this link to a client or put it in your bio. They pick a time and approve a {usd(hold)} hold on their own PayPal; the visit lands on your schedule and nothing is charged unless you tap.
-      </p>
-      <ShareLink ws={ws} />
-      <p className="muted small">Want to see it from the client’s side first? Open the booking page and book a test visit yourself.</p>
-    </section>
-  );
-}
+const STEPS = ['Studio', 'Offer', 'Policy', 'PayPal', 'Share'] as const;
 
-const STEPS = ['Studio', 'Policy', 'PayPal', 'Share'] as const;
-
-/** Four steps from a new studio to a shareable link. Step 1 (the studio) is done when the studio is created. */
+/** Five steps from a new studio to a shareable link. Step 1 (the studio) is done when the studio is created. */
 export function SetupWizard({
   s,
   ws,
+  api,
+  onState,
   policyEditor,
   onFinish,
 }: {
   s: Snapshot;
   ws: string;
   api: Api;
+  onState: (s: Snapshot) => void;
   policyEditor: ReactNode;
   onFinish: () => void;
 }) {
@@ -154,11 +177,12 @@ export function SetupWizard({
   return (
     <main className="setup">
       <h1 className="setup-title">Set up {s.business}</h1>
+      <p className="setup-sub">Five short steps. You can change everything later from the Studio and Policy tabs.</p>
       <ol className="stepper" aria-label="Setup progress">
         {STEPS.map((name, i) => (
           <li key={name} className={i < step ? 'done' : i === step ? 'now' : ''} aria-current={i === step ? 'step' : undefined}>
             <span className="step-dot" aria-hidden>
-              {i < step ? '✓' : i + 1}
+              {i < step ? <Icon name="check" size={14} /> : i + 1}
             </span>
             <span className="step-name">{name}</span>
           </li>
@@ -167,11 +191,28 @@ export function SetupWizard({
 
       {step === 1 && (
         <section className="card setup-card">
+          <h2>What do you offer, and when?</h2>
+          <p>Clients choose a service and a time from these. Add at least one service to continue.</p>
+          <h3 className="sub-h">Services</h3>
+          <ServicesEditor s={s} api={api} onState={onState} />
+          <h3 className="sub-h">Opening hours</h3>
+          <HoursEditor s={s} api={api} onState={onState} />
+          <div className="actions">
+            <button className="primary" disabled={s.services.length === 0} onClick={next}>
+              {s.services.length === 0 ? 'Add a service to continue' : 'Continue'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 2 && (
+        <section className="card setup-card">
           <h2>Your cancellation policy</h2>
           <p>This is what clients agree to when they book. You can change it any time on the Policy tab.</p>
           <blockquote className="policy-quote">{s.policy.summary}</blockquote>
           {!editing && (
             <div className="actions">
+              <button onClick={() => setStep(1)}>Back</button>
               <button className="primary" onClick={next}>
                 Keep this policy
               </button>
@@ -193,12 +234,12 @@ export function SetupWizard({
         </section>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <section className="card setup-card">
           <h2>PayPal</h2>
           {s.paymentsMode === 'sandbox' ? (
             <p className="status ok" role="status">
-              Connected to the PayPal sandbox. Test money only: nothing real is charged.
+              Connected to the PayPal sandbox. Clients see real PayPal screens; the money is test money, so nothing real is charged.
             </p>
           ) : (
             <p className="status" role="status">
@@ -212,7 +253,7 @@ export function SetupWizard({
             <li>After the visit, you tap Charge for a no-show, or the hold is released.</li>
           </ol>
           <div className="actions">
-            <button onClick={() => setStep(1)}>Back</button>
+            <button onClick={() => setStep(2)}>Back</button>
             <button className="primary" onClick={next}>
               Continue
             </button>
@@ -220,13 +261,13 @@ export function SetupWizard({
         </section>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <section className="card setup-card">
           <h2>Share your booking link</h2>
           <p>Clients book here. You can open it again any time from “Client booking page” at the top of the screen.</p>
-          <ShareLink ws={ws} />
+          <ShareLink ws={ws} onUse={() => localStorageFlag(`hms-shared:${ws}`)} />
           <div className="actions">
-            <button onClick={() => setStep(2)}>Back</button>
+            <button onClick={() => setStep(3)}>Back</button>
             <button className="primary" onClick={onFinish}>
               Open my studio
             </button>
@@ -235,4 +276,12 @@ export function SetupWizard({
       )}
     </main>
   );
+}
+
+function localStorageFlag(k: string) {
+  try {
+    localStorage.setItem(k, '1');
+  } catch {
+    /* private window */
+  }
 }

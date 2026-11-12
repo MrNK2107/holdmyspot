@@ -110,6 +110,19 @@ export interface Snapshot {
   /** PayPal Agent Toolkit read tools in the owner's agent (null when PAYPAL_AGENT_TOOLKIT=off) */
   agentToolkit?: { package: string; via?: 'functions' | 'mcp'; tools: string[]; notGiven: string[]; http: Array<{ method: string; path: string; status: number; blocked?: boolean }> } | null;
   jobs: Array<{ id: string; at: number; name: string }>;
+  /** 'real': the wall clock (no time travel); 'demo': the simulated clock */
+  clockMode: 'real' | 'demo';
+  timeZone: string;
+  hours: StudioHours;
+}
+
+export interface StudioHours {
+  openHour: number;
+  closeHour: number;
+  closedDays: number[];
+  sameDay: boolean;
+  leadMinutes: number;
+  stepMinutes: number;
 }
 
 /** GET /api/ws/:ws/public: what the booking link may see (no other clients, messages or audit). */
@@ -118,6 +131,8 @@ export interface PublicInfo {
   business: string;
   owner: string;
   paymentsMode: 'mock' | 'sandbox';
+  timeZone: string;
+  clockMode: 'real' | 'demo';
   services: Snapshot['services'];
   policy: { version: number; hash: string; summary: string; rules: { holdCents: number } };
 }
@@ -194,15 +209,45 @@ export class Api {
   simApprove = (orderId: string) => this.req<{ state: Snapshot }>('POST', `/sim/approve/${enc(orderId)}`);
   demo = () => this.req<DemoStatus>('GET', '/demo');
   paypalRequests = <T>() => this.req<T[]>('GET', '/paypal-requests');
+  addService = (name: string, durationMin: number, priceCents: number) => this.req<{ state: Snapshot }>('POST', '/services', { name, durationMin, priceCents });
+  removeService = (id: string) => this.req<{ state: Snapshot }>('DELETE', `/services/${enc(id)}`);
+  setHours = (h: Partial<StudioHours>) => this.req<{ state: Snapshot }>('POST', '/hours', h);
   demoNext = () => this.req<{ state: Snapshot; result: DemoStatus }>('POST', '/demo/next');
 }
 
 export const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
 
+/** The studio's IANA time zone: every time on screen is shown in it (UTC for the simulator demo). */
+let zone = 'UTC';
+export const setZone = (tz: string | undefined) => {
+  zone = tz || 'UTC';
+};
+export const getZone = () => zone;
+
 export function fmtTime(t: number): string {
-  return new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone });
 }
 
 export function fmtDay(t: number): string {
-  return new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: zone });
+}
+
+/** Offset of the zone from UTC at instant t, in ms. */
+export function zoneOffset(t: number, tz = zone): number {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(t));
+  const g = (k: string) => Number(p.find((x) => x.type === k)?.value);
+  return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - Math.floor(t / 1000) * 1000;
+}
+
+/** Midnight of the local day containing t, as epoch ms. */
+export function localMidnight(t: number, tz = zone): number {
+  const local = new Date(t + zoneOffset(t, tz));
+  const wall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  return wall - zoneOffset(wall - zoneOffset(wall, tz), tz);
+}
+
+/** "Today", "Tomorrow" or the weekday and date, for a time in the studio's zone. */
+export function relDay(t: number, now: number): string {
+  const d = Math.round((localMidnight(t) - localMidnight(now)) / 86_400_000);
+  return d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : fmtDay(t);
 }
