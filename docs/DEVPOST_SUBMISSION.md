@@ -62,7 +62,7 @@ Solo appointment pros (nail techs, barbers, lash artists, tutors) lose a slot's 
 | `PayPal-Request-Id` on every write | Idempotent retries keyed to the business intent |
 | **PayPal Agent Toolkit** (`@paypal/agent-toolkit` 1.11.0): `list_transactions` (Transaction Search), `get_order`, `get_refund`, `list_disputes`, `get_dispute` | The owner's agent reads PayPal with the official toolkit, read-only by allow-list; optionally through the toolkit's MCP server class (`PAYPAL_AGENT_TOOLKIT=mcp`). Its money tools are never given (see How we used AI) |
 
-**Honest status:** [TODO revise after the sandbox run] The REST adapter is written and unit-tested against scripted HTTP exchanges written from PayPal's API reference (not recordings of the live sandbox), but has not yet run against the live PayPal sandbox, because the sandbox app keys were not set up at the time of writing. The demo and video currently run on the built-in simulator, which is labelled **PayPal simulator** in the UI. Switching is one environment variable (`PAYMENTS=sandbox`).
+**Honest status:** The REST adapter ran end to end against the live PayPal sandbox on 2026-11-12 (US business account, USD), through the running app: a buyer-approved $20 hold with the wallet saved in Vault, a merchant-initiated hold, a no-show capture, a full refund, an excused release (void), a partial final capture and an `INSTRUMENT_DECLINED` decline. Not yet run live: webhooks, reauthorize, partial refunds, the waitlist refill path and the Agent Toolkit reads. The hosted demo and the video run on the built-in simulator, which is labelled **PayPal simulator** in the UI. Switching is one environment variable (`PAYMENTS=sandbox`).
 
 ## How we used AI
 

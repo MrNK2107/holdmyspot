@@ -1,6 +1,6 @@
 # PayPal Agent Toolkit and MCP server in HoldMySpot
 
-Status 2026-11-02: implemented and tested against the PayPal simulator. Not yet run against the live PayPal sandbox (no keys yet).
+Status 2026-11-02: implemented and tested against the PayPal simulator. The adapter has since run against the live PayPal sandbox (2026-11-12), but the toolkit reads have not been exercised there yet.
 
 ## 1. What PayPal offers (checked 2026-11-02)
 
