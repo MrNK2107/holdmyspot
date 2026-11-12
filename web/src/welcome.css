@@ -1268,3 +1268,24 @@ body:has(.lg) {
   gap: 0.75rem;
   align-items: center;
 }
+
+/* the entry form's inputs must stay inside their columns (they have a wide intrinsic size) */
+.lg-form .field {
+  min-width: 0;
+}
+.lg-form .field input {
+  width: 100%;
+  min-width: 0;
+}
+.lg-form button {
+  white-space: nowrap;
+}
+/* between a phone and a wide screen the button drops under the fields instead of squeezing them */
+@media (max-width: 62rem) and (min-width: 40.01rem) {
+  .lg-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .lg-form button {
+    grid-column: 1 / -1;
+  }
+}
