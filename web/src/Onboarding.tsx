@@ -65,6 +65,7 @@ export function Welcome() {
   const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
   const [hold, setHold] = useState(2000);
+  const [rv, setRv] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
   const [me] = useMe();
@@ -105,6 +106,24 @@ export function Welcome() {
     }
   };
 
+  // Scroll reveal: content is visible by default; only once the observer is ready do later sections wait to fade in.
+  useEffect(() => {
+    if (typeof IntersectionObserver !== 'function' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const en of entries) {
+          if (en.isIntersecting) {
+            en.target.classList.add('in');
+            io.unobserve(en.target);
+          }
+        }
+      },
+      { rootMargin: '0px 0px -8% 0px', threshold: 0.08 },
+    );
+    document.querySelectorAll('.lg-rv').forEach((el) => io.observe(el));
+    setRv(true);
+    return () => io.disconnect();
+  }, []);
   const signedIn = !!me?.account;
   const money = (c: number) => `$${(c / 100).toFixed(2)}`;
   const goStart = () => {
@@ -112,7 +131,7 @@ export function Welcome() {
     setTimeout(() => document.getElementById('studio-name')?.focus({ preventScroll: true }), 350);
   };
   return (
-    <div className="lg">
+    <div className={`lg${rv ? ' rv-on' : ''}`}>
       <header className="lg-top">
         <svg className="lg-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden focusable="false">
           <path d="M12 2l8.5 10L12 22 3.5 12z" fill="currentColor" />
@@ -214,45 +233,54 @@ export function Welcome() {
         </section>
 
         <section className="lg-section lg-how" id="how" aria-labelledby="how-h">
-          <div className="lg-sec-h">
+          <div className="lg-sec-h lg-rv">
             <h2 id="how-h">How a booking moves money</h2>
             <p>Three steps, and the owner’s tap is the only thing that ever charges.</p>
           </div>
-          <ol className="lg-steps" aria-label="How it works">
-            <li>
-              <span className="lg-n">1</span>
-              <h3>A client books and approves a hold.</h3>
-              <p>It reserves the fee on their own PayPal. Nothing is charged.</p>
-              <div className="lg-fig">
-                <span>Hold on their PayPal</span>
-                <output key={`a${hold}`}>{money(hold)}</output>
+          <ol className="lg-feat" aria-label="How it works">
+            <li className="lg-feat-row lg-rv">
+              <div className="lg-feat-text">
+                <span className="lg-n">1</span>
+                <h3>A client books and approves a hold.</h3>
+                <p>It reserves the fee on their own PayPal. Nothing is charged.</p>
+                <div className="lg-fig">
+                  <span>Hold on their PayPal</span>
+                  <output key={`a${hold}`}>{money(hold)}</output>
+                </div>
               </div>
+              <PhoneBooking hold={hold} />
             </li>
-            <li>
-              <span className="lg-n">2</span>
-              <h3>Life happens.</h3>
-              <p>A late cancel goes to your waitlist first. A sick child gets excused. You see every proposal before it acts.</p>
-              <div className="lg-fig released">
-                <span>Released, nothing charged</span>
-                <output>$0.00</output>
+            <li className="lg-feat-row rev lg-rv">
+              <div className="lg-feat-text">
+                <span className="lg-n">2</span>
+                <h3>Life happens.</h3>
+                <p>A late cancel goes to your waitlist first. A sick child gets excused. You see every proposal before it acts.</p>
+                <div className="lg-fig released">
+                  <span>Released, nothing charged</span>
+                  <output>$0.00</output>
+                </div>
               </div>
+              <ProposalCard />
             </li>
-            <li>
-              <span className="lg-n">3</span>
-              <h3>You tap, or you don’t.</h3>
-              <p>A no-show is one tap to charge the hold you already have. A change of heart is one tap to refund.</p>
-              <div className="lg-fig captured">
-                <span>Charged only on your tap, up to</span>
-                <output key={`c${hold}`}>{money(hold)}</output>
+            <li className="lg-feat-row lg-rv">
+              <div className="lg-feat-text">
+                <span className="lg-n">3</span>
+                <h3>You tap, or you don’t.</h3>
+                <p>A no-show is one tap to charge the hold you already have. A change of heart is one tap to refund.</p>
+                <div className="lg-fig captured">
+                  <span>Charged only on your tap, up to</span>
+                  <output key={`c${hold}`}>{money(hold)}</output>
+                </div>
               </div>
+              <TraceCard hold={hold} money={money} />
             </li>
           </ol>
         </section>
 
         <section className="lg-dark" id="trust" aria-labelledby="trust-h">
           <div className="lg-dark-in">
-            <h2 id="trust-h">Built so it can be trusted with money.</h2>
-            <div className="lg-cols3">
+            <h2 id="trust-h" className="lg-rv">Built so it can be trusted with money.</h2>
+            <div className="lg-cols3 lg-rv">
               <div>
                 <h3>The AI only proposes.</h3>
                 <p>It labels a message and drafts a proposal. It has no tool that authorizes, captures, voids or refunds, so nothing it reads can move money.</p>
@@ -270,11 +298,11 @@ export function Welcome() {
         </section>
 
         <section className="lg-section lg-rulesec" id="rules" aria-labelledby="rules-h">
-          <div className="lg-sec-h">
+          <div className="lg-sec-h lg-rv">
             <h2 id="rules-h">Your studio, your rules.</h2>
             <p>An example studio. Choose a hold and every figure on this page follows it.</p>
           </div>
-          <div className="lg-ledger">
+          <div className="lg-ledger lg-rv">
             <div className="lg-ledger-h">
               <div className="lg-pick" role="group" aria-labelledby="hold-l">
                 <span className="lg-pick-l" id="hold-l">
@@ -316,7 +344,7 @@ export function Welcome() {
           </div>
         </section>
 
-        <section className="lg-cta" aria-labelledby="cta-h">
+        <section className="lg-cta lg-rv" aria-labelledby="cta-h">
           <h2 id="cta-h">Open your studio in a minute.</h2>
           <p>No password. Clients approve a hold; you decide whether it ever becomes a charge.</p>
           <button type="button" className="primary" onClick={goStart}>
@@ -398,6 +426,94 @@ function BookingDemo({ hold, money }: { hold: number; money: (c: number) => stri
         </div>
       </div>
       <figcaption>Example booking. Amounts follow the hold you pick below.</figcaption>
+    </figure>
+  );
+}
+
+/** Step 1 picture: the client's phone at the real booking page. Example content, labelled by the figure caption. */
+function PhoneBooking({ hold }: { hold: number }) {
+  return (
+    <figure className="lg-vis" aria-label="Example: the client's booking screen">
+      <div className="lg-phone">
+        <div className="lg-phone-screen">
+          <strong className="lg-phone-biz">Your studio</strong>
+          <span className="lg-phone-sub">Book a visit in a minute</span>
+          <div className="lg-phone-svc">
+            <span>Gel fill</span>
+            <span>60 min</span>
+          </div>
+          <div className="lg-phone-slots" aria-hidden>
+            <span>Fri 11:00</span>
+            <span className="on">Fri 2:00</span>
+            <span>Sat 10:00</span>
+          </div>
+          <p className="lg-phone-pol">We place a ${hold / 100} hold on your PayPal 3 days before your visit. It is not a charge.</p>
+          <span className="lg-phone-btn">Book and approve with PayPal</span>
+        </div>
+      </div>
+      <figcaption>Example booking screen. The hold is the owner’s setting.</figcaption>
+    </figure>
+  );
+}
+
+/** Step 2 picture: a proposal the owner approves. Nothing moves until the tap. */
+function ProposalCard() {
+  return (
+    <figure className="lg-vis" aria-label="Example: a proposal waiting for the owner">
+      <div className="lg-prop">
+        <div className="lg-prop-h">Proposal for you</div>
+        <p className="lg-prop-msg">“Kiddo threw up, can’t make it today.”</p>
+        <dl>
+          <div>
+            <dt>Read as</dt>
+            <dd>Sick child</dd>
+          </div>
+          <div>
+            <dt>Suggested</dt>
+            <dd>Excuse, release the hold</dd>
+          </div>
+          <div>
+            <dt>Why</dt>
+            <dd>Illness is excused by your policy</dd>
+          </div>
+        </dl>
+        <div className="lg-prop-act" aria-hidden>
+          <span className="go">Approve</span>
+          <span>Decline</span>
+        </div>
+        <p className="lg-prop-note">Nothing happens until you tap.</p>
+      </div>
+      <figcaption>Example proposal. The AI suggests; you decide.</figcaption>
+    </figure>
+  );
+}
+
+/** Step 3 picture: the ledger line and the request behind it. Illustrative identifiers, never real PayPal data. */
+function TraceCard({ hold, money }: { hold: number; money: (c: number) => string }) {
+  return (
+    <figure className="lg-vis" aria-label="Example: the ledger and the request behind a charge">
+      <div className="lg-trace">
+        <div className="lg-trace-h">
+          <span>Event</span>
+          <span>PayPal object</span>
+          <span>Amount</span>
+        </div>
+        <div className="lg-trace-r">
+          <span>Hold authorized</span>
+          <code>AUTH-EXAMPLE-01</code>
+          <output>{money(hold)}</output>
+        </div>
+        <div className="lg-trace-r">
+          <span>No-show, you tapped</span>
+          <code>CAPTURE-EXAMPLE-01</code>
+          <output className="brick">{money(hold)}</output>
+        </div>
+        <pre className="lg-trace-req" aria-label="Example request">
+{`POST /v2/payments/authorizations/{id}/capture
+{ "amount": { "value": "${(hold / 100).toFixed(2)}", "currency_code": "USD" } }`}
+        </pre>
+      </div>
+      <figcaption>Example ledger. Identifiers are illustrative.</figcaption>
     </figure>
   );
 }
