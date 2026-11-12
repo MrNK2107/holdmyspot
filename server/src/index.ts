@@ -15,6 +15,11 @@ const store = cfg.databaseUrl ? await pgStoreFromUrl(cfg.databaseUrl) : undefine
 const workspaces = new Workspaces({ ...cfg.deps, store });
 const restored = await workspaces.restoreAll();
 await workspaces.create('demo');
+// accounts are required: studios made before that have no owner, so they are retired (live holds released first)
+if (cfg.requireAccount) {
+  const retired = await workspaces.retireAnonymous();
+  if (retired) console.log(`retired ${retired} studio(s) with no owner account`);
+}
 const auth = new Auth({ ...cfg.authOptions, store });
 if (!cfg.authOptions.sessionSecret && cfg.authOptions.google) console.warn('SESSION_SECRET is not set: everyone is signed out whenever the server restarts');
 
@@ -22,6 +27,7 @@ const app = await buildApp({
   workspaces,
   auth,
   storeKind: store?.kind,
+  requireAccount: cfg.requireAccount,
   webDist: resolve(here, '../../web/dist'),
   logger: process.env.LOG === '1',
   webhookVerifier: cfg.webhookVerifier,

@@ -1,6 +1,7 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { MemoryStore, type Store } from './store.js';
+import { AccountExistsError, MemoryStore, type Store } from './store.js';
 import type { Workspaces } from './workspaces.js';
 
 /**
@@ -26,6 +27,29 @@ export interface AuthOptions {
 }
 
 const SESSION_DAYS = 30;
+const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number, opts: { N: number; r: number; p: number; maxmem: number }) => Promise<Buffer>;
+const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+/** wrong passwords allowed per email in the window before it is locked out */
+const MAX_FAILURES = 8;
+const FAILURE_WINDOW_MS = 15 * 60_000;
+/** every sign-up/sign-in costs CPU (scrypt); this caps them across the whole server */
+const MAX_ATTEMPTS_PER_MIN = 120;
+
+/** `scrypt$N$r$p$salt$hash`: a fresh random salt for every password. */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scryptAsync(password, salt, 64, SCRYPT);
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
+}
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [alg, n, r, p, salt, hash] = stored.split('$');
+  if (alg !== 'scrypt' || !salt || !hash) return false;
+  const want = Buffer.from(hash, 'base64url');
+  const got = await scryptAsync(password, Buffer.from(salt, 'base64url'), want.length, { N: Number(n), r: Number(r), p: Number(p), maxmem: SCRYPT.maxmem });
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
 const b64 = (s: string) => Buffer.from(s).toString('base64url');
 const unb64 = (s: string) => Buffer.from(s, 'base64url').toString('utf8');
 
@@ -34,6 +58,9 @@ export class Auth {
   private secret: string;
   private fetchFn: FetchFn;
   private now: () => number;
+  private failures = new Map<string, number[]>();
+  private attempts: number[] = [];
+  private dummyHash?: Promise<string>;
 
   constructor(private o: AuthOptions) {
     this.store = o.store ?? new MemoryStore();
@@ -44,6 +71,31 @@ export class Auth {
 
   get googleEnabled(): boolean {
     return !!this.o.google;
+  }
+
+  /** Server-wide cap on password work; false = too many right now. */
+  private allowAttempt(): boolean {
+    const now = this.now();
+    this.attempts = this.attempts.filter((t) => now - t < 60_000);
+    if (this.attempts.length >= MAX_ATTEMPTS_PER_MIN) return false;
+    this.attempts.push(now);
+    return true;
+  }
+  private recentFailures(email: string): number[] {
+    const now = this.now();
+    const list = (this.failures.get(email) ?? []).filter((t) => now - t < FAILURE_WINDOW_MS);
+    if (list.length) this.failures.set(email, list);
+    else this.failures.delete(email);
+    return list;
+  }
+  private recordFailure(email: string): void {
+    const list = this.recentFailures(email);
+    list.push(this.now());
+    this.failures.set(email, list);
+    if (this.failures.size > 10_000) this.failures.delete(this.failures.keys().next().value!);
+  }
+  private startSession(req: FastifyRequest, reply: FastifyReply, accountId: string): void {
+    this.setCookie(req, reply, 'hms_session', this.sign({ a: accountId, exp: this.now() + SESSION_DAYS * 86_400_000 }), SESSION_DAYS * 86_400);
   }
 
   // ---------- signed cookies ----------
@@ -92,15 +144,58 @@ export class Auth {
   }
 
   // ---------- routes ----------
-  register(app: FastifyInstance, workspaces: Workspaces): void {
+  register(app: FastifyInstance, workspaces: Workspaces, o: { requireAccount?: boolean } = {}): void {
     app.get('/api/me', async (req) => {
       const id = this.sessionAccountId(req);
       const account = id ? await this.store.accountById(id) : undefined;
       return {
         google: this.googleEnabled,
+        password: true,
+        requireAccount: !!o.requireAccount,
         account: account ? { name: account.name, email: account.email, picture: account.picture } : null,
         studios: account ? workspaces.studiosOf(account.id) : [],
       };
+    });
+
+    app.post<{ Body?: { name?: unknown; email?: unknown; password?: unknown } }>('/api/auth/signup', async (req, reply) => {
+      if (!this.allowAttempt()) return reply.code(429).send({ ok: false, error: 'Too many attempts right now. Try again in a minute.' });
+      const b = req.body ?? {};
+      const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : '';
+      const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
+      const password = typeof b.password === 'string' ? b.password : '';
+      if (!name) return reply.code(400).send({ ok: false, error: 'Add your name.' });
+      if (email.length > 254 || !EMAIL.test(email)) return reply.code(400).send({ ok: false, error: 'Enter a valid email address.' });
+      if (password.length < 10) return reply.code(400).send({ ok: false, error: 'Use a password of at least 10 characters.' });
+      if (password.length > 200) return reply.code(400).send({ ok: false, error: 'That password is too long (200 characters at most).' });
+      try {
+        const account = await this.store.createPasswordAccount({ email, name, passwordHash: await hashPassword(password) });
+        this.startSession(req, reply, account.id);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof AccountExistsError) return reply.code(409).send({ ok: false, error: 'An account with this email already exists. Sign in instead.' });
+        throw err;
+      }
+    });
+
+    app.post<{ Body?: { email?: unknown; password?: unknown } }>('/api/auth/login', async (req, reply) => {
+      if (!this.allowAttempt()) return reply.code(429).send({ ok: false, error: 'Too many attempts right now. Try again in a minute.' });
+      const b = req.body ?? {};
+      const email = typeof b.email === 'string' ? b.email.trim().toLowerCase().slice(0, 254) : '';
+      const password = typeof b.password === 'string' ? b.password.slice(0, 200) : '';
+      if (this.recentFailures(email).length >= MAX_FAILURES) {
+        return reply.code(429).send({ ok: false, error: 'Too many wrong passwords for this email. Try again in 15 minutes.' });
+      }
+      const account = email ? await this.store.accountByEmail(email) : undefined;
+      // hash against a dummy when the email is unknown, so timing does not reveal which emails have accounts
+      this.dummyHash ??= hashPassword('not-a-real-password');
+      const ok = await verifyPassword(password, account?.passwordHash ?? (await this.dummyHash));
+      if (!account || !ok) {
+        this.recordFailure(email);
+        return reply.code(401).send({ ok: false, error: 'Wrong email or password.' });
+      }
+      this.failures.delete(email);
+      this.startSession(req, reply, account.id);
+      return { ok: true };
     });
 
     app.post('/api/logout', async (req, reply) => {

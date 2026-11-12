@@ -19,6 +19,8 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   authOptions: AuthOptions;
   /** DATABASE_URL: Postgres for studios and accounts; unset = memory only */
   databaseUrl?: string;
+  /** studios need a signed-in account (default on with real payments; REQUIRE_ACCOUNT=0/1 overrides) */
+  requireAccount: boolean;
 } {
   // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
   const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
@@ -89,5 +91,6 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     sessionSecret: env.SESSION_SECRET || undefined,
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
   };
-  return { deps, paymentsMode, aiMode, webhookVerifier, authOptions, databaseUrl: env.DATABASE_URL || undefined };
+  const requireAccount = env.REQUIRE_ACCOUNT ? !/^(0|false|no|off)$/i.test(env.REQUIRE_ACCOUNT) : env.PAYMENTS === 'sandbox';
+  return { deps, paymentsMode, aiMode, webhookVerifier, authOptions, databaseUrl: env.DATABASE_URL || undefined, requireAccount };
 }

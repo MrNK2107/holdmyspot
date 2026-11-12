@@ -26,6 +26,11 @@ export interface AppOptions {
   auth?: Auth;
   /** what the server stores studios in, for the welcome page */
   storeKind?: 'memory' | 'postgres';
+  /**
+   * Real use: a studio is created by a signed-in account and opened only by that account. The owner link no longer
+   * opens anything. The shared demo stays open. Off for the local simulator, where the owner link still works.
+   */
+  requireAccount?: boolean;
 }
 
 /** Sliding one-minute windows: per workspace and for the whole server (visitors can create many workspaces). */
@@ -53,7 +58,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   const app = Fastify({ logger: opts.logger ?? false });
   const workspaces = opts.workspaces ?? new Workspaces();
   const auth = opts.auth;
-  auth?.register(app, workspaces);
+  auth?.register(app, workspaces, { requireAccount: !!opts.requireAccount });
 
   async function ws(id: string, reply: FastifyReply): Promise<Workspace | undefined> {
     const w = workspaces.get(id);
@@ -109,6 +114,8 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     // a signed-in owner opens their own studios without the owner link
     const account = auth?.sessionAccountId(req);
     if (account && workspaces.accountOf((req.params as { ws?: string }).ws ?? '') === account) return;
+    // with accounts required the owner token opens nothing: only the owning account does
+    if (opts.requireAccount) return reply.code(403).send({ ok: false, error: 'Sign in with the account that owns this studio.' });
     const given = req.headers['x-owner-token'] ?? (route === '/api/ws/:ws/events' ? (req.query as { owner?: string }).owner : undefined);
     if (!sameToken(given, w.ownerToken)) return reply.code(403).send({ ok: false, error: 'owner access needed: open the console from the link it was created with' });
   });
@@ -135,7 +142,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // what this server runs on, for the welcome page (no studio data)
   app.get('/api/config', async () => {
     const s = workspaces.get('demo')?.engine.snapshot();
-    return { payments: s?.paymentsMode ?? 'mock', ai: s?.aiProvider ?? 'fake', clock: s?.clockMode ?? 'demo', google: !!auth?.googleEnabled, storage: opts.storeKind ?? 'none' };
+    return { payments: s?.paymentsMode ?? 'mock', ai: s?.aiProvider ?? 'fake', clock: s?.clockMode ?? 'demo', google: !!auth?.googleEnabled, storage: opts.storeKind ?? 'none', requireAccount: !!opts.requireAccount };
   });
 
   // The eval suite (message reader, prompt injection, waitlist) on the deterministic offline provider: run once
@@ -156,6 +163,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   });
 
   app.post<{ Body?: { business?: unknown; owner?: unknown; timeZone?: unknown } }>('/api/workspaces', async (req, reply) => {
+    if (opts.requireAccount && !(auth && auth.sessionAccountId(req))) return reply.code(401).send({ ok: false, error: 'Sign in to create a studio.' });
     let w: Workspace;
     try {
       w = await workspaces.create(undefined, undefined, cleanStudioNames(req.body));
