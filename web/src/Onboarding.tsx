@@ -17,6 +17,10 @@ interface ServerConfig {
 
 export interface Me {
   google: boolean;
+  /** email + password sign-in is available */
+  password?: boolean;
+  /** a studio needs a signed-in account (real use); false on the local simulator */
+  requireAccount?: boolean;
   account: { name: string; email: string; picture?: string } | null;
   studios: Array<{ id: string; business: string }>;
 }
@@ -68,7 +72,7 @@ export function Welcome() {
   const [rv, setRv] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
-  const [me] = useMe();
+  const [me, reloadMe] = useMe();
   useEffect(() => {
     fetch('/api/config')
       .then((r) => r.json())
@@ -97,6 +101,11 @@ export function Welcome() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? r.statusText);
+      if (me?.requireAccount) {
+        // the studio belongs to the signed-in account: the session opens it, no token to keep
+        location.href = `/?ws=${encodeURIComponent(j.id)}&setup=1`;
+        return;
+      }
       rememberOwnerToken(j.id, j.ownerToken);
       // the token also rides in the fragment so the next page keeps it even where storage is blocked
       location.href = `/?ws=${encodeURIComponent(j.id)}&setup=1#owner=${encodeURIComponent(j.ownerToken)}`;
@@ -125,6 +134,7 @@ export function Welcome() {
     return () => io.disconnect();
   }, []);
   const signedIn = !!me?.account;
+  const gated = !!me?.requireAccount && !signedIn;
   const money = (c: number) => `$${(c / 100).toFixed(2)}`;
   const goStart = () => {
     document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -145,7 +155,7 @@ export function Welcome() {
         <span className="spacer" />
         <AccountChip me={me} />
         <button type="button" className="lg-top-cta" onClick={goStart}>
-          Create studio
+          {gated ? 'Sign in' : 'Create studio'}
         </button>
       </header>
 
@@ -159,6 +169,14 @@ export function Welcome() {
               </p>
 
               <div className="lg-entry" id="start" aria-labelledby="create-h">
+                {me === null ? (
+                  <p className="muted" role="status">
+                    Loading…
+                  </p>
+                ) : gated ? (
+                  <AuthPanel google={me.google} onDone={reloadMe} />
+                ) : (
+                  <>
                 {signedIn && me!.studios.length > 0 && (
                   <div className="my-studios">
                     <h2>Welcome back, {me!.account!.name.split(' ')[0]}</h2>
@@ -214,6 +232,8 @@ export function Welcome() {
                   <p className="alt">
                     Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
                   </p>
+                )}
+                  </>
                 )}
               </div>
             </div>
@@ -370,7 +390,7 @@ export function Welcome() {
 
         <section className="lg-cta lg-rv" aria-labelledby="cta-h">
           <h2 id="cta-h">Open your studio in a minute.</h2>
-          <p>No password. Clients approve a hold; you decide whether it ever becomes a charge.</p>
+          <p>Clients approve a hold; you decide whether it ever becomes a charge.</p>
           <button type="button" className="primary" onClick={goStart}>
             Create your studio
           </button>
@@ -437,7 +457,7 @@ function BookingDemo({ hold, money }: { hold: number; money: (c: number) => stri
         </div>
         <ol className="lg-demo-log">
           {rows.map((r, i) => (
-            <li key={i} className={`${i < step ? 'in' : ''} ${r.msg ? 'msg' : ''}`} aria-hidden={i >= step && !reduced}>
+            <li key={i} className={`${i < step ? 'in' : ''} ${r.msg ? 'lg-msg' : ''}`} aria-hidden={i >= step && !reduced}>
               <span className="lg-demo-who">{r.who}</span>
               <span className="lg-demo-text">{r.text}</span>
               {r.fig && <output className={r.tone ?? ''}>{r.fig}</output>}
@@ -539,6 +559,90 @@ function TraceCard({ hold, money }: { hold: number; money: (c: number) => string
       </div>
       <figcaption>Example ledger. Identifiers are illustrative.</figcaption>
     </figure>
+  );
+}
+
+/** Create an account or sign in with email and password (and Google, when the server has it). */
+export function AuthPanel({ google, onDone, initialMode = 'signup' }: { google: boolean; onDone: () => void; initialMode?: 'signup' | 'login' }) {
+  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/auth/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mode === 'signup' ? { name, email, password } : { email, password }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? r.statusText);
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="lg-auth">
+      <div className="lg-tabs" role="tablist" aria-label="Account">
+        <button type="button" role="tab" aria-selected={mode === 'signup'} onClick={() => setMode('signup')}>
+          Create account
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'login'} onClick={() => setMode('login')}>
+          Sign in
+        </button>
+      </div>
+      {google && (
+        <>
+          <a className="button google wide" href="/auth/google">
+            <GoogleMark /> Continue with Google
+          </a>
+          <div className="or" role="separator">
+            <span>or</span>
+          </div>
+        </>
+      )}
+      <form onSubmit={submit} className="lg-auth-form">
+        {mode === 'signup' && (
+          <label className="field">
+            <span>Your name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoComplete="name" required />
+          </label>
+        )}
+        <label className="field">
+          <span>Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} autoComplete="email" required />
+        </label>
+        <label className="field">
+          <span>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={mode === 'signup' ? 10 : undefined}
+            maxLength={200}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            required
+          />
+        </label>
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        <button className="primary wide" type="submit" disabled={busy}>
+          {busy ? 'One moment…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+        </button>
+      </form>
+      <p className="muted small">{mode === 'signup' ? 'Use at least 10 characters. Your studios are private to this account: only you can open them.' : 'Sign in to open your studios.'}</p>
+    </div>
   );
 }
 

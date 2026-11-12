@@ -31,11 +31,11 @@ ModuleRegistry.registerModules([
 const k = typeof document === 'undefined' ? 1 : parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
 
 export const theme = themeQuartz.withParams({
-  accentColor: '#6b3fa0',
-  backgroundColor: '#fffdf9',
-  foregroundColor: '#1f1b24',
-  borderColor: '#e6dfd5',
-  headerBackgroundColor: '#f6f3ee',
+  accentColor: '#2b4aa8',
+  backgroundColor: '#fbfcfd',
+  foregroundColor: '#14213d',
+  borderColor: '#cfd6e0',
+  headerBackgroundColor: '#eef1f4',
   fontFamily: 'inherit',
   fontSize: Math.round(13 * k),
   rowHeight: Math.round(38 * k),

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
-import { AccountChip, SetupWizard, useMe } from './Onboarding';
+import { AccountChip, AuthPanel, SetupWizard, useMe } from './Onboarding';
 import { GettingStarted, Inbox, Journey, NoAiNote, ScreenGuide, StudioTab } from './Studio';
 import { Icon } from './Icon';
 import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, localMidnight, setZone, usd } from './api';
@@ -155,6 +155,36 @@ export function App() {
     if (v.phone) setPhone(v.phone);
   };
 
+  if (!s && loadError && me?.requireAccount && ws !== 'demo') {
+    // a private studio: signed out gets the sign-in form, signed in as someone else gets a plain refusal
+    return (
+      <div className="lg">
+        <main className="lg-gate">
+          {me.account ? (
+            <>
+              <h1>This studio belongs to another account</h1>
+              <p>You are signed in as {me.account.email}. Only the account that created a studio can open it.</p>
+              <div className="actions">
+                <a className="button primary" href="/">
+                  Back to my studios
+                </a>
+                <AccountChip me={me} />
+              </div>
+            </>
+          ) : (
+            <>
+              <h1>Sign in to open this studio</h1>
+              <p>Studios are private. Sign in with the account that created this one.</p>
+              <div className="lg-entry">
+                <AuthPanel google={me.google} initialMode="login" onDone={() => location.reload()} />
+              </div>
+            </>
+          )}
+        </main>
+      </div>
+    );
+  }
+
   if (!s) {
     return loadError ? (
       <main className="loading">
@@ -226,7 +256,7 @@ export function App() {
       <a className="button ghost" href="/">
         New studio
       </a>
-      {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+      {ws !== 'demo' && !me?.requireAccount && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
     </>
   );
 
@@ -289,7 +319,7 @@ export function App() {
           {modeSelect}
           <span className="spacer" />
           <AccountChip me={me} />
-          {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+          {ws !== 'demo' && !me?.requireAccount && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
           <a className="button ghost" href="/">
             {me?.account ? 'My studios' : 'New studio'}
           </a>
@@ -304,7 +334,7 @@ export function App() {
         <nav className="travel" aria-label="Studio controls">
           {modeSelect}
           <span className="spacer" />
-          {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+          {ws !== 'demo' && !me?.requireAccount && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
           <details className="demo-tools">
             <summary>Demo controls</summary>
             <div className="demo-tools-body">
