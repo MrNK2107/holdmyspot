@@ -46,11 +46,14 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {
     if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET) throw new Error('PAYMENTS=sandbox needs PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET');
+    // PayPal needs an absolute URL to send the buyer back to; without PUBLIC_URL / RENDER_EXTERNAL_URL
+    // a relative one would strand them on PayPal, so fall back to this server on localhost.
+    const origin = (baseUrl || `http://localhost:${env.PORT ?? 18080}`).replace(/\/+$/, '');
     const gw = new PayPalRestGateway({
       clientId: env.PAYPAL_CLIENT_ID,
       clientSecret: env.PAYPAL_CLIENT_SECRET,
-      returnUrl: `${baseUrl}/paypal/return`,
-      cancelUrl: `${baseUrl}/paypal/cancel`,
+      returnUrl: `${origin}/paypal/return`,
+      cancelUrl: `${origin}/paypal/cancel`,
     });
     deps.gateway = gw;
     deps.seedMode = 'studio';

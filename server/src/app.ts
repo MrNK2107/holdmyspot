@@ -392,13 +392,20 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     const w = workspaces.findByPendingApproval(id);
     if (!w) return reply.code(404).type('text/html').send('<p>This approval link has expired or was already used.</p>');
     try {
-      await workspaces.run(w.engine.id, () => w.engine.completeApproval(id));
-      return reply.redirect(`/book?ws=${encodeURIComponent(w.engine.id)}&approved=1`);
+      const b = await workspaces.run(w.engine.id, () => w.engine.completeApproval(id));
+      // tell the page what really happened: a hold, a saved wallet, a decline, or PayPal still reviewing
+      const state = b.state === 'HELD' ? 'held' : b.state === 'VAULTED' ? 'saved' : b.state === 'HOLD_FAILED' ? 'declined' : 'pending';
+      return reply.redirect(`/book?ws=${encodeURIComponent(w.engine.id)}&approved=1&state=${state}`);
     } catch (err) {
       return reply.code(400).type('text/html').send(`<p>PayPal approval failed: ${String((err as Error).message).replace(/[<>&]/g, '')}</p>`);
     }
   });
-  app.get('/paypal/cancel', async (_req, reply) => reply.type('text/html').send('<p>No problem: nothing was held. You can close this tab.</p>'));
+  // PayPal appends ?token=<order id> on cancel: use it to send the buyer back to the studio's booking page
+  app.get<{ Querystring: { token?: string; approval_token_id?: string } }>('/paypal/cancel', async (req, reply) => {
+    const w = workspaces.findByPendingApproval(req.query.approval_token_id ?? req.query.token ?? '');
+    if (w) return reply.redirect(`/book?ws=${encodeURIComponent(w.engine.id)}&cancelled=1`);
+    return reply.type('text/html').send('<!doctype html><meta name=viewport content="width=device-width"><title>Nothing was held</title><p style="font-family:system-ui;max-width:420px;margin:40px auto;padding:16px">No problem. Nothing was held. You can close this tab, or go back to the studio\'s booking link to try again.</p>');
+  });
 
   // Real PayPal webhooks, verified with POST /v1/notifications/verify-webhook-signature.
   // Unverified events could fake an authorization, so without a verifier nothing is accepted.

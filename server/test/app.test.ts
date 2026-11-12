@@ -171,4 +171,38 @@ describe('PayPal return URL', () => {
     const res = await app.inject(`/paypal/return?token=${token}`);
     expect(res.statusCode).toBe(400); // not approved in the simulator yet → honest error
   });
+
+  it('redirects with the real outcome, so the page can say held vs saved', async () => {
+    const wss = new Workspaces();
+    const w = await wss.create('demo');
+    const a = await buildApp({ workspaces: wss });
+    const slots = (await a.inject('/api/ws/demo/slots?service=pedi')).json();
+    const r = (await a.inject({ method: 'POST', url: '/api/ws/demo/book', payload: { name: 'Ret Urn', serviceId: 'pedi', start: slots[0] } })).json();
+    const token = r.result.approvalLink.split('/').at(-1);
+    w.mock!.approve(token);
+    const res = await a.inject(`/paypal/return?token=${token}`);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toMatch(/^\/book\?ws=demo&approved=1&state=(held|saved)$/);
+    await a.close();
+  });
+
+  it('cancel sends the buyer back to the booking page, not a dead end', async () => {
+    const slots = (await app.inject('/api/ws/demo/slots?service=pedi')).json();
+    const r = (await post('/api/ws/demo/book', { name: 'Can Cel', serviceId: 'pedi', start: slots[0] })).json();
+    const token = r.result.approvalLink.split('/').at(-1);
+    const res = await app.inject(`/paypal/cancel?token=${token}`);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/book?ws=demo&cancelled=1');
+    // no/unknown token: still a friendly page with a way back
+    const bare = await app.inject('/paypal/cancel');
+    expect(bare.statusCode).toBe(200);
+    expect(bare.body).toContain('Nothing was held');
+  });
+
+  it('sandbox never hands PayPal a relative return URL', () => {
+    const cfg = configFromEnv({ PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b' });
+    expect((cfg.deps.gateway as any).cfg.returnUrl).toMatch(/^https?:\/\//);
+    const custom = configFromEnv({ PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b', PUBLIC_URL: 'https://x.example/' });
+    expect((custom.deps.gateway as any).cfg.returnUrl).toBe('https://x.example/paypal/return');
+  });
 });

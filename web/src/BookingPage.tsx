@@ -25,7 +25,11 @@ export function BookingPage({ ws }: { ws: string }) {
       return null;
     }
   })();
-  const returnedFromPayPal = new URLSearchParams(location.search).get('approved') === '1';
+  const qs = new URLSearchParams(location.search);
+  const returnedFromPayPal = qs.get('approved') === '1';
+  // what PayPal's approval really produced (set by the server's /paypal/return)
+  const returnState = qs.get('state') ?? 'held';
+  const cancelledAtPayPal = qs.get('cancelled') === '1';
 
   useEffect(() => {
     fetch(wsPath(ws, '/public'))
@@ -113,10 +117,30 @@ export function BookingPage({ ws }: { ws: string }) {
         </div>
       </header>
 
-      {!booked && returnedFromPayPal ? (
+      {!booked && cancelledAtPayPal ? (
+        <section className="book-card" role="status">
+          <h2>Nothing was held</h2>
+          <p>You left PayPal before approving, so your spot isn't reserved yet and you haven't been charged.</p>
+          <div className="actions">
+            <a className="button primary" href={`/book?ws=${encodeURIComponent(ws)}`}>
+              Pick a time and try again
+            </a>
+          </div>
+        </section>
+      ) : !booked && returnedFromPayPal && returnState === 'declined' ? (
+        <section className="book-card" role="alert">
+          <h2>PayPal couldn't hold that</h2>
+          <p>Nothing was charged and your spot isn't reserved. Try again with another PayPal account or funding source.</p>
+          <div className="actions">
+            <a className="button primary" href={`/book?ws=${encodeURIComponent(ws)}`}>
+              Try again
+            </a>
+          </div>
+        </section>
+      ) : !booked && returnedFromPayPal ? (
         // PayPal sent the browser back here: the booking itself is not in this page's memory any more, so confirm in general terms
         <section className="book-card done" role="status">
-          <h2>You're booked</h2>
+          <h2>{returnState === 'pending' ? 'Almost there' : "You're booked"}</h2>
           {lastVisit?.start && (
             <p className="visit-line">
               <Icon name="calendar" size={18} />
@@ -126,7 +150,13 @@ export function BookingPage({ ws }: { ws: string }) {
               </strong>
             </p>
           )}
-          <p>PayPal approved the hold. It is not a charge: it only reserves {usd(hold)} until your visit.</p>
+          {returnState === 'saved' ? (
+            <p>Your PayPal is saved. We'll place a {usd(hold)} hold 3 days before your visit; it is not a charge.</p>
+          ) : returnState === 'pending' ? (
+            <p>PayPal is still reviewing the hold. {s.owner} will see your visit once it clears; you don't need to do anything.</p>
+          ) : (
+            <p>PayPal approved the hold. It is not a charge: it only reserves {usd(hold)} until your visit.</p>
+          )}
           <p className="muted">{s.owner} sees your visit on the schedule.</p>
           <div className="actions">
             {client && (
