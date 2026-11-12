@@ -17,8 +17,8 @@ describe('GeminiProvider', () => {
     const p = new GeminiProvider({ apiKey: KEY, fetch });
     const out = await p.run('classify_message', { text: 'kiddo threw up', clientName: 'Sam', appointment: 'Wed 5pm' });
     expect(out).toMatchObject({ intent: 'cancel', reason: 'illness_dependent', confidence: 0.93 });
-    expect(p.name).toBe('gemini:gemini-2.5-flash');
-    expect(seen!.url).toContain('/models/gemini-2.5-flash:generateContent');
+    expect(p.name).toBe('gemini:gemini-3.5-flash-lite');
+    expect(seen!.url).toContain('/models/gemini-3.5-flash-lite:generateContent');
     expect(seen!.url).not.toContain(KEY);
     expect(JSON.stringify(seen!.body)).not.toContain(KEY);
     expect(seen!.headers['x-goog-api-key']).toBe(KEY);
@@ -82,7 +82,7 @@ describe('AI selection from the environment', () => {
     expect(configFromEnv({ ...sandbox }).aiMode).toBe('none');
   });
   it('real payments with a Gemini key use Gemini', () => {
-    expect(configFromEnv({ ...sandbox, GEMINI_API_KEY: KEY }).aiMode).toBe('gemini:gemini-2.5-flash');
+    expect(configFromEnv({ ...sandbox, GEMINI_API_KEY: KEY }).aiMode).toBe('gemini:gemini-3.5-flash-lite');
     expect(configFromEnv({ ...sandbox, GEMINI_API_KEY: KEY, GEMINI_MODEL: 'gemini-2.5-pro' }).aiMode).toBe('gemini:gemini-2.5-pro');
   });
   it('the simulator keeps the offline provider; AI=gemini without a key is an error', () => {
@@ -177,7 +177,7 @@ describe('Gemini key rotation (several free-tier keys)', () => {
   it('configFromEnv uses the pool: one key pool shared by every studio provider', () => {
     const sandbox = { PAYMENTS: 'sandbox', PAYPAL_CLIENT_ID: 'i', PAYPAL_CLIENT_SECRET: 's' };
     const cfg = configFromEnv({ ...sandbox, GEMINI_API_KEYS: 'k1,k2,k3' });
-    expect(cfg.aiMode).toBe('gemini:gemini-2.5-flash');
+    expect(cfg.aiMode).toBe('gemini:gemini-3.5-flash-lite');
     const a: any = (cfg.deps.llm as any)();
     const b: any = (cfg.deps.llm as any)();
     expect(a.pool).toBe(b.pool);

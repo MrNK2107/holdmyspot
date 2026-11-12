@@ -3,7 +3,7 @@ import type { AiTask, AiTasks, LlmProvider } from './provider.js';
 
 /**
  * Real LLM provider: Google Gemini through the REST API (generateContent) with a JSON response schema.
- * Enable with AI=gemini + GEMINI_API_KEY (model: GEMINI_MODEL, default gemini-2.5-flash). Same prompts and
+ * Enable with AI=gemini + GEMINI_API_KEY (model: GEMINI_MODEL, default gemini-3.5-flash-lite). Same prompts and
  * schemas as the Claude provider: the model only returns labels and text, and FrontDesk whitelists them again.
  * The key goes in the x-goog-api-key header, never in the URL, and is never echoed in an error.
  *
@@ -105,7 +105,7 @@ export class GeminiProvider implements LlmProvider {
     const list = [...new Set([...(opts.apiKeys ?? []), ...(opts.apiKey ? [opts.apiKey] : [])].filter(Boolean))];
     if (!opts.keys && !list.length) throw new Error('GeminiProvider needs an API key');
     this.pool = opts.keys ?? new GeminiKeyPool(list);
-    this.model = opts.model ?? 'gemini-2.5-flash';
+    this.model = opts.model ?? 'gemini-3.5-flash-lite';
     this.name = `gemini:${this.model}`;
     this.fetchFn = opts.fetch ?? ((url, init) => fetch(url, init) as ReturnType<FetchFn>);
     this.timeoutMs = opts.timeoutMs ?? 60_000;

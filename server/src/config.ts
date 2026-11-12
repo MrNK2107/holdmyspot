@@ -70,7 +70,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   let aiMode = 'fake';
   if (ai === 'gemini') {
     if (!geminiKeys.length) throw new Error('AI=gemini needs GEMINI_API_KEY (or several in GEMINI_API_KEYS)');
-    const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const model = env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
     // one pool for every studio's provider, so a rate limit found by one is known to all
     const pool = new GeminiKeyPool(geminiKeys);
     deps.llm = () => new GeminiProvider({ keys: pool, model });
