@@ -107,6 +107,9 @@ export class PaymentsError extends Error {
   }
 }
 
+/** ISO currency PayPal is asked to use. USD unless PAYPAL_CURRENCY says otherwise (e.g. INR for an Indian sandbox business account). */
+export const CURRENCY = (process.env.PAYPAL_CURRENCY?.trim() || 'USD').toUpperCase();
+
 export function centsToValue(cents: number): string {
   if (!Number.isInteger(cents) || cents < 0) throw new PaymentsError('INVALID_AMOUNT', `bad cents ${cents}`);
   return (cents / 100).toFixed(2);

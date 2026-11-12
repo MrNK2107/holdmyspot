@@ -317,6 +317,13 @@ textarea {
   border-left: 4px solid var(--c);
   background: color-mix(in srgb, var(--c) 11%, white);
   z-index: 2;
+  container-type: inline-size;
+}
+/* narrow day columns: the hour axis already gives the time, keep the full name */
+@container (max-width: 112px) {
+  .ev-time {
+    display: none;
+  }
 }
 .event.half-left {
   right: 50%;
@@ -331,8 +338,10 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 4px;
+  white-space: nowrap; /* a one-hour card has room for three lines only: never let the time wrap */
 }
 .ev-time {
+  flex: none;
   font-size: 10.5px;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
@@ -353,6 +362,9 @@ textarea {
 .ev-name {
   font-weight: 650;
   font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ev-svc {
   font-size: 11px;

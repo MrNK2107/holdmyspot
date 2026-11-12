@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { PayPalAgentToolkit } from '@paypal/agent-toolkit/openai';
-import { centsToValue } from './gateway.js';
+import { CURRENCY, centsToValue } from './gateway.js';
 import type { MockPayPalGateway } from './mock.js';
 
 export const TOOLKIT_PACKAGE = '@paypal/agent-toolkit';
@@ -138,7 +138,7 @@ function installHttpGate(): void {
 // ---------------- simulator answers (PayPal REST response shapes, from the simulator's state) ----------------
 
 const iso = (t: number) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
-const usd = (cents: number) => ({ currency_code: 'USD', value: centsToValue(Math.abs(cents)) });
+const usd = (cents: number) => ({ currency_code: CURRENCY, value: centsToValue(Math.abs(cents)) });
 const notFound = (what: string) => ({ status: 404, data: { name: 'RESOURCE_NOT_FOUND', message: `${what} does not exist (simulator)` } });
 
 function simulate(sim: MockPayPalGateway, method: string, url: URL): { status: number; data: unknown } {

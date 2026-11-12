@@ -8,6 +8,7 @@ import {
   type ReauthorizeResult,
   type RefundResult,
   PaymentsError,
+  CURRENCY,
   centsToValue,
   valueToCents,
 } from './gateway.js';
@@ -174,7 +175,7 @@ export class PayPalRestGateway implements PaymentsGateway {
       {
         custom_id: req.customId,
         description: req.description,
-        amount: { currency_code: 'USD', value: centsToValue(req.amountCents) },
+        amount: { currency_code: CURRENCY, value: centsToValue(req.amountCents) },
       },
     ];
     const payment_source = req.vaultId
@@ -216,7 +217,7 @@ export class PayPalRestGateway implements PaymentsGateway {
 
   async capture(req: CaptureRequest): Promise<CaptureResult> {
     const r = await this.call('POST', `/v2/payments/authorizations/${req.authorizationId}/capture`, req.requestId, {
-      amount: { currency_code: 'USD', value: centsToValue(req.amountCents) },
+      amount: { currency_code: CURRENCY, value: centsToValue(req.amountCents) },
       final_capture: req.finalCapture,
       ...(req.noteToPayer ? { note_to_payer: req.noteToPayer } : {}),
     });
@@ -241,7 +242,7 @@ export class PayPalRestGateway implements PaymentsGateway {
       'POST',
       `/v2/payments/authorizations/${authorizationId}/reauthorize`,
       requestId,
-      { amount: { currency_code: 'USD', value: centsToValue(amountCents) } },
+      { amount: { currency_code: CURRENCY, value: centsToValue(amountCents) } },
       extra,
     );
     if (r.status === 422) return { status: 'DECLINED', issue: PayPalRestGateway.issueOf(r.json) };
@@ -297,7 +298,7 @@ export class PayPalRestGateway implements PaymentsGateway {
 
   async refund(captureId: string, amountCents: number, requestId: string): Promise<RefundResult> {
     const r = await this.call('POST', `/v2/payments/captures/${captureId}/refund`, requestId, {
-      amount: { currency_code: 'USD', value: centsToValue(amountCents) },
+      amount: { currency_code: CURRENCY, value: centsToValue(amountCents) },
     });
     if (r.status >= 300) PayPalRestGateway.fail(r.status, r.json);
     // no money went back: the engine must not record a refund (PENDING is a real refund that settles later)

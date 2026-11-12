@@ -9,6 +9,7 @@ import {
   type RefundResult,
   type WebhookEvent,
   PaymentsError,
+  CURRENCY,
   centsToValue,
 } from './gateway.js';
 import { type SimIdKind, simPayPalId } from './ids.js';
@@ -172,7 +173,7 @@ export class MockPayPalGateway implements PaymentsGateway {
       id: auth.id,
       custom_id: auth.customId,
       status: 'CREATED',
-      amount: { currency_code: 'USD', value: centsToValue(auth.amountCents) },
+      amount: { currency_code: CURRENCY, value: centsToValue(auth.amountCents) },
     });
     return {
       status: 'AUTHORIZED',
@@ -209,7 +210,7 @@ export class MockPayPalGateway implements PaymentsGateway {
         id: captureId,
         custom_id: a.customId,
         status: 'COMPLETED',
-        amount: { currency_code: 'USD', value: centsToValue(req.amountCents) },
+        amount: { currency_code: CURRENCY, value: centsToValue(req.amountCents) },
       });
       return { status: 'COMPLETED', captureId, amountCents: req.amountCents } as const;
     });
@@ -256,7 +257,7 @@ export class MockPayPalGateway implements PaymentsGateway {
         id: next.id,
         custom_id: next.customId,
         status: 'CREATED',
-        amount: { currency_code: 'USD', value: centsToValue(amountCents) },
+        amount: { currency_code: CURRENCY, value: centsToValue(amountCents) },
       });
       return { status: 'AUTHORIZED', authorizationId: next.id, honorPeriodEndsAt: next.honorPeriodEndsAt } as const;
     });
@@ -275,7 +276,7 @@ export class MockPayPalGateway implements PaymentsGateway {
         id: refundId,
         custom_id: a.customId,
         status: 'COMPLETED',
-        amount: { currency_code: 'USD', value: centsToValue(amountCents) },
+        amount: { currency_code: CURRENCY, value: centsToValue(amountCents) },
       });
       return { status: 'COMPLETED', refundId, amountCents } as const;
     });
