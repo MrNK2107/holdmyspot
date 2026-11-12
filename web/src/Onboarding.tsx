@@ -279,7 +279,31 @@ export function Welcome() {
 
         <section className="lg-dark" id="trust" aria-labelledby="trust-h">
           <div className="lg-dark-in">
-            <h2 id="trust-h" className="lg-rv">Built so it can be trusted with money.</h2>
+            <div className="lg-dark-top lg-rv">
+              <h2 id="trust-h">Built so it can be trusted with money.</h2>
+              <dl className="lg-never" aria-label="What the system will not do">
+                <div>
+                  <dt>The AI authorizes, captures, voids or refunds</dt>
+                  <dd>Never</dd>
+                </div>
+                <div>
+                  <dt>A charge above the hold or your fee</dt>
+                  <dd>Never</dd>
+                </div>
+                <div>
+                  <dt>A charge without your tap</dt>
+                  <dd>Never</dd>
+                </div>
+                <div>
+                  <dt>A charge because a client stayed silent</dt>
+                  <dd>Never</dd>
+                </div>
+                <div className="only">
+                  <dt>Money moves</dt>
+                  <dd>Only on your tap</dd>
+                </div>
+              </dl>
+            </div>
             <div className="lg-cols3 lg-rv">
               <div>
                 <h3>The AI only proposes.</h3>
