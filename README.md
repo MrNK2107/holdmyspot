@@ -128,3 +128,17 @@ The PayPal Agent Toolkit is used for reads only, by design (money stays in the e
 
 ## Licence
 MIT, see `LICENSE`.
+
+## Running it for real (no simulator)
+
+With `PAYMENTS=sandbox` the app runs on the **real PayPal sandbox** and the **real clock**: a studio is created on the Welcome page, the owner adds services and opening hours, clients book on the public link and approve the hold in PayPal's own checkout, and each client gets a private page (`/me`) to see their visits and message the studio. Nothing is seeded and there is no time travel.
+
+| Setting | What it does |
+|---|---|
+| `PAYMENTS=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Real PayPal sandbox (use a **US** sandbox business account for USD) |
+| `PAYPAL_WEBHOOK_ID` | Real PayPal webhooks (the deployed URL's `/api/paypal/webhook`) |
+| `GEMINI_API_KEY` (optional `GEMINI_MODEL`) | The front-desk AI. With real payments, Gemini is used automatically when the key is set |
+| no AI key | Honest fallback: texts are not classified, clients get a plain acknowledgement, the owner reads them in the Inbox |
+| `CLOCK=demo` | Forces the simulated clock (the simulator demo uses it by default) |
+
+Known limits, stated plainly: studio state is held in server memory, so a restart (or the Render free plan spinning down) forgets studios and bookings, although the PayPal holds themselves remain on PayPal. Client texts are typed on the client's private page; there is no SMS channel. `server/src/scripts/real-flow-check.ts` runs the whole client flow against a live server and PayPal's checkout.
