@@ -14,6 +14,8 @@ export interface WorkspaceDeps {
   llm?: () => LlmProvider;
   /** shared real gateway; when absent each workspace gets its own deterministic simulator */
   gateway?: PaymentsGateway;
+  /** 'studio': start with services and policy only (real PayPal sandbox: simulator wallet ids would be rejected); default: the seeded demo */
+  seedMode?: 'demo' | 'studio';
   baseUrl?: string;
   /**
    * PayPal Agent Toolkit read tools for the owner's questions (on unless false). In simulator mode the
@@ -117,7 +119,7 @@ export class Workspaces {
     }
     const ws: Workspace = { engine, mock, preview, ownerToken, open: id === 'demo' };
     this.map.set(id, ws);
-    await seed(engine);
+    await seed(engine, { studioOnly: this.deps.seedMode === 'studio' });
     return ws;
   }
 

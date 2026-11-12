@@ -45,6 +45,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
       cancelUrl: `${baseUrl}/paypal/cancel`,
     });
     deps.gateway = gw;
+    deps.seedMode = 'studio';
     deps.toolkitCredentials = { clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET };
     paymentsMode = 'sandbox';
     const webhookId = env.PAYPAL_WEBHOOK_ID;

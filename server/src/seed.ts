@@ -21,10 +21,16 @@ const at = (day: number, hour: number) => Date.UTC(2026, 10, day, hour, 0);
  * - Alex  Thu 5 Nov 11:00  pedi  → no-show            → owner taps charge      (hero 3)
  * - Jordan Fri 6 Nov 14:00 art   → T-72h hold declined → re-approval link       (failure 1)
  */
-export async function seed(e: Engine): Promise<void> {
+export async function seed(e: Engine, opts: { studioOnly?: boolean } = {}): Promise<void> {
   e.addService({ id: 'gel', name: 'Gel manicure', durationMin: 60, priceCents: 4500 });
   e.addService({ id: 'pedi', name: 'Pedicure', durationMin: 60, priceCents: 5000 });
   e.addService({ id: 'art', name: 'Nail art full set', durationMin: 90, priceCents: 8000 });
+  if (opts.studioOnly) {
+    // Real PayPal sandbox: the seeded clients carry simulator wallet ids that PayPal rejects (403), so start with
+    // the studio only. Visitors book on /book and approve real holds with a sandbox buyer account.
+    e.audit.add('system', 'sandbox workspace ready: no demo bookings, book on the public page');
+    return;
+  }
 
   const clients: Array<[string, string, boolean, boolean]> = [
     // id, name, vaulted, sandbox decline
