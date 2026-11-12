@@ -3,6 +3,7 @@ import { GeminiProvider } from './ai/gemini.js';
 import { NoAiProvider } from './ai/noai.js';
 import { PayPalRestGateway } from './paypal/rest.js';
 import type { WorkspaceDeps } from './workspaces.js';
+import type { AuthOptions } from './auth.js';
 
 /**
  * Picks adapters from env. Defaults are the deterministic simulator and fake LLM, so the app
@@ -14,6 +15,10 @@ export function configFromEnv(env: Record<string, string | undefined>): {
   paymentsMode: string;
   aiMode: string;
   webhookVerifier?: (headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>;
+  /** Google sign-in and session settings (the store is added by the caller) */
+  authOptions: AuthOptions;
+  /** DATABASE_URL: Postgres for studios and accounts; unset = memory only */
+  databaseUrl?: string;
 } {
   // Render sets RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (custom domain, tunnels)
   const baseUrl = env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '';
@@ -73,5 +78,10 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     deps.llm = () => new AnthropicProvider({ model, apiKey: env.ANTHROPIC_API_KEY });
     aiMode = `anthropic:${model}`;
   }
-  return { deps, paymentsMode, aiMode, webhookVerifier };
+  const authOptions: AuthOptions = {
+    baseUrl,
+    sessionSecret: env.SESSION_SECRET || undefined,
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } } : {}),
+  };
+  return { deps, paymentsMode, aiMode, webhookVerifier, authOptions, databaseUrl: env.DATABASE_URL || undefined };
 }

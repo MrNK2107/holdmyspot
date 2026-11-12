@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
-import { SetupWizard } from './Onboarding';
+import { AccountChip, SetupWizard, useMe } from './Onboarding';
 import { GettingStarted, Inbox, Journey, NoAiNote, ScreenGuide, StudioTab } from './Studio';
 import { Icon } from './Icon';
 import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, localMidnight, setZone, usd } from './api';
@@ -91,6 +91,7 @@ function useWorkspace(): [string, (id: string) => void] {
 
 export function App() {
   const [ws, setWs] = useWorkspace();
+  const [me] = useMe();
   const api = useMemo(() => new Api(ws), [ws]);
   const [s, setS] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
@@ -287,9 +288,10 @@ export function App() {
         <nav className="travel" aria-label="Studio controls">
           {modeSelect}
           <span className="spacer" />
+          <AccountChip me={me} />
           {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
           <a className="button ghost" href="/">
-            New studio
+            {me?.account ? 'My studios' : 'New studio'}
           </a>
         </nav>
       ) : s.paymentsMode === 'mock' ? (

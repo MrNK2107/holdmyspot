@@ -47,6 +47,17 @@ export class AuditLog {
     return this.entries.slice();
   }
 
+  /** For persistence: the whole log and its counters. */
+  exportState(): { entries: AuditEntry[]; seq: number; dropped: number } {
+    return { entries: this.entries.slice(), seq: this.seq, dropped: this.dropped };
+  }
+
+  restore(s: { entries: AuditEntry[]; seq: number; dropped: number }): void {
+    this.entries = (s.entries ?? []).map((e) => Object.freeze({ ...e }));
+    this.seq = s.seq ?? this.entries.length;
+    this.dropped = s.dropped ?? 0;
+  }
+
   forBooking(bookingId: string): AuditEntry[] {
     return this.entries.filter((e) => e.bookingId === bookingId);
   }

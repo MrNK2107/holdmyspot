@@ -10,21 +10,69 @@ interface ServerConfig {
   payments: 'mock' | 'sandbox';
   ai: string;
   clock: 'real' | 'demo';
+  google: boolean;
+  storage: 'memory' | 'postgres' | 'none';
 }
 
-/** First screen at `/`: what the product does, and the one thing to do next (create a studio). */
+export interface Me {
+  google: boolean;
+  account: { name: string; email: string; picture?: string } | null;
+  studios: Array<{ id: string; business: string }>;
+}
+
+/** Who is signed in (Google), if anyone. */
+export function useMe(): [Me | null, () => void] {
+  const [me, setMe] = useState<Me | null>(null);
+  const load = () =>
+    fetch('/api/me')
+      .then((r) => r.json())
+      .then(setMe)
+      .catch(() => setMe({ google: false, account: null, studios: [] }));
+  useEffect(() => {
+    load();
+  }, []);
+  return [me, load];
+}
+
+const signOut = async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  location.href = '/';
+};
+
+/** Small "signed in as" chip with sign-out, for the console header. */
+export function AccountChip({ me }: { me: Me | null }) {
+  if (!me?.account) return null;
+  return (
+    <span className="account-chip">
+      <span className="avatar sm" aria-hidden>
+        {(me.account.name[0] ?? '•').toUpperCase()}
+      </span>
+      <span className="muted small">{me.account.email}</span>
+      <button className="ghost" onClick={signOut}>
+        Sign out
+      </button>
+    </span>
+  );
+}
+
+/** First screen at `/`: what the product does, and the one thing to do next (sign in, or create a studio). */
 export function Welcome() {
   const [business, setBusiness] = useState('');
   const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
+  const [me] = useMe();
   useEffect(() => {
     fetch('/api/config')
       .then((r) => r.json())
       .then(setCfg)
       .catch(() => undefined);
   }, []);
+  // a signed-in owner does not retype their name
+  useEffect(() => {
+    if (me?.account && !owner) setOwner(me.account.name.split(' ')[0]);
+  }, [me, owner]);
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -48,6 +96,7 @@ export function Welcome() {
     }
   };
 
+  const signedIn = !!me?.account;
   return (
     <div className="welcome">
       <header className="welcome-top">
@@ -55,6 +104,8 @@ export function Welcome() {
           ◆
         </span>
         <span className="brand-name">HoldMySpot</span>
+        <span className="spacer" />
+        <AccountChip me={me} />
       </header>
       <main className="welcome-main">
         <section className="welcome-copy">
@@ -85,17 +136,48 @@ export function Welcome() {
           {cfg && (
             <p className="honesty" role="note">
               <Icon name="info" size={16} />
-              {cfg.payments === 'sandbox' ? 'Runs on the real PayPal sandbox: real PayPal screens, test money only.' : 'Runs on a built-in PayPal simulator: no PayPal account needed.'}{' '}
-              {cfg.ai === 'none' ? 'AI is not configured on this server, so client texts come to you to read.' : cfg.ai === 'fake' ? 'The AI is an offline stand-in.' : `AI: ${cfg.ai.split(':')[0]}.`}
+              <span>
+                {cfg.payments === 'sandbox' ? 'Runs on the real PayPal sandbox: real PayPal screens, test money only.' : 'Runs on a built-in PayPal simulator: no PayPal account needed.'}{' '}
+                {cfg.ai === 'none' ? 'AI is not configured on this server, so client texts come to you to read.' : cfg.ai === 'fake' ? 'The AI is an offline stand-in.' : `AI: ${cfg.ai.split(':')[0]}.`}{' '}
+                {cfg.storage === 'postgres' ? 'Studios are saved in a database.' : cfg.payments === 'sandbox' ? 'Studios are kept in memory: a server restart forgets them.' : ''}
+              </span>
             </p>
           )}
         </section>
+
         <section className="welcome-card" aria-labelledby="create-h">
-          <h2 id="create-h">Create your studio</h2>
+          {signedIn && me!.studios.length > 0 && (
+            <div className="my-studios">
+              <h2>Welcome back, {me!.account!.name.split(' ')[0]}</h2>
+              <ul>
+                {me!.studios.map((st) => (
+                  <li key={st.id}>
+                    <a className="button primary" href={`/?ws=${encodeURIComponent(st.id)}`}>
+                      Open {st.business}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <hr />
+            </div>
+          )}
+          {!signedIn && cfg?.google && (
+            <>
+              <h2>Sign in to get started</h2>
+              <a className="button google wide" href="/auth/google">
+                <GoogleMark /> Continue with Google
+              </a>
+              <p className="muted small">Your studios stay linked to your Google account, so you can open them from any device.</p>
+              <div className="or" role="separator">
+                <span>or</span>
+              </div>
+            </>
+          )}
+          <h2 id="create-h">{signedIn && me!.studios.length ? 'Create another studio' : signedIn || !cfg?.google ? 'Create your studio' : 'Start without an account'}</h2>
           <form onSubmit={create}>
             <label className="field">
               <span>Studio name</span>
-              <input value={business} onChange={(e) => setBusiness(e.target.value)} placeholder="Polished by Priya" maxLength={60} autoComplete="organization" required autoFocus />
+              <input value={business} onChange={(e) => setBusiness(e.target.value)} placeholder="Polished by Priya" maxLength={60} autoComplete="organization" required />
             </label>
             <label className="field">
               <span>Your first name</span>
@@ -106,11 +188,15 @@ export function Welcome() {
                 {error}
               </div>
             )}
-            <button className="primary wide" type="submit" disabled={busy || !business.trim() || !owner.trim()}>
+            <button className={signedIn || !cfg?.google ? 'primary wide' : 'wide'} type="submit" disabled={busy || !business.trim() || !owner.trim()}>
               {busy ? 'Creating…' : 'Create studio'}
             </button>
           </form>
-          <p className="muted small">No password. Your studio opens in this browser; later you can copy a private link to open it on another device.</p>
+          <p className="muted small">
+            {signedIn
+              ? 'This studio will be yours across devices.'
+              : 'No password. Your studio opens in this browser; later you can copy a private link to open it on another device.'}
+          </p>
           {cfg?.payments === 'mock' && (
             <p className="alt">
               Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
@@ -119,6 +205,18 @@ export function Welcome() {
         </section>
       </main>
     </div>
+  );
+}
+
+/** Google's "G", drawn (their brand colors), for the sign-in button. */
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden focusable="false">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z" />
+      <path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3.1-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
+    </svg>
   );
 }
 

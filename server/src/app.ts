@@ -8,6 +8,7 @@ import { approve } from './domain/policy.js';
 import { demoStatus, playNextBeat } from './demo.js';
 import { evalReport } from './eval/run.js';
 import type { Engine } from './engine/engine.js';
+import type { Auth } from './auth.js';
 import type { WebhookEvent } from './paypal/gateway.js';
 import { Workspaces, cleanStudioNames, type Workspace } from './workspaces.js';
 
@@ -21,6 +22,10 @@ export interface AppOptions {
   rateLimit?: { perWorkspacePerMin: number; globalPerMin: number };
   /** Open event streams allowed per workspace (each is a live engine listener). Default 10. */
   maxStreamsPerWorkspace?: number;
+  /** Google sign-in and sessions; without it studios are reached only with their owner link */
+  auth?: Auth;
+  /** what the server stores studios in, for the welcome page */
+  storeKind?: 'memory' | 'postgres';
 }
 
 /** Sliding one-minute windows: per workspace and for the whole server (visitors can create many workspaces). */
@@ -47,6 +52,8 @@ function modelBudget(limits: { perWorkspacePerMin: number; globalPerMin: number 
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
   const workspaces = opts.workspaces ?? new Workspaces();
+  const auth = opts.auth;
+  auth?.register(app, workspaces);
 
   async function ws(id: string, reply: FastifyReply): Promise<Workspace | undefined> {
     const w = workspaces.get(id);
@@ -99,6 +106,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     if (!route?.startsWith('/api/ws/:ws') || clientRoutes.includes(route)) return;
     const w = workspaces.get((req.params as { ws?: string }).ws ?? '');
     if (!w || w.open) return; // unknown: the route answers 404
+    // a signed-in owner opens their own studios without the owner link
+    const account = auth?.sessionAccountId(req);
+    if (account && workspaces.accountOf((req.params as { ws?: string }).ws ?? '') === account) return;
     const given = req.headers['x-owner-token'] ?? (route === '/api/ws/:ws/events' ? (req.query as { owner?: string }).owner : undefined);
     if (!sameToken(given, w.ownerToken)) return reply.code(403).send({ ok: false, error: 'owner access needed: open the console from the link it was created with' });
   });
@@ -125,7 +135,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // what this server runs on, for the welcome page (no studio data)
   app.get('/api/config', async () => {
     const s = workspaces.get('demo')?.engine.snapshot();
-    return { payments: s?.paymentsMode ?? 'mock', ai: s?.aiProvider ?? 'fake', clock: s?.clockMode ?? 'demo' };
+    return { payments: s?.paymentsMode ?? 'mock', ai: s?.aiProvider ?? 'fake', clock: s?.clockMode ?? 'demo', google: !!auth?.googleEnabled, storage: opts.storeKind ?? 'none' };
   });
 
   // The eval suite (message reader, prompt injection, waitlist) on the deterministic offline provider: run once
@@ -145,13 +155,15 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   });
 
-  app.post<{ Body?: { business?: unknown; owner?: unknown } }>('/api/workspaces', async (req, reply) => {
+  app.post<{ Body?: { business?: unknown; owner?: unknown; timeZone?: unknown } }>('/api/workspaces', async (req, reply) => {
     let w: Workspace;
     try {
       w = await workspaces.create(undefined, undefined, cleanStudioNames(req.body));
     } catch (err) {
       return reply.code(503).send({ ok: false, error: (err as Error).message });
     }
+    const account = auth?.sessionAccountId(req);
+    if (account) workspaces.linkAccount(w.engine.id, account);
     return { id: w.engine.id, ownerToken: w.ownerToken };
   });
 

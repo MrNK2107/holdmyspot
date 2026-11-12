@@ -2423,3 +2423,63 @@ a:hover {
   font-size: 0.8125rem;
   color: var(--ink-2);
 }
+
+/* sign in */
+.welcome-top .spacer {
+  flex: 1;
+}
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.welcome-top .account-chip .muted {
+  color: #bdb3c9;
+}
+.avatar.sm {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.75rem;
+}
+a.button.google {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #c9c2d3;
+  color: #1f1b24;
+}
+a.button.google:hover {
+  background: #f8f5fb;
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.my-studios ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.my-studios hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0 0 1rem;
+}

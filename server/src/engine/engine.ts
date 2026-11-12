@@ -125,10 +125,13 @@ export const NO_MONEY_SUMMARY: Partial<Record<Decision['outcome'], string>> = {
 /** A card whose booking has moved on; refused before any PayPal call. */
 export class StaleCardError extends Error {}
 
+/** An engine's whole state as JSON (see Engine.exportState). */
+export type EngineState = Record<string, any> & { v: number };
+
 export class Engine {
   readonly id: string;
   /** '' with the simulator; a random tag per engine with real PayPal (see constructor) */
-  private readonly runTag: string;
+  private runTag: string;
   readonly clock: DemoClock;
   readonly audit: AuditLog;
   readonly frontdesk: FrontDesk;
@@ -195,6 +198,100 @@ export class Engine {
     this.paypalReader = o.paypalReader;
     this.timeZone = o.timeZone ?? 'UTC';
     this.audit.subscribe(() => this.emit('audit'));
+  }
+
+  // ---------- persistence ----------
+
+  /**
+   * Everything a restart must not forget, as plain JSON. The scheduled jobs are closures and are not stored:
+   * restoreState() derives them again from the bookings.
+   */
+  exportState(): EngineState {
+    const ent = <K, V>(m: Map<K, V>) => [...m.entries()];
+    return {
+      v: 1,
+      runTag: this.runTag,
+      seq: this.seq,
+      policy: this.policy,
+      policies: ent(this.policies),
+      mode: this.mode,
+      holdStrategy: this.holdStrategy,
+      ownerName: this.ownerName,
+      businessName: this.businessName,
+      hours: this.hours,
+      services: ent(this.services),
+      clients: ent(this.clients),
+      bookings: ent(this.bookings),
+      waitlist: this.waitlist,
+      messages: this.messages,
+      approvals: this.approvals,
+      agentRuns: this.agentRuns,
+      offers: this.offers,
+      excusals: this.excusals,
+      seenEvents: [...this.seenEvents],
+      pendingOrders: ent(this.pendingOrders),
+      rebookOffers: ent(this.rebookOffers),
+      pendingSetups: ent(this.pendingSetups),
+      knownAuths: [...this.knownAuths].map(([k, set]) => [k, [...set]]),
+      ownVoids: [...this.ownVoids],
+      holdAttempts: ent(this.holdAttempts),
+      reauthParents: [...this.reauthParents],
+      refundRetries: ent(this.refundRetries),
+      unreleasedAuths: this.unreleasedAuths,
+      audit: this.audit.exportState(),
+    };
+  }
+
+  /** The inverse of exportState(), then the jobs that were pending are scheduled again. */
+  restoreState(st: EngineState): void {
+    if (st.v !== 1) throw new Error(`unknown engine state version ${st.v}`);
+    this.runTag = st.runTag ?? this.runTag; // PayPal custom_ids and request ids carry it: webhooks for existing orders must still match
+    this.seq = st.seq ?? 0;
+    this.policy = st.policy;
+    this.policies = new Map(st.policies);
+    this.mode = st.mode;
+    this.holdStrategy = st.holdStrategy;
+    this.ownerName = st.ownerName;
+    this.businessName = st.businessName;
+    this.hours = st.hours ?? this.hours;
+    this.services = new Map(st.services);
+    this.clients = new Map(st.clients);
+    this.bookings = new Map(st.bookings);
+    this.waitlist = st.waitlist ?? [];
+    this.messages = st.messages ?? [];
+    this.approvals = st.approvals ?? [];
+    this.agentRuns = st.agentRuns ?? [];
+    this.offers = st.offers ?? [];
+    this.excusals = st.excusals ?? [];
+    this.seenEvents = new Set(st.seenEvents ?? []);
+    this.pendingOrders = new Map(st.pendingOrders ?? []);
+    this.rebookOffers = new Map(st.rebookOffers ?? []);
+    this.pendingSetups = new Map(st.pendingSetups ?? []);
+    this.knownAuths = new Map((st.knownAuths ?? []).map(([k, v]: [string, string[]]) => [k, new Set(v)]));
+    this.ownVoids = new Set(st.ownVoids ?? []);
+    this.holdAttempts = new Map(st.holdAttempts ?? []);
+    this.reauthParents = new Set(st.reauthParents ?? []);
+    this.refundRetries = new Map(st.refundRetries ?? []);
+    this.unreleasedAuths = st.unreleasedAuths ?? [];
+    if (st.audit) this.audit.restore(st.audit);
+    this.rescheduleJobs();
+  }
+
+  /** After a restart: the jobs every open booking is owed (hold at T-72h, the attendance question, refill cutoff, end-of-day review). */
+  private rescheduleJobs(): void {
+    const now = this.now();
+    for (const b of this.bookings.values()) {
+      if (!['BOOKED', 'VAULTED', 'HELD', 'PENDING_REFILL', 'NEEDS_REVIEW'].includes(b.state)) continue;
+      if (b.state === 'VAULTED') this.clock.schedule(Math.max(now, b.start - HOLD_LEAD), `T-72h hold ${b.id}`, () => this.t72(b.id));
+      const asked = this.approvals.some((a) => a.kind === 'attendance' && a.bookingId === b.id);
+      if (!asked) this.clock.schedule(Math.max(now, b.start + 10 * MINUTE), `attendance ${b.id}`, () => this.askAttendance(b.id));
+      else if (b.state === 'HELD') {
+        this.clock.schedule(Math.max(now, endOfLocalDay(b.start, this.timeZone)), `end-of-day review ${b.id}`, () => {
+          if (b.state === 'HELD') this.setState(b, 'NEEDS_REVIEW', 'attendance not answered; nothing charged or voided automatically');
+        });
+      }
+      if (b.state === 'PENDING_REFILL') this.clock.schedule(Math.max(now, b.start), `refill cutoff ${b.id}`, () => this.refillCutoff(b.id));
+    }
   }
 
   // ---------- plumbing ----------
