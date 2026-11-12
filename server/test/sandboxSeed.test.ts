@@ -5,7 +5,7 @@ import type { PaymentsGateway } from '../src/paypal/gateway.js';
 
 /** With a real gateway (PAYMENTS=sandbox) the demo seed must not touch PayPal: its fake wallet ids made PayPal answer 403 at startup. */
 describe('sandbox (real gateway) workspace', () => {
-  it('starts with services and policy only, and makes no PayPal call', async () => {
+  it('starts with a policy and no services, and makes no PayPal call', async () => {
     const mock = new MockPayPalGateway(() => Date.UTC(2026, 10, 2, 9));
     const calls: string[] = [];
     const spy = new Proxy(mock, {
@@ -24,7 +24,8 @@ describe('sandbox (real gateway) workspace', () => {
     const s = w.engine.snapshot();
     expect(calls).toEqual([]);
     expect(s.bookings).toHaveLength(0);
-    expect(s.services.map((x) => x.id).sort()).toEqual(['art', 'gel', 'pedi']);
+    // a real studio defines its own services during setup: nothing is pre-filled
+    expect(s.services).toEqual([]);
     expect(s.policy.version).toBe(1);
   });
 

@@ -1,4 +1,6 @@
 import { AnthropicProvider } from './ai/anthropic.js';
+import { GeminiProvider } from './ai/gemini.js';
+import { NoAiProvider } from './ai/noai.js';
 import { PayPalRestGateway } from './paypal/rest.js';
 import type { WorkspaceDeps } from './workspaces.js';
 
@@ -34,6 +36,7 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     if (!Number.isSafeInteger(n) || n < 100) throw new Error(`AUDIT_MAX_ENTRIES must be a whole number >= 100 (got ${env.AUDIT_MAX_ENTRIES})`);
     deps.auditMax = n;
   }
+  if (env.CLOCK === 'real') deps.clock = 'real';
   let paymentsMode = 'mock';
   let webhookVerifier: ((headers: Record<string, string | undefined>, event: unknown, rawBody?: string) => Promise<boolean>) | undefined;
   if (env.PAYMENTS === 'sandbox') {
@@ -46,13 +49,25 @@ export function configFromEnv(env: Record<string, string | undefined>): {
     });
     deps.gateway = gw;
     deps.seedMode = 'studio';
+    // real payments run on real time unless CLOCK=demo
+    deps.clock = env.CLOCK === 'demo' ? 'demo' : 'real';
     deps.toolkitCredentials = { clientId: env.PAYPAL_CLIENT_ID, clientSecret: env.PAYPAL_CLIENT_SECRET };
     paymentsMode = 'sandbox';
     const webhookId = env.PAYPAL_WEBHOOK_ID;
     if (webhookId) webhookVerifier = (headers, event, rawBody) => gw.verifyWebhook(headers, event, webhookId, rawBody);
   }
+  // AI defaults: with real payments, Gemini if a key is set, else an honest "not configured" provider; the simulator keeps the offline provider
+  const ai = env.AI || (env.PAYMENTS === 'sandbox' ? (env.GEMINI_API_KEY ? 'gemini' : env.ANTHROPIC_API_KEY ? 'anthropic' : 'none') : 'fake');
   let aiMode = 'fake';
-  if (env.AI === 'anthropic') {
+  if (ai === 'gemini') {
+    if (!env.GEMINI_API_KEY) throw new Error('AI=gemini needs GEMINI_API_KEY');
+    const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
+    deps.llm = () => new GeminiProvider({ apiKey: env.GEMINI_API_KEY!, model });
+    aiMode = `gemini:${model}`;
+  } else if (ai === 'none') {
+    deps.llm = () => new NoAiProvider();
+    aiMode = 'none';
+  } else if (ai === 'anthropic') {
     if (!env.ANTHROPIC_API_KEY) throw new Error('AI=anthropic needs ANTHROPIC_API_KEY');
     const model = env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5';
     deps.llm = () => new AnthropicProvider({ model, apiKey: env.ANTHROPIC_API_KEY });

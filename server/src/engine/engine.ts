@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { AuditLog } from '../audit.js';
 import { DAY, DemoClock, HOUR, MINUTE } from '../clock.js';
+import { DEFAULT_HOURS, validateHours, type StudioHours } from '../domain/hours.js';
 import { type AgentTool, MONEY_TOOLS_NOT_GIVEN, type TraceStep } from '../ai/agent.js';
 import { FrontDesk } from '../ai/frontdesk.js';
 import { type ApprovedPolicy, type Decision, captureViolations, decide } from '../domain/policy.js';
@@ -139,6 +140,7 @@ export class Engine {
   businessName: string;
   readonly timeZone: string;
 
+  hours: StudioHours = { ...DEFAULT_HOURS };
   services = new Map<string, Service>();
   clients = new Map<string, Client>();
   bookings = new Map<string, Booking>();
@@ -307,6 +309,40 @@ export class Engine {
 
   addService(s: Service): void {
     this.services.set(s.id, s);
+  }
+
+  /** A service typed by the owner: validated here, the id is made from the name. */
+  addServiceChecked(input: { name?: unknown; durationMin?: unknown; priceCents?: unknown }): Service {
+    const name = typeof input.name === 'string' ? input.name.replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 40) : '';
+    const durationMin = Number(input.durationMin);
+    const priceCents = Number(input.priceCents);
+    if (!name) throw new Error('give the service a name');
+    if (!Number.isInteger(durationMin) || durationMin < 15 || durationMin > 480 || durationMin % 5) throw new Error('duration must be 15 to 480 minutes, in steps of 5');
+    if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000) throw new Error('price must be between 0 and 10,000');
+    if (this.services.size >= 12) throw new Error('12 services is the limit');
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'service';
+    let id = slug;
+    for (let i = 2; this.services.has(id); i++) id = `${slug}-${i}`;
+    const svc: Service = { id, name, durationMin, priceCents };
+    this.services.set(id, svc);
+    this.audit.add('owner', `added service ${name} (${durationMin} min)`);
+    this.emit('state');
+    return svc;
+  }
+
+  removeService(id: string): void {
+    if (!this.services.has(id)) throw new Error('unknown service');
+    if ([...this.bookings.values()].some((b) => b.serviceId === id)) throw new Error('this service has bookings, so it stays; remove it only before anyone books it');
+    this.services.delete(id);
+    this.audit.add('owner', `removed service ${id}`);
+    this.emit('state');
+  }
+
+  setHours(h: unknown): StudioHours {
+    this.hours = validateHours(h, this.hours);
+    this.audit.add('owner', `opening hours ${this.hours.openHour}:00-${this.hours.closeHour}:00`);
+    this.emit('state');
+    return this.hours;
   }
 
   addClient(c: Client): void {
@@ -1251,13 +1287,17 @@ export class Engine {
     const svc = this.services.get(serviceId);
     if (!svc) throw new Error(`unknown service ${serviceId}`);
     const out: number[] = [];
-    // today's local midnight, as a wall-clock time (studio hours and Sundays are local, not UTC)
+    const hz = this.hours;
+    // today's local midnight, as a wall-clock time (studio hours and closed days are local, not UTC)
     const today = new Date(this.now() + zoneOffset(this.now(), this.timeZone));
     const base = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-    for (let d = 1; d <= 7 && out.length < n; d++) {
-      if (new Date(base + d * DAY).getUTCDay() === 0) continue; // closed on Sunday
-      for (let h = 10; h <= 18 && out.length < n; h += 2) {
-        const start = fromLocalWall(base + d * DAY + h * HOUR, this.timeZone);
+    for (let d = hz.sameDay ? 0 : 1; d <= 7 && out.length < n; d++) {
+      if (hz.closedDays.includes(new Date(base + d * DAY).getUTCDay())) continue;
+      for (let m = hz.openHour * 60; m <= hz.closeHour * 60 && out.length < n; m += hz.stepMinutes) {
+        // a real studio's visit must end before closing; the demo grid keeps its on-the-hour starts
+        if (hz.sameDay && m + svc.durationMin > hz.closeHour * 60) continue;
+        const start = fromLocalWall(base + d * DAY + m * MINUTE, this.timeZone);
+        if (start < this.now() + hz.leadMinutes * MINUTE) continue;
         const end = start + svc.durationMin * MINUTE;
         const clash = [...this.bookings.values()].some(
           (x) => !['CANCELLED_EARLY', 'EXCUSED', 'REFILLED'].includes(x.state) && x.start < end && start < x.end,
@@ -1625,6 +1665,9 @@ export class Engine {
       offers: this.offers,
       messages: this.messages,
       jobs: this.clock.pending(),
+      clockMode: this.clock.real ? ('real' as const) : ('demo' as const),
+      timeZone: this.timeZone,
+      hours: this.hours,
     };
   }
 }

@@ -15,7 +15,9 @@ export const DAY = 24 * HOUR;
  * at absolute times and fired by advanceTo(). The time-travel control calls advanceTo().
  */
 export class DemoClock {
-  private current: number;
+  /** true for the wall clock: no time travel */
+  readonly real: boolean = false;
+  protected current: number;
   private jobs: Job[] = [];
   private seq = 0;
 
@@ -65,4 +67,40 @@ export class DemoClock {
 
 function byTime(a: Job, b: Job): number {
   return a.at - b.at || a.seq - b.seq;
+}
+
+/**
+ * The wall clock. Same jobs, same code path as DemoClock, but time is Date.now() and a ticker fires due jobs.
+ * Every tick runs through the workspace lock (`runner`), so a job that talks to PayPal never interleaves with an HTTP action.
+ */
+export class RealClock extends DemoClock {
+  override readonly real: boolean = true;
+  private timer: ReturnType<typeof setInterval>;
+  private busy = false;
+
+  constructor(private runner: <T>(fn: () => Promise<T>) => Promise<T>, tickMs = 1000) {
+    super(Date.now());
+    this.timer = setInterval(() => void this.tick(), tickMs);
+    this.timer.unref?.();
+  }
+
+  override now(): number {
+    return Date.now();
+  }
+
+  async tick(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      await this.runner(() => this.advanceTo(Math.max(Date.now(), this.current)));
+    } catch (err) {
+      console.error('scheduled job failed:', (err as Error).message);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  stop(): void {
+    clearInterval(this.timer);
+  }
 }

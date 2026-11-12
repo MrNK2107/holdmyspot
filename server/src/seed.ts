@@ -2,6 +2,7 @@ import { HOUR } from './clock.js';
 import { approve, DEFAULT_RULES } from './domain/policy.js';
 import type { Engine } from './engine/engine.js';
 import { simPayPalId } from './paypal/ids.js';
+import { STUDIO_HOURS } from './domain/hours.js';
 
 /** Demo clock starts Monday 2 Nov 2026, 09:00 (all demo times are UTC). */
 export const DEMO_START = Date.UTC(2026, 10, 2, 9, 0);
@@ -9,6 +10,10 @@ export const DEMO_START = Date.UTC(2026, 10, 2, 9, 0);
 export const PRIYA_POLICY_PROSE =
   "Hi loves! Please give me 24 hours notice if you need to cancel, otherwise there's a $20 fee. No-shows are charged $20 too. " +
   "Life happens: if it's a real emergency, just tell me. If I can fill your spot from my waitlist, you won't be charged.";
+
+/** What a new real studio starts with: neutral wording, the owner rewrites it in setup. */
+export const STUDIO_POLICY_PROSE =
+  "Please give 24 hours notice if you need to cancel, otherwise there's a $20 fee. No-shows are charged $20 too. If it's a real emergency, just tell me. If I can fill your spot from my waitlist, you won't be charged.";
 
 export const SEED_POLICY = approve(undefined, DEFAULT_RULES, PRIYA_POLICY_PROSE, DEMO_START - 24 * HOUR);
 
@@ -22,15 +27,16 @@ const at = (day: number, hour: number) => Date.UTC(2026, 10, day, hour, 0);
  * - Jordan Fri 6 Nov 14:00 art   → T-72h hold declined → re-approval link       (failure 1)
  */
 export async function seed(e: Engine, opts: { studioOnly?: boolean } = {}): Promise<void> {
-  e.addService({ id: 'gel', name: 'Gel manicure', durationMin: 60, priceCents: 4500 });
-  e.addService({ id: 'pedi', name: 'Pedicure', durationMin: 60, priceCents: 5000 });
-  e.addService({ id: 'art', name: 'Nail art full set', durationMin: 90, priceCents: 8000 });
   if (opts.studioOnly) {
     // Real PayPal sandbox: the seeded clients carry simulator wallet ids that PayPal rejects (403), so start with
     // the studio only. Visitors book on /book and approve real holds with a sandbox buyer account.
-    e.audit.add('system', 'sandbox workspace ready: no demo bookings, book on the public page');
+    e.hours = { ...STUDIO_HOURS };
+    e.audit.add('system', 'studio ready: add your services and hours, then share the booking link');
     return;
   }
+  e.addService({ id: 'gel', name: 'Gel manicure', durationMin: 60, priceCents: 4500 });
+  e.addService({ id: 'pedi', name: 'Pedicure', durationMin: 60, priceCents: 5000 });
+  e.addService({ id: 'art', name: 'Nail art full set', durationMin: 90, priceCents: 8000 });
 
   const clients: Array<[string, string, boolean, boolean]> = [
     // id, name, vaulted, sandbox decline

@@ -253,12 +253,22 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   app.post<{ Params: { ws: string }; Body: { to?: number; byMs?: number } }>('/api/ws/:ws/time', async (req, reply) =>
     act(req.params.ws, reply, async (e) => {
       // a non-number or absurd target would leave the clock NaN/unrepresentable and brick the workspace
+      if (e.clock.real) throw new Error('this studio runs on real time: time travel is off');
       const { to, byMs } = req.body ?? {};
       const target = typeof to === 'number' ? to : typeof byMs === 'number' ? e.now() + byMs : NaN;
       if (!Number.isFinite(target) || target < e.now() || target > e.now() + 400 * 86_400_000) throw new Error('time travel needs a target between now and 400 days ahead');
       return e.clock.advanceTo(target);
     }),
   );
+
+  // the owner's studio setup: services and opening hours
+  app.post<{ Params: { ws: string }; Body: { name?: unknown; durationMin?: unknown; priceCents?: unknown } }>('/api/ws/:ws/services', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => e.addServiceChecked(req.body ?? {})),
+  );
+  app.delete<{ Params: { ws: string; id: string } }>('/api/ws/:ws/services/:id', async (req, reply) =>
+    act(req.params.ws, reply, async (e) => e.removeService(req.params.id)),
+  );
+  app.post<{ Params: { ws: string }; Body: unknown }>('/api/ws/:ws/hours', async (req, reply) => act(req.params.ws, reply, async (e) => e.setHours(req.body)));
 
   app.post<{ Params: { ws: string }; Body: { mode: 'ask' | 'autopilot' } }>('/api/ws/:ws/mode', async (req, reply) =>
     act(req.params.ws, reply, async (e) => {
