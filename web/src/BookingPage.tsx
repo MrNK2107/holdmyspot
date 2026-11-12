@@ -75,7 +75,7 @@ export function BookingPage({ ws }: { ws: string }) {
     <main className="book">
       <header className="book-head">
         <div className="book-avatar" aria-hidden>
-          P
+          {(s.business.trim()[0] ?? '•').toUpperCase()}
         </div>
         <div>
           <h1 className="book-title">{s.business}</h1>

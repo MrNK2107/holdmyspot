@@ -9,7 +9,7 @@ import { demoStatus, playNextBeat } from './demo.js';
 import { evalReport } from './eval/run.js';
 import type { Engine } from './engine/engine.js';
 import type { WebhookEvent } from './paypal/gateway.js';
-import { Workspaces, type Workspace } from './workspaces.js';
+import { Workspaces, cleanStudioNames, type Workspace } from './workspaces.js';
 
 export interface AppOptions {
   workspaces?: Workspaces;
@@ -132,10 +132,10 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
     }
   });
 
-  app.post('/api/workspaces', async (_req, reply) => {
+  app.post<{ Body?: { business?: unknown; owner?: unknown } }>('/api/workspaces', async (req, reply) => {
     let w: Workspace;
     try {
-      w = await workspaces.create();
+      w = await workspaces.create(undefined, undefined, cleanStudioNames(req.body));
     } catch (err) {
       return reply.code(503).send({ ok: false, error: (err as Error).message });
     }

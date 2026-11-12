@@ -27,6 +27,9 @@ ModuleRegistry.registerModules([
   RowAutoHeightModule,
 ]);
 
+// AG Grid takes pixels: follow the interface's fluid root size (set once at load)
+const k = typeof document === 'undefined' ? 1 : parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+
 export const theme = themeQuartz.withParams({
   accentColor: '#6b3fa0',
   backgroundColor: '#fffdf9',
@@ -34,7 +37,7 @@ export const theme = themeQuartz.withParams({
   borderColor: '#e6dfd5',
   headerBackgroundColor: '#f6f3ee',
   fontFamily: 'inherit',
-  fontSize: 13,
-  rowHeight: 38,
-  headerHeight: 38,
+  fontSize: Math.round(13 * k),
+  rowHeight: Math.round(38 * k),
+  headerHeight: Math.round(38 * k),
 });

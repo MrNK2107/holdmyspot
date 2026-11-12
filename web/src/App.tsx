@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentTraceCard, AgentTraceView, AskFrontDesk } from './AgentTrace';
+import { FirstBooking, SetupWizard } from './Onboarding';
 import { Api, wsPath, ownerToken, rememberOwnerToken, type Ambiguity, type AuditEntry, type BookingView, type DemoStatus, type PolicyRules, type Snapshot, fmtDay, fmtTime, usd } from './api';
 
 // AG Grid is only loaded when the ledger tab opens
@@ -12,7 +13,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const GRID_START_H = 9;
 const GRID_END_H = 19;
-const ROW = 58; // px per hour
+const ROW = 58 / 16; // rem per hour (the whole interface scales with the screen)
 
 const MONEY_LABEL: Record<string, string> = {
   none: 'no hold',
@@ -101,6 +102,14 @@ export function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [demoOn, setDemoOn] = useState(new URLSearchParams(location.search).has('demo'));
+  // ?setup=1 (set when a studio is created) shows the four-step setup until the owner opens the studio
+  const [setupOn, setSetupOn] = useState(new URLSearchParams(location.search).has('setup'));
+  const finishSetup = () => {
+    const u = new URL(location.href);
+    u.searchParams.delete('setup');
+    history.replaceState(null, '', u);
+    setSetupOn(false);
+  };
 
   const refresh = useCallback(
     () =>
@@ -146,13 +155,18 @@ export function App() {
   if (!s) {
     return loadError ? (
       <main className="loading">
-        <h1>This demo workspace isn’t available</h1>
+        <h1>This studio isn’t available</h1>
         <p className="muted">
           {loadError}. Private demos are kept in memory and reset when the server restarts.
         </p>
-        <a className="button primary" href="/">
-          Open the shared demo
-        </a>
+        <div className="actions">
+          <a className="button primary" href="/">
+            Create a new studio
+          </a>
+          <a className="button" href="/?ws=demo&demo=1">
+            Open the shared demo
+          </a>
+        </div>
       </main>
     ) : (
       <div className="loading" role="status" aria-live="polite">
@@ -163,6 +177,54 @@ export function App() {
 
   const sel = s.bookings.find((b) => b.id === selected) ?? null;
 
+  const modeSelect = (
+    <label className="mode">
+      <span>Owner mode</span>
+      <select value={s.mode} onChange={(e) => run(() => api.mode(e.target.value as 'ask' | 'autopilot'))}>
+        <option value="ask">Ask me first</option>
+        <option value="autopilot">Autopilot</option>
+      </select>
+    </label>
+  );
+  const travelTools = (
+    <>
+      {!demoOn && <span className="travel-label">Time travel</span>}
+      {!demoOn &&
+        SCENES.map((sc) => (
+          <button key={sc.label} disabled={busy || sc.at <= s.now} onClick={() => run(() => api.travel(sc.at))}>
+            {sc.label}
+          </button>
+        ))}
+      {!demoOn && (
+        <>
+          <button disabled={busy} onClick={() => run(() => api.travel(s.now + HOUR))}>
+            +1 hour
+          </button>
+          <button disabled={busy || !s.jobs.length} onClick={() => run(() => api.travel(s.jobs[0].at))} title={s.jobs[0]?.name}>
+            Next job ›
+          </button>
+        </>
+      )}
+    </>
+  );
+  const ownerControls = (
+    <>
+      {modeSelect}
+      {s.paymentsMode === 'mock' && (
+        <button className={demoOn ? 'primary' : ''} aria-pressed={demoOn} onClick={() => setDemoOn(!demoOn)}>
+          Guided demo
+        </button>
+      )}
+      <button className="ghost" disabled={busy} onClick={() => run(() => api.reset())}>
+        Reset demo
+      </button>
+      <a className="button ghost" href="/">
+        New studio
+      </a>
+      {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+    </>
+  );
+
   return (
     <div className="app">
       <header className="top">
@@ -172,9 +234,10 @@ export function App() {
           </span>
           <div>
             <h1 className="brand-name">HoldMySpot</h1>
-            <div className="brand-sub">Studio: {s.business} (demo)</div>
+            <div className="brand-sub">{ws === 'demo' ? `${s.business} (demo studio)` : s.business}</div>
           </div>
         </div>
+        {!setupOn && (
         <nav className="tabs" aria-label="Views">
           <button className={tab === 'console' ? 'on' : ''} onClick={() => setTab('console')}>
             Schedule
@@ -189,6 +252,7 @@ export function App() {
             Ledger
           </button>
         </nav>
+        )}
         <div className="clock">
           <div className="clock-label">Demo clock</div>
           <div className="clock-time">
@@ -206,51 +270,32 @@ export function App() {
         </div>
       </header>
 
-      <nav className="travel" aria-label="Demo clock and controls">
-        {!demoOn && <span className="travel-label">Time travel</span>}
-        {!demoOn && SCENES.map((sc) => (
-          <button key={sc.label} disabled={busy || sc.at <= s.now} onClick={() => run(() => api.travel(sc.at))}>
-            {sc.label}
-          </button>
-        ))}
-        {!demoOn && (
-          <>
-            <button disabled={busy} onClick={() => run(() => api.travel(s.now + HOUR))}>
-              +1 hour
-            </button>
-            <button disabled={busy || !s.jobs.length} onClick={() => run(() => api.travel(s.jobs[0].at))} title={s.jobs[0]?.name}>
-              Next job ›
-            </button>
-          </>
-        )}
-        <span className="spacer" />
-        <label className="mode">
-          <span>Owner mode</span>
-          <select value={s.mode} onChange={(e) => run(() => api.mode(e.target.value as 'ask' | 'autopilot'))}>
-            <option value="ask">Ask me first</option>
-            <option value="autopilot">Autopilot</option>
-          </select>
-        </label>
-        {s.paymentsMode === 'mock' && (
-          <button className={demoOn ? 'primary' : ''} aria-pressed={demoOn} onClick={() => setDemoOn(!demoOn)}>
-            Guided demo
-          </button>
-        )}
-        <button className="ghost" disabled={busy} onClick={() => run(() => api.reset())}>
-          Reset demo
-        </button>
-        <button
-          className="ghost"
-          onClick={async () => {
-            const r = await fetch('/api/workspaces', { method: 'POST' }).then((x) => x.json());
-            rememberOwnerToken(r.id, r.ownerToken);
-            setWs(r.id);
-          }}
-        >
-          New private demo
-        </button>
-        {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
-      </nav>
+      {!setupOn && (s.paymentsMode === 'mock' ? (
+        <nav className="travel" aria-label="Demo clock and controls">
+          {travelTools}
+          <span className="spacer" />
+          {ownerControls}
+        </nav>
+      ) : (
+        <nav className="travel" aria-label="Studio controls">
+          {modeSelect}
+          <span className="spacer" />
+          {ws !== 'demo' && ownerToken(ws) && <CopyOwnerLink ws={ws} token={ownerToken(ws)!} />}
+          <details className="demo-tools">
+            <summary>Demo controls</summary>
+            <div className="demo-tools-body">
+              <p className="muted small">The studio clock is simulated so a whole week can be played in minutes. PayPal itself is real (sandbox).</p>
+              {travelTools}
+              <button className="ghost" disabled={busy} onClick={() => run(() => api.reset())}>
+                Reset studio
+              </button>
+              <a className="button ghost" href="/">
+                New studio
+              </a>
+            </div>
+          </details>
+        </nav>
+      ))}
 
       {demoOn && s.paymentsMode === 'mock' && <DemoBar api={api} s={s} busy={busy} run={run} applyView={applyView} />}
 
@@ -265,9 +310,12 @@ export function App() {
         </div>
       )}
 
-      {tab === 'console' ? (
-        <main className="console">
+      {setupOn ? (
+        <SetupWizard s={s} ws={ws} api={api} onFinish={finishSetup} policyEditor={<PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} embedded />} />
+      ) : tab === 'console' ? (
+        <main className={`console${s.clients.length ? '' : ' no-phone'}`}>
           <section className="schedule">
+            {s.bookings.length === 0 && <FirstBooking s={s} ws={ws} />}
             <MoneyStrip s={s} />
             <WeekGrid s={s} selected={selected} onSelect={setSelected} />
             <Legend />
@@ -282,9 +330,11 @@ export function App() {
               <div className="card muted">Select a booking to see its money timeline.</div>
             )}
           </aside>
-          <aside className="phone-col" aria-label="Client text messages">
-            <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
-          </aside>
+          {s.clients.length > 0 && (
+            <aside className="phone-col" aria-label="Client text messages">
+              <Phone s={s} busy={busy} clientId={phone} setClientId={setPhone} onSend={(c, t) => run(() => api.send(c, t))} />
+            </aside>
+          )}
         </main>
       ) : tab === 'policy' ? (
         <PolicyEditor s={s} api={api} onApproved={(st) => setS(st)} autoCompile={demoOn} />
@@ -435,7 +485,7 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
   const nowDay = Math.floor((s.now - day0) / DAY);
   const nowH = ((s.now % DAY) / HOUR - GRID_START_H) * ROW;
   return (
-    <div className="grid" style={{ ['--rows' as string]: hours.length, ['--row' as string]: `${ROW}px` }}>
+    <div className="grid" style={{ ['--rows' as string]: hours.length, ['--row' as string]: `${ROW}rem` }}>
       <div className="grid-corner" />
       {days.map((d) => (
         <div key={d} className={`grid-day ${Math.floor((s.now - day0) / DAY) === (d - day0) / DAY ? 'today' : ''}`}>
@@ -454,7 +504,7 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
           {hours.map((h) => (
             <div key={h} className="grid-cell" />
           ))}
-          {i === nowDay && nowH >= 0 && nowH <= hours.length * ROW && <div className="now-line" style={{ top: nowH }} />}
+          {i === nowDay && nowH >= 0 && nowH <= hours.length * ROW && <div className="now-line" style={{ top: `${nowH}rem` }} />}
           {s.bookings
             .filter((b) => b.start >= d && b.start < d + DAY && !(b.refillOfBookingId && b.state === 'CANCELLED_EARLY'))
             .map((b) => {
@@ -466,7 +516,7 @@ function WeekGrid({ s, selected, onSelect }: { s: Snapshot; selected: string | n
                 <button
                   key={b.id}
                   className={`event m-${b.money} ${selected === b.id ? 'sel' : ''} ${overlap ? 'half-left' : ''} ${isRefill ? 'half-right' : ''}`}
-                  style={{ top, height: h - 3 }}
+                  style={{ top: `${top}rem`, height: `calc(${h}rem - 3px)` }}
                   onClick={() => onSelect(b.id)}
                   title={`${b.clientName} · ${b.serviceName} · ${b.state}`}
                 >
@@ -781,7 +831,7 @@ function Phone({
   );
 }
 
-function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot; api: Api; onApproved: (s: Snapshot) => void; autoCompile?: boolean }) {
+function PolicyEditor({ s, api, onApproved, autoCompile = false, embedded = false }: { s: Snapshot; api: Api; onApproved: (s: Snapshot) => void; autoCompile?: boolean; embedded?: boolean }) {
   const [prose, setProse] = useState(s.policy.prose);
   const [rules, setRules] = useState<PolicyRules | null>(null);
   const [questions, setQuestions] = useState<Ambiguity[]>([]);
@@ -826,8 +876,9 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
 
   const allAnswered = questions.every((q) => answers[q.id] !== undefined);
 
+  const Root = embedded ? 'div' : 'main';
   return (
-    <main className="policy">
+    <Root className="policy">
       <section className="card">
         <h2>Your policy, in your words</h2>
         <textarea aria-label="Cancellation policy text" value={prose} onChange={(e) => setProse(e.target.value)} rows={8} />
@@ -880,6 +931,6 @@ function PolicyEditor({ s, api, onApproved, autoCompile = false }: { s: Snapshot
           </>
         )}
       </section>
-    </main>
+    </Root>
   );
 }
