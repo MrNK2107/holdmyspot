@@ -1,38 +1,47 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-13T12:00:00Z",
+  "generatedAt": "2026-11-13T18:00:00Z",
   "title": "Design System: HoldMySpot Welcome (The Ledger)",
   "extensions": {
     "colorMeta": {
       "navy-ink": { "role": "primary", "displayName": "Navy Ink", "canonical": "#14213d", "tonalRamp": ["#0a1020", "#14213d", "#27375b", "#3d4963", "#5d6a85", "#8892a6", "#c3c9d4", "#eef1f4"] },
+      "ledger-accent": { "role": "primary", "displayName": "Ledger Accent", "canonical": "#2b4aa8", "tonalRamp": ["#0f1a3f", "#182a66", "#223a86", "#2b4aa8", "#5470c0", "#8499d6", "#bcc8ea", "#e9edf8"] },
       "navy-band": { "role": "primary", "displayName": "Navy Band", "canonical": "#0e1a33", "tonalRamp": ["#060d1a", "#0e1a33", "#1a2b4d", "#2c4067", "#4a5f85", "#7e8fb0", "#c9d2e0", "#eef1f4"] },
       "ledger-green": { "role": "secondary", "displayName": "Ledger Green", "canonical": "#1f6150", "tonalRamp": ["#0e2e26", "#17493d", "#1f6150", "#2f7b68", "#559a89", "#86b9ac", "#cfe6dd", "#e6f2ed"] },
       "ledger-brick": { "role": "secondary", "displayName": "Ledger Brick", "canonical": "#8a3b2e", "tonalRamp": ["#3f1a14", "#62291f", "#8a3b2e", "#a55547", "#be7b6f", "#d2a39a", "#e6cdc8", "#f5ebe9"] },
       "paper-ground": { "role": "neutral", "displayName": "Paper Ground", "canonical": "#eef1f4", "tonalRamp": ["#2a2f36", "#4d5560", "#7b8490", "#a5adb8", "#c6ccd4", "#dde2e8", "#eef1f4", "#fbfcfd"] },
       "sheet": { "role": "neutral", "displayName": "Sheet", "canonical": "#fbfcfd", "tonalRamp": ["#2a2f36", "#4d5560", "#7b8490", "#a5adb8", "#d5dae0", "#e8ecf0", "#f4f6f8", "#fbfcfd"] },
+      "stage-wash": { "role": "neutral", "displayName": "Stage Wash", "canonical": "#e3e8ef", "tonalRamp": ["#2a2f36", "#4d5560", "#7b8490", "#a5adb8", "#c6ccd4", "#d3dae4", "#e3e8ef", "#f4f6f9"] },
       "slate-ink": { "role": "neutral", "displayName": "Slate Ink", "canonical": "#3d4963", "tonalRamp": ["#1c2335", "#2b354b", "#3d4963", "#56627c", "#76819a", "#9aa3b7", "#c5cad6", "#e8ebf0"] },
       "message-wash": { "role": "neutral", "displayName": "Message Wash", "canonical": "#e4e9f0", "tonalRamp": ["#2a2f36", "#4d5560", "#7b8490", "#a5adb8", "#c6ccd4", "#d3dae4", "#e4e9f0", "#f4f6f9"] }
     },
     "typographyMeta": {
       "display": { "displayName": "Display", "purpose": "Hero headline only." },
-      "headline": { "displayName": "Headline", "purpose": "Every section heading: steps, proof band, your rules, closing CTA." },
-      "subhead": { "displayName": "Subhead", "purpose": "Step headings, 1.5rem." },
+      "headline": { "displayName": "Headline", "purpose": "Every section heading: feature rows intro, proof band, your rules, closing CTA." },
+      "feature-title": { "displayName": "Feature Title", "purpose": "The three feature-row headings, clamp 1.5rem to 2.125rem." },
       "title": { "displayName": "Title", "purpose": "Proof band column headings, 1.375rem." },
-      "entry-title": { "displayName": "Entry Title", "purpose": "Entry sheet heading, rule names and net-total label, 1.125rem." },
-      "lead": { "displayName": "Lead", "purpose": "Section intros and CTA text, 1.125rem." },
-      "body": { "displayName": "Body", "purpose": "Step, band and rule text, 1.0625rem, 26rem to 40rem measure." },
-      "label": { "displayName": "Label", "purpose": "Field labels, ledger column heads, picker caption, figure captions, speaker names, status pill." },
-      "figure": { "displayName": "Figure", "purpose": "Step and net-total amounts, tabular mono." },
-      "figure-small": { "displayName": "Figure Small", "purpose": "Example rows, step numerals, picker values, 1rem mono." }
+      "entry-title": { "displayName": "Entry Title", "purpose": "Entry sheet heading, phone business name, rule names and net-total label, 1.125rem." },
+      "lead": { "displayName": "Lead", "purpose": "Section intros, feature text and CTA text, 1.125rem." },
+      "body": { "displayName": "Body", "purpose": "Band, never-ledger and rule text, 1.0625rem." },
+      "body-small": { "displayName": "Body Small", "purpose": "Example-card text, nav links, proposal and trace rows, 0.9375rem (0.875rem for small notes)." },
+      "caption": { "displayName": "Caption", "purpose": "Figcaptions, phone and proposal notes, trust-strip caption, 0.8125rem." },
+      "label": { "displayName": "Label", "purpose": "Field labels, column heads, picker caption, figure captions, speaker names, status pill, 0.75rem uppercase." },
+      "figure": { "displayName": "Figure", "purpose": "Ledger-line and total amounts, tabular mono (1.25rem; net total up to 2rem)." },
+      "figure-small": { "displayName": "Figure Small", "purpose": "Example rows, step numerals, picker values, trace amounts, 1rem mono." },
+      "code": { "displayName": "Code", "purpose": "Request snippet in the ledger trace, 0.75rem mono 400." }
     },
     "shadows": [
-      { "name": "entry-sheet", "value": "inset 0 3px 0 #14213d, 0 1px 0 rgba(20,33,61,0.06), 0 1.25rem 2.5rem -1.5rem rgba(20,33,61,0.28)", "purpose": "Entry sheet lift with its navy top rule." },
-      { "name": "demo-card", "value": "0 1px 0 rgba(20,33,61,0.06), 0 2rem 3.5rem -1.75rem rgba(20,33,61,0.35)", "purpose": "Example booking card lift; the only other raised element." }
+      { "name": "entry-sheet", "value": "inset 0 3px 0 #2b4aa8, 0 1px 0 rgba(20,33,61,0.06), 0 1.25rem 2.5rem -1.5rem rgba(20,33,61,0.28)", "purpose": "Entry sheet lift with its accent top rule." },
+      { "name": "demo-card", "value": "0 1px 0 rgba(20,33,61,0.06), 0 2rem 3.5rem -1.75rem rgba(20,33,61,0.35)", "purpose": "Example booking card lift; no ghost sheet behind it." },
+      { "name": "proposal-card", "value": "inset 0 3px 0 #14213d, 0 1.5rem 2.5rem -1.5rem rgba(20,33,61,0.4)", "purpose": "Proposal picture lift with navy top rule." },
+      { "name": "trace-card", "value": "0 1.5rem 2.5rem -1.5rem rgba(20,33,61,0.4)", "purpose": "Ledger trace picture lift." },
+      { "name": "phone-shell", "value": "0 2rem 3rem -1.75rem rgba(20,33,61,0.5)", "purpose": "Phone picture lift." }
     ],
     "motion": [
-      { "name": "lg-ease", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Shared easing for settle, log reveal and picker transitions." },
+      { "name": "lg-ease", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Shared easing for settle, log reveal, scroll reveal and picker transitions." },
       { "name": "number-settle", "value": "0.45s, translateY(0.4em) + blur(3px) to none", "purpose": "Figures and status pills settle when the hold or status changes." },
-      { "name": "log-reveal", "value": "0.5s opacity + translateY(0.5rem) to none; step every 1.9s, 4.2s hold, then loop", "purpose": "Example booking rows replay in sequence; static under reduced motion." },
+      { "name": "log-reveal", "value": "0.5s opacity + translateY(0.5rem) to none on the writing only; step every 1.9s, 4.2s hold, then loop", "purpose": "Example booking writing replays over blank ruled rows; static under reduced motion." },
+      { "name": "scroll-reveal", "value": "0.8s opacity + translateY(1.5rem) to none, once; content visible by default until the observer adds rv-on", "purpose": "Later sections fade up once as they enter." },
       { "name": "picker-transition", "value": "0.18s background and color", "purpose": "Hold picker hover and selection." },
       { "name": "nav-hover", "value": "0.15s color and border-color", "purpose": "Top bar nav underline." }
     ],
@@ -47,17 +56,25 @@
       "name": "Top Bar",
       "kind": "nav",
       "refersTo": "top-bar",
-      "description": "Sticky translucent paper bar with section nav and a compact Create studio button.",
+      "description": "Sticky translucent paper bar with section nav and a compact accent Create studio button.",
       "html": "<header class=\"ds-top\"><span class=\"ds-top-name\">HoldMySpot</span><nav class=\"ds-nav\"><a href=\"#\">How it works</a><a href=\"#\">Why you can trust it</a><a href=\"#\">Your rules</a></nav><span style=\"flex:1\"></span><button class=\"ds-top-cta\">Create studio</button></header>",
-      "css": ".ds-top { display: flex; align-items: center; gap: 0.75rem; padding: 0.875rem 1.5rem; background: rgba(238,241,244,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(20,33,61,0.16); color: #14213d; font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-top-name { font-weight: 800; font-size: 1.125rem; letter-spacing: -0.01em; } .ds-nav { display: flex; gap: 1.75rem; margin-left: 2.5rem; font-weight: 600; font-size: 0.9375rem; } .ds-nav a { color: #3d4963; text-decoration: none; padding: 0.25rem 0; border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; } .ds-nav a:hover { color: #14213d; border-color: #14213d; } .ds-top-cta { background: #14213d; color: #fff; border: 1px solid #14213d; border-radius: 0.25rem; padding: 0.5rem 1rem; font: 600 0.9375rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; } .ds-top-cta:hover { background: #0d1730; } .ds-top-cta:focus-visible { outline: 2px solid #14213d; outline-offset: 3px; }"
+      "css": ".ds-top { display: flex; align-items: center; gap: 0.75rem; padding: 0.875rem 1.5rem; background: rgba(238,241,244,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(20,33,61,0.16); color: #14213d; font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-top-name { font-weight: 800; font-size: 1.125rem; letter-spacing: -0.01em; } .ds-nav { display: flex; gap: 1.75rem; margin-left: 2.5rem; font-weight: 600; font-size: 0.9375rem; } .ds-nav a { color: #3d4963; text-decoration: none; padding: 0.25rem 0; border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; } .ds-nav a:hover { color: #14213d; border-color: #2b4aa8; } .ds-top-cta { background: #2b4aa8; color: #fff; border: 1px solid #2b4aa8; border-radius: 0.25rem; padding: 0.5rem 1rem; font: 600 0.9375rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; } .ds-top-cta:hover { background: #223a86; } .ds-top-cta:focus-visible { outline: 2px solid #14213d; outline-offset: 3px; }"
     },
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Navy ink action, 4px corners; closing CTA scales to 1.0625rem.",
+      "description": "Accent action, 4px corners, hover deepens to accent-hover.",
       "html": "<button class=\"ds-btn-primary\">Create studio</button>",
-      "css": ".ds-btn-primary { background: #14213d; color: #fff; border: 1px solid #14213d; border-radius: 0.25rem; padding: 0.8125rem 1.25rem; font: 600 1rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; } .ds-btn-primary:hover { background: #0d1730; } .ds-btn-primary:focus-visible { outline: 2px solid #14213d; outline-offset: 3px; }"
+      "css": ".ds-btn-primary { background: #2b4aa8; color: #fff; border: 1px solid #2b4aa8; border-radius: 0.25rem; padding: 0.8125rem 1.25rem; font: 600 1rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; } .ds-btn-primary:hover { background: #223a86; } .ds-btn-primary:focus-visible { outline: 2px solid #14213d; outline-offset: 3px; }"
+    },
+    {
+      "name": "Button On Navy",
+      "kind": "button",
+      "refersTo": "button-cta-on-navy",
+      "description": "Closing-band action: white fill, navy text, white focus ring.",
+      "html": "<div class=\"ds-onnavy\"><button class=\"ds-btn-white\">Create your studio</button></div>",
+      "css": ".ds-onnavy { background: #0e1a33; padding: 2rem; text-align: center; } .ds-btn-white { background: #fff; color: #14213d; border: 1px solid #fff; border-radius: 0.25rem; padding: 0.9375rem 1.75rem; font: 600 1.0625rem 'Hanken Grotesk', system-ui, sans-serif; cursor: pointer; } .ds-btn-white:hover { background: #e4eaf4; } .ds-btn-white:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }"
     },
     {
       "name": "Text Field",
@@ -71,41 +88,41 @@
       "name": "Entry Sheet",
       "kind": "card",
       "refersTo": "entry-sheet",
-      "description": "Raised sheet with a navy top rule holding the one-row create form.",
+      "description": "Raised sheet with an accent top rule holding the one-row create form.",
       "html": "<section class=\"ds-entry\"><h2>Create your studio</h2><div class=\"ds-entry-row\"><input class=\"ds-entry-in\" placeholder=\"Studio name\" /><input class=\"ds-entry-in\" placeholder=\"First name\" /><button class=\"ds-entry-btn\">Create</button></div></section>",
-      "css": ".ds-entry { max-width: 40rem; background: #fbfcfd; color: #14213d; border: 1px solid rgba(20,33,61,0.16); border-radius: 0; padding: 1.5rem; box-shadow: inset 0 3px 0 #14213d, 0 1px 0 rgba(20,33,61,0.06), 0 1.25rem 2.5rem -1.5rem rgba(20,33,61,0.28); font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-entry h2 { margin: 0.25rem 0 0.875rem; font-size: 1.125rem; letter-spacing: -0.01em; } .ds-entry-row { display: grid; grid-template-columns: 1fr 0.7fr auto; gap: 0.75rem; align-items: end; } .ds-entry-in { padding: 0.75rem 0.875rem; border: 1px solid rgba(20,33,61,0.45); border-radius: 0.25rem; background: #fff; } .ds-entry-btn { background: #14213d; color: #fff; border: 1px solid #14213d; border-radius: 0.25rem; padding: 0.8125rem 1.25rem; font: 600 1rem 'Hanken Grotesk', system-ui, sans-serif; }"
+      "css": ".ds-entry { max-width: 40rem; background: #fbfcfd; color: #14213d; border: 1px solid rgba(20,33,61,0.16); border-radius: 0; padding: 1.5rem; box-shadow: inset 0 3px 0 #2b4aa8, 0 1px 0 rgba(20,33,61,0.06), 0 1.25rem 2.5rem -1.5rem rgba(20,33,61,0.28); font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-entry h2 { margin: 0.25rem 0 0.875rem; font-size: 1.125rem; letter-spacing: -0.01em; } .ds-entry-row { display: grid; grid-template-columns: 1fr 0.7fr auto; gap: 0.75rem; align-items: end; } .ds-entry-in { padding: 0.75rem 0.875rem; border: 1px solid rgba(20,33,61,0.45); border-radius: 0.25rem; background: #fff; } .ds-entry-btn { background: #2b4aa8; color: #fff; border: 1px solid #2b4aa8; border-radius: 0.25rem; padding: 0.8125rem 1.25rem; font: 600 1rem 'Hanken Grotesk', system-ui, sans-serif; } .ds-entry-btn:hover { background: #223a86; }"
     },
     {
       "name": "Example Booking Card",
       "kind": "card",
       "refersTo": "demo-card",
-      "description": "Looping example booking: ruled log rows, message bubble, status pill, double-rule total.",
-      "html": "<figure class=\"ds-demo\"><div class=\"ds-demo-card\"><div class=\"ds-demo-h\"><span class=\"ds-demo-av\">M</span><div><b>Maya R.</b><span>Tue 4:00 pm</span></div><span class=\"ds-pill green\">Hold authorized</span></div><ol class=\"ds-demo-log\"><li><span class=\"ds-who\">System</span><span>Hold authorized</span><output class=\"green\">$20.00</output></li><li class=\"msg\"><span class=\"ds-who\">Client</span><span class=\"ds-msg\">My daughter is sick, can we move it?</span></li></ol><div class=\"ds-demo-foot\"><span>Net kept</span><output>$0.00</output></div></div><figcaption>Example booking. Amounts follow the hold you pick below.</figcaption></figure>",
-      "css": ".ds-demo { margin: 0; font-family: 'Hanken Grotesk', system-ui, sans-serif; color: #14213d; } .ds-demo-card { background: #fbfcfd; border: 1px solid rgba(20,33,61,0.16); box-shadow: 0 1px 0 rgba(20,33,61,0.06), 0 2rem 3.5rem -1.75rem rgba(20,33,61,0.35); } .ds-demo-h { display: flex; align-items: center; gap: 0.875rem; padding: 1.125rem 1.25rem; border-bottom: 1px solid rgba(20,33,61,0.16); } .ds-demo-h div { display: grid; flex: 1; line-height: 1.3; } .ds-demo-h div span { font-size: 0.875rem; color: #3d4963; } .ds-demo-av { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: #14213d; color: #fff; font-weight: 700; } .ds-pill { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3125rem 0.625rem; border: 1px solid #14213d; } .ds-pill.green { border-color: #1f6150; color: #1f6150; background: #e6f2ed; } .ds-demo-log { list-style: none; margin: 0; padding: 0.5rem 1.25rem; } .ds-demo-log li { display: grid; grid-template-columns: 5.5rem 1fr auto; gap: 0.25rem 0.875rem; align-items: baseline; padding: 0.875rem 0; border-bottom: 1px solid rgba(20,33,61,0.16); font-size: 0.9375rem; } .ds-who { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #3d4963; } .ds-msg { background: #e4e9f0; padding: 0.5rem 0.75rem; border-radius: 0.75rem 0.75rem 0.75rem 0.1875rem; justify-self: start; } .ds-demo-log output { font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; } .ds-demo-log output.green { color: #1f6150; } .ds-demo-foot { display: flex; justify-content: space-between; align-items: baseline; padding: 1rem 1.25rem; border-top: 3px double rgba(20,33,61,0.85); font-weight: 700; } .ds-demo-foot output { color: #1f6150; font: 600 1.25rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; } .ds-demo figcaption { margin-top: 1.75rem; font-size: 0.8125rem; color: #3d4963; }"
+      "description": "Hero example: blank ruled rows, writing fades in, accent avatar and status pill, double-rule total.",
+      "html": "<figure class=\"ds-demo\"><div class=\"ds-demo-card\"><div class=\"ds-demo-h\"><span class=\"ds-demo-av\">M</span><div><b>Maya R.</b><span>Tue 4:00 pm</span></div><span class=\"ds-pill\">Hold authorized</span></div><ol class=\"ds-demo-log\"><li><span class=\"ds-who\">System</span><span>Hold authorized</span><output class=\"green\">$20.00</output></li><li class=\"msg\"><span class=\"ds-who\">Client</span><span class=\"ds-msg\">My daughter is sick, can we move it?</span></li><li></li></ol><div class=\"ds-demo-foot\"><span>Net kept</span><output>$0.00</output></div></div><figcaption>Example booking. Amounts follow the hold you pick below.</figcaption></figure>",
+      "css": ".ds-demo { margin: 0; font-family: 'Hanken Grotesk', system-ui, sans-serif; color: #14213d; } .ds-demo-card { background: #fbfcfd; border: 1px solid rgba(20,33,61,0.16); box-shadow: 0 1px 0 rgba(20,33,61,0.06), 0 2rem 3.5rem -1.75rem rgba(20,33,61,0.35); } .ds-demo-h { display: flex; align-items: center; gap: 0.875rem; padding: 1.125rem 1.25rem; border-bottom: 1px solid rgba(20,33,61,0.16); } .ds-demo-h div { display: grid; flex: 1; line-height: 1.3; } .ds-demo-h div span { font-size: 0.875rem; color: #3d4963; } .ds-demo-av { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: #2b4aa8; color: #fff; font-weight: 700; } .ds-pill { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.3125rem 0.625rem; border: 1px solid #2b4aa8; color: #2b4aa8; } .ds-pill.green { border-color: #1f6150; color: #1f6150; background: #e6f2ed; } .ds-demo-log { list-style: none; margin: 0; padding: 0.25rem 1.25rem; } .ds-demo-log li { display: grid; grid-template-columns: 5.5rem 1fr auto; gap: 0.25rem 0.875rem; align-items: center; min-height: 3.75rem; border-bottom: 1px solid rgba(20,33,61,0.16); font-size: 0.9375rem; } .ds-who { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #3d4963; } .ds-msg { background: rgba(20,33,61,0.08); padding: 0.5rem 0.75rem; border-radius: 0.75rem 0.75rem 0.75rem 0.1875rem; justify-self: start; } .ds-demo-log output { font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; } .ds-demo-log output.green { color: #1f6150; } .ds-demo-foot { display: flex; justify-content: space-between; align-items: baseline; padding: 1rem 1.25rem; border-top: 3px double rgba(20,33,61,0.85); font-weight: 700; } .ds-demo-foot output { color: #1f6150; font: 600 1.25rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; } .ds-demo figcaption { margin-top: 1.75rem; font-size: 0.8125rem; color: #3d4963; }"
     },
     {
-      "name": "Step With Figure",
+      "name": "Feature Row With Ledger Line",
       "kind": "custom",
       "refersTo": "typography.figure",
-      "description": "Numbered step: mono numeral, subhead, body, and a hairline-topped figure in a money-state color.",
-      "html": "<ol class=\"ds-steps\"><li><span class=\"ds-n\">2</span><h3>Life happens.</h3><p>The hold is released with one tap.</p><div class=\"ds-fig\"><span>Released</span><output>$20.00</output></div></li></ol>",
-      "css": ".ds-steps { list-style: none; margin: 0; padding: 0; border-top: 2px solid rgba(20,33,61,0.85); font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-steps li { display: grid; gap: 0.75rem; padding: 1.5rem 2rem 2rem 0; } .ds-n { font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; color: #3d4963; } .ds-steps h3 { margin: 0; font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.02em; color: #14213d; } .ds-steps p { margin: 0; max-width: 28rem; font-size: 1.0625rem; line-height: 1.55; color: #3d4963; } .ds-fig { display: grid; gap: 0.25rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(20,33,61,0.16); } .ds-fig span { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #3d4963; } .ds-fig output { font: 600 2.25rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #1f6150; }"
+      "description": "Text column with accent numeral, title, body and an inline ruled ledger line, beside a ruled stage.",
+      "html": "<div class=\"ds-feat\"><div class=\"ds-feat-text\"><span class=\"ds-n\">2</span><h3>Life happens.</h3><p>The hold is released with one tap.</p><div class=\"ds-fig\"><span>Released</span><output>$20.00</output></div></div><div class=\"ds-stage\"><div class=\"ds-prop\"><div class=\"ds-prop-h\">Proposal</div><div class=\"ds-prop-act\"><span class=\"go\">Approve</span><span>Decline</span></div></div></div></div>",
+      "css": ".ds-feat { display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 2.5rem; align-items: center; padding: 2rem 0; border-top: 2px solid rgba(20,33,61,0.85); font-family: 'Hanken Grotesk', system-ui, sans-serif; color: #14213d; } .ds-feat-text { display: grid; gap: 0.75rem; } .ds-n { font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; color: #2b4aa8; } .ds-feat h3 { margin: 0; font-size: 1.75rem; line-height: 1.12; letter-spacing: -0.025em; } .ds-feat p { margin: 0; max-width: 28rem; font-size: 1.125rem; line-height: 1.55; color: #3d4963; } .ds-fig { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-top: 0.75rem; padding: 0.75rem 0; border-top: 1px solid rgba(20,33,61,0.16); border-bottom: 1px solid rgba(20,33,61,0.16); } .ds-fig span { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #3d4963; } .ds-fig output { font: 600 1.25rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #1f6150; } .ds-stage { display: grid; justify-items: center; padding: 1.5rem; background-color: #e3e8ef; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 1.74rem, rgba(20,33,61,0.07) 1.74rem, rgba(20,33,61,0.07) 1.8rem); } .ds-prop { width: min(24rem, 100%); background: #fbfcfd; border: 1px solid rgba(20,33,61,0.16); box-shadow: inset 0 3px 0 #14213d, 0 1.5rem 2.5rem -1.5rem rgba(20,33,61,0.4); padding: 1.5rem; } .ds-prop-h { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #3d4963; } .ds-prop-act { display: flex; gap: 0.625rem; margin-top: 0.75rem; } .ds-prop-act span { flex: 1; padding: 0.75rem; text-align: center; border: 1px solid #14213d; border-radius: 0.25rem; font-weight: 600; font-size: 0.9375rem; } .ds-prop-act .go { background: #2b4aa8; border-color: #2b4aa8; color: #fff; }"
     },
     {
-      "name": "Proof Band",
+      "name": "Proof Band With Never Ledger",
       "kind": "custom",
       "refersTo": "proof-band",
-      "description": "Full-bleed navy band with a white headline and three typographic columns under light top rules.",
-      "html": "<section class=\"ds-band\"><h2>Built so it can be trusted with money.</h2><div class=\"ds-cols3\"><div><h3>The AI only proposes.</h3><p>You approve every change before it happens.</p></div><div><h3>Rules, not guesses.</h3><p>Outcomes follow your written policy.</p></div><div><h3>Every cent traced.</h3><p>Each movement is logged.</p></div></div></section>",
-      "css": ".ds-band { background: #0e1a33; color: #eef1f4; padding: 3.5rem 1.5rem; font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-band h2 { max-width: 40rem; margin: 0 0 2rem; font-size: 2.5rem; line-height: 1.04; letter-spacing: -0.03em; font-weight: 800; color: #fff; } .ds-cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; } .ds-cols3 > div { padding-top: 1.25rem; border-top: 1px solid rgba(238,241,244,0.35); } .ds-cols3 h3 { margin: 0 0 0.625rem; font-size: 1.375rem; letter-spacing: -0.015em; color: #fff; } .ds-cols3 p { margin: 0; max-width: 26rem; font-size: 1.0625rem; line-height: 1.6; color: #c9d2e0; }"
+      "description": "Navy band: headline beside a ruled never/only ledger, then three typographic columns divided by hairlines.",
+      "html": "<section class=\"ds-band\"><div class=\"ds-band-top\"><h2>Built so it can be trusted with money.</h2><dl class=\"ds-never\"><div><dt>A charge above the hold or your fee</dt><dd>Never</dd></div><div><dt>A charge without your tap</dt><dd>Never</dd></div><div class=\"only\"><dt>Money moves</dt><dd>Only on your tap</dd></div></dl></div><div class=\"ds-cols3\"><div><h3>The AI only proposes.</h3><p>You approve every change before it happens.</p></div><div><h3>Rules, not guesses.</h3><p>Outcomes follow your written policy.</p></div><div><h3>Every cent traced.</h3><p>Each movement is logged.</p></div></div></section>",
+      "css": ".ds-band { background: #0e1a33; color: #eef1f4; padding: 3.5rem 1.5rem; font-family: 'Hanken Grotesk', system-ui, sans-serif; } .ds-band-top { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: end; margin-bottom: 2.5rem; } .ds-band h2 { max-width: 40rem; margin: 0; font-size: 2.5rem; line-height: 1.04; letter-spacing: -0.03em; font-weight: 800; color: #fff; } .ds-never { margin: 0; border-top: 1px solid rgba(238,241,244,0.35); } .ds-never > div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.875rem 0; border-bottom: 1px solid rgba(238,241,244,0.2); font-size: 1.0625rem; } .ds-never dt { color: #c9d2e0; } .ds-never dd { margin: 0; font: 600 0.9375rem 'JetBrains Mono', ui-monospace, monospace; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; white-space: nowrap; } .ds-never .only { border-bottom: 3px double rgba(238,241,244,0.6); } .ds-never .only dt { color: #fff; font-weight: 700; } .ds-cols3 { display: grid; grid-template-columns: repeat(3, 1fr); } .ds-cols3 > div { padding: 1.25rem 2rem 0; border-top: 1px solid rgba(238,241,244,0.35); } .ds-cols3 > div:first-child { padding-left: 0; } .ds-cols3 > div + div { border-left: 1px solid rgba(238,241,244,0.2); } .ds-cols3 h3 { margin: 0 0 0.625rem; font-size: 1.375rem; letter-spacing: -0.015em; color: #fff; } .ds-cols3 p { margin: 0; max-width: 26rem; font-size: 1.0625rem; line-height: 1.6; color: #c9d2e0; }"
     },
     {
       "name": "Hold Picker",
       "kind": "custom",
       "refersTo": "hold-picker-option",
-      "description": "Segmented mono picker; selected option is solid navy.",
+      "description": "Segmented mono picker; selected option is solid accent.",
       "html": "<div class=\"ds-pick\" role=\"group\"><span class=\"ds-pick-l\">Hold</span><button class=\"on\">$10</button><button>$20</button><button>$30</button></div>",
-      "css": ".ds-pick { display: inline-flex; border: 1px solid rgba(20,33,61,0.85); border-radius: 0.25rem; overflow: hidden; background: #fbfcfd; } .ds-pick-l { display: grid; place-items: center; padding: 0 0.875rem; font: 600 0.75rem 'Hanken Grotesk', system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #3d4963; border-right: 1px solid rgba(20,33,61,0.16); } .ds-pick button { border: 0; border-radius: 0; background: transparent; color: #14213d; padding: 0.625rem 1.125rem; font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; cursor: pointer; transition: background 0.18s cubic-bezier(0.16,1,0.3,1), color 0.18s cubic-bezier(0.16,1,0.3,1); } .ds-pick button + button { border-left: 1px solid rgba(20,33,61,0.16); } .ds-pick button:hover:not(.on) { background: rgba(20,33,61,0.07); } .ds-pick button.on { background: #14213d; color: #fff; } .ds-pick button:focus-visible { outline: 2px solid #14213d; outline-offset: -3px; } .ds-pick button.on:focus-visible { outline-color: #fff; }"
+      "css": ".ds-pick { display: inline-flex; border: 1px solid rgba(20,33,61,0.85); border-radius: 0.25rem; overflow: hidden; background: #fbfcfd; } .ds-pick-l { display: grid; place-items: center; padding: 0 0.875rem; font: 600 0.75rem 'Hanken Grotesk', system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #3d4963; border-right: 1px solid rgba(20,33,61,0.16); } .ds-pick button { border: 0; border-radius: 0; background: transparent; color: #14213d; padding: 0.625rem 1.125rem; font: 600 1rem 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; cursor: pointer; transition: background 0.18s cubic-bezier(0.16,1,0.3,1), color 0.18s cubic-bezier(0.16,1,0.3,1); } .ds-pick button + button { border-left: 1px solid rgba(20,33,61,0.16); } .ds-pick button:hover:not(.on) { background: rgba(20,33,61,0.07); } .ds-pick button.on { background: #2b4aa8; color: #fff; } .ds-pick button:focus-visible { outline: 2px solid #14213d; outline-offset: -3px; } .ds-pick button.on:focus-visible { outline-color: #fff; }"
     },
     {
       "name": "Rule Row",
@@ -118,37 +135,39 @@
   ],
   "narrative": {
     "northStar": "The Ledger",
-    "overview": "The page is accounting paper that has grown from one ruled sheet into a full landing page. Navy ink sits on cool paper; structure comes from hairline rules rather than boxes; figures are set in a tabular mono like a column of amounts. Money states carry the only chroma: muted green for released money, muted brick for captured money. The mood is quiet, exact, trustworthy.\n\nThe page runs top to bottom as: sticky translucent top bar with section nav and a Create studio button; hero (headline, lede, compact one-row entry form, and the looping example booking card over a faint ruled-line ground); trust strip of factual PayPal-rail items; three-column steps with live figures; one full-bleed dark navy proof band; a 'your rules' ledger with the hold picker; a centered closing call to action; footer with the honesty note.\n\nDepth is almost absent: only the entry sheet and the example booking card lift. Motion is small and purposeful: the example booking replays, figures settle when the hold changes, and the nav and picker respond on hover. Scope: Welcome/landing surface only; src/styles.css keeps the older look.",
+    "overview": "The page is accounting paper that has grown from one ruled sheet into a full landing page. Navy ink sits on cool paper; structure comes from hairline rules rather than boxes; figures are set in a tabular mono like a column of amounts. One restrained blue accent marks the things you act on or step through. Money states carry the only other chroma: muted green for released money, muted brick for captured money. The mood is quiet, exact, trustworthy.\n\nThe page runs top to bottom as: sticky translucent top bar with section nav and a Create studio button; hero (headline, lede, compact one-row entry form, and the looping example booking card over a faint ruled-line ground); trust strip of factual PayPal-rail items; three alternating feature rows, each a text column beside a large product picture on a ruled stage (phone booking screen, proposal card, ledger trace with request snippet); one full-bleed dark navy proof band with a ruled never/only ledger; a 'your rules' ledger with the hold picker; a navy closing band with a white button; footer with the honesty note.\n\nDepth is almost absent: the entry sheet, the example booking card and the product pictures lift slightly. Motion is small and purposeful: only the writing in the example booking replays, figures settle when the hold changes, later sections fade up once on scroll, and the nav and picker respond on hover. Scope: only the .lg Welcome surface follows this system; src/styles.css keeps the older look.",
     "keyCharacteristics": [
-      "Cool paper ground, near-white sheet, single navy ink; one dark navy band is the only inverted section.",
+      "Cool paper ground, near-white sheet, navy ink; one blue accent on actions; navy-band is the only inverted ground (used twice, proof band and closing band).",
       "Hairline rules do the structural work; a heavier navy rule opens each major block.",
       "Figures only in JetBrains Mono, tabular; everything else Hanken Grotesk.",
-      "Color is reserved for money state (green released, brick captured).",
-      "Square sheet corners; 4px radius on controls; round only where the object is round (avatar) or a chat message (bubble).",
+      "Chroma is reserved: blue for actions and sequence, green for released money, brick for captured money.",
+      "Square sheet corners; 4px radius on controls; round only where the object is round (avatar, phone shell) or a chat message (bubble).",
       "Large, tight display type (800 weight, negative tracking) against a calm 1.0625 to 1.125rem reading size."
     ],
     "rules": [
       { "name": "The Money-Only Chroma Rule", "body": "Green and brick appear only on figures and status that represent money moving (released, captured, authorized or refilled in the example). They never decorate, never mark buttons, links or nav.", "section": "colors" },
-      { "name": "The One Ink Rule", "body": "Every interactive and emphatic element is navy ink. A second accent hue for actions is not part of this world.", "section": "colors" },
-      { "name": "The One Dark Band Rule", "body": "One section may invert to navy-band, set in typography and top rules only: no cards, icons or figures inside it. The rest of the page stays on paper and sheet.", "section": "colors" },
-      { "name": "The Figures-Only Mono Rule", "body": "Mono is for numbers (amounts, step numerals, picker values). Words stay in the grotesk.", "section": "typography" },
-      { "name": "The Heavy Heading, Calm Body Rule", "body": "Headings are 800 with negative tracking and tight line height; reading text stays 400 at 1.0625 to 1.125rem. Nothing sits between them except the 700 subheads.", "section": "typography" },
-      { "name": "The Two Lifted Sheets Rule", "body": "Only the entry sheet and the example card lift. Steps, rules, picker, trust strip and band stay on the page plane.", "section": "elevation" }
+      { "name": "The One Accent Rule", "body": "There is exactly one action hue, ledger-accent (#2b4aa8), used sparingly: on the primary action of a block, the active state of a control, sequence numerals, the status pill, and a few signature marks (avatar, entry sheet top rule). Everything else emphatic stays navy ink. A second accent, or the accent used as a large fill or as text color on body copy, is not part of this world. On navy bands the primary action inverts to a white button instead of using the accent.", "section": "colors" },
+      { "name": "The Two Navy Bands Rule", "body": "Navy-band grounds are for the proof band and the closing band only, set in typography, hairline rules and one white button: no cards, icons or figures inside them. The rest of the page stays on paper and sheet.", "section": "colors" },
+      { "name": "The Figures-Only Mono Rule", "body": "Mono is for numbers, step numerals, picker values, slot times, the never/only verdict words and the request snippet. Prose stays in the grotesk.", "section": "typography" },
+      { "name": "The Heavy Heading, Calm Body Rule", "body": "Headings are 700 to 800 with negative tracking and tight line height; reading text stays 400 at 1.0625 to 1.125rem. Nothing sits between them except the 700 subheads.", "section": "typography" },
+      { "name": "The Lifted Sheets Rule", "body": "Only the entry sheet, the example card and the three feature pictures lift. Feature text, ledger lines, rules, picker, trust strip and both bands stay on the page plane.", "section": "elevation" }
     ],
     "dos": [
       "Do let hairline rules (16% navy) separate content; use the strong navy rule (2px) to open a new block.",
       "Do set every amount in JetBrains Mono 600 with tabular numerals.",
+      "Do use ledger-accent (#2b4aa8) as the single action color: primary buttons, the active picker or slot state, step numerals, the status pill.",
       "Do reserve ledger green and brick for released and captured money respectively.",
       "Do keep sheet corners square and control corners at 4px.",
-      "Do label illustrative content as an example and keep trust-strip items factual.",
-      "Do honor reduced motion by showing the example static and disabling settle.",
-      "Do keep the dark band to typography and top rules."
+      "Do label illustrative content as an example and keep trust-strip and never/only items factual.",
+      "Do honor reduced motion by showing the example static and disabling settle and scroll reveal.",
+      "Do keep both navy bands to typography, hairline rules and one white button."
     ],
     "donts": [
-      "Don't introduce color gradients, glows, hard offset shadows or a second action hue on this surface. (The faint repeating ruled lines in the hero are paper, not a gradient treatment.)",
+      "Don't introduce color gradients, glows, hard offset shadows or a second action hue on this surface. (The faint repeating ruled lines on the hero and the picture stages are paper, not a gradient treatment.)",
       "Don't use green or brick for decoration, buttons or generic success and error states.",
+      "Don't use the accent as a large fill, a band ground or body-text color.",
       "Don't set prose in the mono face.",
-      "Don't add a second dark section or put cards inside the proof band.",
+      "Don't add a third navy band or put cards inside the bands.",
       "Don't apply this palette to screens governed by src/styles.css without an explicit redesign of them."
     ]
   }
