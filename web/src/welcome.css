@@ -1,0 +1,759 @@
+/* Welcome: "The Ledger", expanded into a full page. Cool paper, navy ink, hairline rules, muted green and brick for money states. */
+.lg {
+  --lg-ground: #eef1f4;
+  --lg-sheet: #fbfcfd;
+  --lg-ink: #14213d;
+  --lg-ink-2: #3d4963;
+  --lg-navy: #0e1a33;
+  --lg-rule: rgba(20, 33, 61, 0.16);
+  --lg-rule-strong: rgba(20, 33, 61, 0.85);
+  --lg-green: #1f6150;
+  --lg-green-soft: #cfe6dd;
+  --lg-brick: #8a3b2e;
+  --lg-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* re-point the shared tokens so the form controls inside this page inherit the ledger palette */
+  --ink: var(--lg-ink);
+  --ink-2: var(--lg-ink-2);
+  --line: var(--lg-rule);
+  --accent: var(--lg-ink);
+  --panel: var(--lg-sheet);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--lg-ground);
+  color: var(--lg-ink);
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+html:has(.lg),
+body:has(.lg) {
+  background: #eef1f4;
+  scroll-behavior: smooth;
+}
+.lg ::selection {
+  background: var(--lg-ink);
+  color: #fff;
+}
+.lg :focus-visible {
+  outline: 2px solid var(--lg-ink);
+  outline-offset: 3px;
+}
+.lg input {
+  caret-color: var(--lg-ink);
+  border-radius: 0.25rem;
+  border: 1px solid rgba(20, 33, 61, 0.45);
+  background: #fff;
+}
+.lg input::placeholder {
+  color: #6a7589;
+}
+.lg h1,
+.lg h2,
+.lg h3 {
+  text-wrap: balance;
+}
+
+/* top bar */
+.lg-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem clamp(1.25rem, 5vw, 5rem);
+  background: rgba(238, 241, 244, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--lg-rule);
+  font-weight: 800;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+.lg-top .spacer {
+  flex: 1;
+}
+.lg-nav {
+  display: flex;
+  gap: 1.75rem;
+  margin-left: 2.5rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0;
+}
+.lg-nav a {
+  color: var(--lg-ink-2);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.lg-nav a:hover {
+  color: var(--lg-ink);
+  border-color: var(--lg-ink);
+}
+.lg-top-cta {
+  background: var(--lg-ink);
+  color: #fff;
+  border: 1px solid var(--lg-ink);
+  border-radius: 0.25rem;
+  padding: 0.5rem 1rem;
+  font: 600 0.9375rem 'Hanken Grotesk', system-ui, sans-serif;
+  cursor: pointer;
+}
+.lg-top-cta:hover {
+  background: #0d1730;
+}
+
+/* hero: headline and entry on the left, the product picture on the right, over a faint ruled ground */
+.lg-hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--lg-rule);
+}
+.lg-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 2.74rem, rgba(20, 33, 61, 0.07) 2.74rem, rgba(20, 33, 61, 0.07) 2.8rem);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  pointer-events: none;
+}
+.lg-hero-in {
+  position: relative;
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 8vh, 5.5rem) clamp(1.25rem, 5vw, 5rem) clamp(3rem, 9vh, 6rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: clamp(2rem, 5vw, 5rem);
+  align-items: center;
+}
+.lg-intro h1 {
+  margin: 0 0 1.5rem;
+  font-size: clamp(2.75rem, 5.6vw, 5.25rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+}
+.lg-lede {
+  margin: 0 0 2rem;
+  max-width: 34rem;
+  font-size: clamp(1.0625rem, 1.5vw, 1.3125rem);
+  line-height: 1.55;
+  color: var(--lg-ink-2);
+}
+
+/* entry: a single ruled form row, as on a payments site */
+.lg-entry {
+  max-width: 40rem;
+  background: var(--lg-sheet);
+  border: 1px solid var(--lg-rule);
+  border-radius: 0;
+  padding: clamp(1.125rem, 2vw, 1.5rem);
+  box-shadow: inset 0 3px 0 var(--lg-ink), 0 1px 0 rgba(20, 33, 61, 0.06), 0 1.25rem 2.5rem -1.5rem rgba(20, 33, 61, 0.28);
+}
+.lg-entry h2 {
+  margin: 0.25rem 0 0.875rem;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+.lg-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+.lg-form .field {
+  margin: 0;
+}
+.lg-entry .field span {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+}
+.lg-entry .field input {
+  padding: 0.75rem 0.875rem;
+}
+.lg-entry button {
+  border-radius: 0.25rem;
+  padding: 0.8125rem 1.25rem;
+  font-weight: 600;
+}
+.lg-entry button.primary {
+  background: var(--lg-ink);
+  border-color: var(--lg-ink);
+}
+.lg-entry button.primary:hover:not(:disabled) {
+  background: #0d1730;
+}
+.lg-entry button:disabled {
+  cursor: progress;
+  opacity: 0.75;
+}
+.lg-entry .muted {
+  color: var(--lg-ink-2);
+  margin: 0.875rem 0 0;
+}
+.lg-entry .error {
+  margin-top: 0.75rem;
+}
+.lg-entry .alt {
+  margin: 0.625rem 0 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.875rem;
+}
+
+/* the product picture */
+.lg-demo {
+  margin: 0;
+  position: relative;
+}
+.lg-demo::before {
+  content: '';
+  position: absolute;
+  inset: 1.25rem -0.75rem -0.75rem 1.25rem;
+  background: var(--lg-sheet);
+  border: 1px solid var(--lg-rule);
+  opacity: 0.7;
+}
+.lg-demo-card {
+  position: relative;
+  background: var(--lg-sheet);
+  border: 1px solid var(--lg-rule);
+  box-shadow: 0 1px 0 rgba(20, 33, 61, 0.06), 0 2rem 3.5rem -1.75rem rgba(20, 33, 61, 0.35);
+}
+.lg-demo-h {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1.125rem 1.25rem;
+  border-bottom: 1px solid var(--lg-rule);
+}
+.lg-demo-h div {
+  display: grid;
+  flex: 1;
+  line-height: 1.3;
+}
+.lg-demo-h div span {
+  font-size: 0.875rem;
+  color: var(--lg-ink-2);
+}
+.lg-demo-av {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--lg-ink);
+  color: #fff;
+  font-weight: 700;
+}
+.lg-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--lg-ink);
+  color: var(--lg-ink);
+  animation: lg-settle 0.45s var(--lg-ease) both;
+}
+.lg-pill.green {
+  border-color: var(--lg-green);
+  color: var(--lg-green);
+  background: #e6f2ed;
+}
+.lg-demo-log {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  min-height: 21rem;
+}
+.lg-demo-log li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  gap: 0.25rem 0.875rem;
+  align-items: baseline;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid var(--lg-rule);
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition: opacity 0.5s var(--lg-ease), transform 0.5s var(--lg-ease);
+}
+.lg-demo-log li.in {
+  opacity: 1;
+  transform: none;
+}
+.lg-demo-who {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+}
+.lg-demo-text {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+.lg-demo-log li.msg .lg-demo-text {
+  background: #e4e9f0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem 0.75rem 0.75rem 0.1875rem;
+  justify-self: start;
+}
+.lg-demo-log output,
+.lg-demo-foot output {
+  font: 600 1rem 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.lg-demo-log output.green {
+  color: var(--lg-green);
+}
+.lg-demo-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 1rem 1.25rem;
+  border-top: 3px double var(--lg-rule-strong);
+  font-weight: 700;
+}
+.lg-demo-foot output {
+  color: var(--lg-green);
+  font-size: 1.25rem;
+}
+.lg-demo figcaption {
+  position: relative;
+  margin-top: 1.75rem;
+  font-size: 0.8125rem;
+  color: var(--lg-ink-2);
+}
+
+/* trust strip */
+.lg-trust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 2.5rem;
+  padding: 1.5rem clamp(1.25rem, 5vw, 5rem);
+  background: var(--lg-sheet);
+  border-bottom: 1px solid var(--lg-rule);
+}
+.lg-trust p {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+}
+.lg-trust ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+}
+.lg-trust li {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.005em;
+}
+
+/* sections */
+.lg-section {
+  width: 100%;
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 10vh, 6.5rem) clamp(1.25rem, 5vw, 5rem);
+}
+.lg-sec-h {
+  max-width: 44rem;
+  margin-bottom: clamp(1.75rem, 4vh, 3rem);
+}
+.lg-sec-h h2,
+.lg-dark h2,
+.lg-cta h2 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 3.6vw, 3.25rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+.lg-sec-h p {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: var(--lg-ink-2);
+}
+
+/* the three steps */
+.lg-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 2px solid var(--lg-rule-strong);
+}
+.lg-steps li {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  padding: 1.5rem clamp(1rem, 2.4vw, 2.25rem) 2rem 0;
+}
+.lg-steps li + li {
+  padding-left: clamp(1rem, 2.4vw, 2.25rem);
+  border-left: 1px solid var(--lg-rule);
+}
+.lg-n {
+  font: 600 1rem 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--lg-ink-2);
+}
+.lg-steps h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.lg-steps p {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--lg-ink-2);
+}
+.lg-fig {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--lg-rule);
+}
+.lg-fig span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+}
+.lg-fig output {
+  font: 600 clamp(1.75rem, 2.6vw, 2.25rem) 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--lg-ink);
+  animation: lg-settle 0.45s var(--lg-ease) both;
+}
+.lg-fig.released output {
+  color: var(--lg-green);
+}
+.lg-fig.captured output {
+  color: var(--lg-brick);
+}
+
+/* dark proof band */
+.lg-dark {
+  background: var(--lg-navy);
+  color: #eef1f4;
+}
+.lg-dark-in {
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 10vh, 6.5rem) clamp(1.25rem, 5vw, 5rem);
+}
+.lg-dark h2 {
+  max-width: 40rem;
+  margin-bottom: clamp(2rem, 5vh, 3.5rem);
+  color: #fff;
+}
+.lg-cols3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1.5rem, 3vw, 3rem);
+}
+.lg-cols3 > div {
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(238, 241, 244, 0.35);
+}
+.lg-cols3 h3 {
+  margin: 0 0 0.625rem;
+  font-size: 1.375rem;
+  letter-spacing: -0.015em;
+  color: #fff;
+}
+.lg-cols3 p {
+  margin: 0;
+  max-width: 26rem;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: #c9d2e0;
+}
+.lg-dark :focus-visible {
+  outline-color: #fff;
+}
+
+/* rules ledger */
+.lg-ledger {
+  border-top: 2px solid var(--lg-rule-strong);
+}
+.lg-ledger-h {
+  padding: 1.25rem 0 1rem;
+}
+.lg-pick {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--lg-rule-strong);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background: var(--lg-sheet);
+}
+.lg-pick-l {
+  display: grid;
+  place-items: center;
+  padding: 0 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+  border-right: 1px solid var(--lg-rule);
+}
+.lg-pick button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--lg-ink);
+  padding: 0.625rem 1.125rem;
+  font: 600 1rem 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.18s var(--lg-ease), color 0.18s var(--lg-ease);
+}
+.lg-pick button + button {
+  border-left: 1px solid var(--lg-rule);
+}
+.lg-pick button:hover:not(.on) {
+  background: rgba(20, 33, 61, 0.07);
+}
+.lg-pick button.on {
+  background: var(--lg-ink);
+  color: #fff;
+}
+.lg-pick button:focus-visible {
+  outline-offset: -3px;
+  outline-color: var(--lg-ink);
+}
+.lg-pick button.on:focus-visible {
+  outline-color: #fff;
+}
+.lg-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 1rem clamp(1rem, 3vw, 3rem);
+  padding: 0.625rem 0;
+  border-top: 1px solid var(--lg-rule);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lg-ink-2);
+}
+.lg-rule-list {
+  margin: 0;
+}
+.lg-rule-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.25rem clamp(1rem, 3vw, 3rem);
+  padding: 1.125rem 0;
+  border-top: 1px solid var(--lg-rule);
+}
+.lg-rule-list dt {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.lg-rule-list dd {
+  margin: 0;
+  font-size: 1.0625rem;
+  color: var(--lg-ink-2);
+}
+.lg-net {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 1rem clamp(1rem, 3vw, 3rem);
+  align-items: baseline;
+  padding: 1.125rem 0 0.25rem;
+  border-top: 3px double var(--lg-rule-strong);
+}
+.lg-net span {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.lg-net output {
+  font: 600 clamp(1.5rem, 2.4vw, 2rem) 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--lg-green);
+}
+
+/* closing call to action */
+.lg-cta {
+  background: var(--lg-sheet);
+  border-top: 1px solid var(--lg-rule);
+  text-align: center;
+  padding: clamp(3.5rem, 10vh, 6rem) clamp(1.25rem, 5vw, 5rem);
+}
+.lg-cta h2 {
+  margin-inline: auto;
+}
+.lg-cta p {
+  max-width: 34rem;
+  margin: 0 auto 1.75rem;
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: var(--lg-ink-2);
+}
+.lg-cta button {
+  background: var(--lg-ink);
+  border: 1px solid var(--lg-ink);
+  color: #fff;
+  border-radius: 0.25rem;
+  padding: 0.9375rem 1.75rem;
+  font: 600 1.0625rem 'Hanken Grotesk', system-ui, sans-serif;
+  cursor: pointer;
+}
+.lg-cta button:hover {
+  background: #0d1730;
+}
+
+/* footer */
+.lg-foot {
+  background: var(--lg-ground);
+  border-top: 1px solid var(--lg-rule);
+}
+.lg-foot-in {
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: 1.75rem clamp(1.25rem, 5vw, 5rem) 2.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem 3rem;
+}
+.lg-foot-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+}
+.lg-foot-brand em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--lg-ink-2);
+  margin-left: 0.5rem;
+}
+.lg-foot .honesty {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  max-width: 40rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--lg-ink-2);
+}
+.lg-foot .honesty svg {
+  flex: none;
+  margin-top: 0.15rem;
+}
+
+@keyframes lg-settle {
+  from { opacity: 0; transform: translateY(0.4em); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg,
+  html:has(.lg) {
+    scroll-behavior: auto;
+  }
+  .lg-fig output,
+  .lg-pill {
+    animation: none;
+  }
+  .lg-demo-log li {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 70rem) {
+  .lg-nav {
+    display: none;
+  }
+}
+@media (max-width: 62rem) {
+  .lg-hero-in {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lg-steps,
+  .lg-cols3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lg-steps li,
+  .lg-steps li + li {
+    padding: 1.5rem 0;
+    border-left: 0;
+  }
+  .lg-steps li + li {
+    border-top: 1px solid var(--lg-rule);
+  }
+}
+@media (max-width: 40rem) {
+  .lg-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lg-entry button {
+    width: 100%;
+  }
+  .lg-demo-log li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .lg-demo-who {
+    grid-column: 1 / -1;
+  }
+  .lg-demo-log {
+    min-height: 0;
+  }
+  .lg-pick {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .lg-pick-l {
+    flex: 0 0 100%;
+    padding: 0.5rem 0.875rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--lg-rule);
+    justify-content: start;
+  }
+  .lg-pick button {
+    flex: 1;
+  }
+  .lg-cols {
+    display: none;
+  }
+  .lg-rule-list > div,
+  .lg-net {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lg-top-cta {
+    padding: 0.4375rem 0.75rem;
+  }
+}

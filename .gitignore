@@ -19,3 +19,10 @@ docs/gallery/.raw/
 video/out/
 video/audio/
 server/e2e-shots/
+
+# tool output
+.playwright-mcp/
+web/.impeccable/*.out
+web/.impeccable/review/
+web/.impeccable/questions/
+web/.impeccable/hook.cache.json

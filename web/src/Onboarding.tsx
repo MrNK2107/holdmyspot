@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { type Api, type Snapshot, rememberOwnerToken, usd } from './api';
 import { Icon } from './Icon';
 import { HoursEditor, ServicesEditor } from './Studio';
+import './welcome.css';
 
 /** Where the owner shares the studio: the public booking page for this workspace. */
 export const bookingLink = (ws: string) => `${location.origin}/book?ws=${encodeURIComponent(ws)}`;
@@ -55,11 +56,15 @@ export function AccountChip({ me }: { me: Me | null }) {
   );
 }
 
+/** Example holds the landing ledger lets a visitor try; the studio's real hold is its own setting. */
+const HOLD_CHOICES = [1000, 2000, 3500, 5000];
+
 /** First screen at `/`: what the product does, and the one thing to do next (sign in, or create a studio). */
 export function Welcome() {
   const [business, setBusiness] = useState('');
   const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hold, setHold] = useState(2000);
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
   const [me] = useMe();
@@ -76,6 +81,10 @@ export function Welcome() {
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
+    if (!business.trim() || !owner.trim()) {
+      setError('Add your studio name and your first name to continue.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -97,42 +106,233 @@ export function Welcome() {
   };
 
   const signedIn = !!me?.account;
+  const money = (c: number) => `$${(c / 100).toFixed(2)}`;
+  const goStart = () => {
+    document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => document.getElementById('studio-name')?.focus({ preventScroll: true }), 350);
+  };
   return (
-    <div className="welcome">
-      <header className="welcome-top">
-        <span className="logo" aria-hidden>
-          ◆
-        </span>
-        <span className="brand-name">HoldMySpot</span>
+    <div className="lg">
+      <header className="lg-top">
+        <svg className="lg-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden focusable="false">
+          <path d="M12 2l8.5 10L12 22 3.5 12z" fill="currentColor" />
+        </svg>
+        <span className="lg-name">HoldMySpot</span>
+        <nav className="lg-nav" aria-label="Page sections">
+          <a href="#how">How it works</a>
+          <a href="#trust">Why you can trust it</a>
+          <a href="#rules">Your rules</a>
+        </nav>
         <span className="spacer" />
         <AccountChip me={me} />
+        <button type="button" className="lg-top-cta" onClick={goStart}>
+          Create studio
+        </button>
       </header>
-      <main className="welcome-main">
-        <section className="welcome-copy">
-          <h1>Hold the fee, not the grudge.</h1>
-          <p className="lede">
-            HoldMySpot puts a PayPal hold on every booking, reads “can’t make it” texts the way a person would, and only moves money when you tap.
-          </p>
-          <ol className="how-it-works" aria-label="How it works">
+
+      <main>
+        <section className="lg-hero">
+          <div className="lg-hero-in">
+            <div className="lg-intro">
+              <h1>Hold the fee, not the grudge.</h1>
+              <p className="lg-lede">
+                HoldMySpot puts a PayPal hold on every booking, reads “can’t make it” texts the way a person would, and only moves money when you tap.
+              </p>
+
+              <div className="lg-entry" id="start" aria-labelledby="create-h">
+                {signedIn && me!.studios.length > 0 && (
+                  <div className="my-studios">
+                    <h2>Welcome back, {me!.account!.name.split(' ')[0]}</h2>
+                    <ul>
+                      {me!.studios.map((st) => (
+                        <li key={st.id}>
+                          <a className="button primary" href={`/?ws=${encodeURIComponent(st.id)}`}>
+                            Open {st.business}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    <hr />
+                  </div>
+                )}
+                {!signedIn && cfg?.google && (
+                  <>
+                    <h2>Sign in to get started</h2>
+                    <a className="button google wide" href="/auth/google">
+                      <GoogleMark /> Continue with Google
+                    </a>
+                    <p className="muted small">Your studios stay linked to your Google account, so you can open them from any device.</p>
+                    <div className="or" role="separator">
+                      <span>or</span>
+                    </div>
+                  </>
+                )}
+                <h2 id="create-h">{signedIn && me!.studios.length ? 'Create another studio' : signedIn || !cfg?.google ? 'Create your studio' : 'Start without an account'}</h2>
+                <form onSubmit={create} className="lg-form">
+                  <label className="field">
+                    <span>Studio name</span>
+                    <input id="studio-name" value={business} onChange={(e) => setBusiness(e.target.value)} placeholder="Polished by Priya" maxLength={60} autoComplete="organization" required />
+                  </label>
+                  <label className="field">
+                    <span>Your first name</span>
+                    <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Priya" maxLength={40} autoComplete="given-name" required />
+                  </label>
+                  <button className={signedIn || !cfg?.google ? 'primary' : ''} type="submit" disabled={busy}>
+                    {busy ? 'Creating…' : 'Create studio'}
+                  </button>
+                </form>
+                {error && (
+                  <div className="error" role="alert">
+                    {error}
+                  </div>
+                )}
+                <p className="muted small">
+                  {signedIn
+                    ? 'This studio will be yours across devices.'
+                    : 'No password. Your studio opens in this browser; later you can copy a private link to open it on another device.'}
+                </p>
+                {cfg?.payments === 'mock' && (
+                  <p className="alt">
+                    Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <BookingDemo hold={hold} money={money} />
+          </div>
+        </section>
+
+        <section className="lg-trust" id="trust-strip" aria-label="Built on PayPal">
+          <p>Built on PayPal’s own payment rails</p>
+          <ul>
+            <li>Orders v2 authorizations</li>
+            <li>Vault v3 saved wallets</li>
+            <li>Void, capture and refund</li>
+            <li>Agent Toolkit, read-only</li>
+          </ul>
+        </section>
+
+        <section className="lg-section lg-how" id="how" aria-labelledby="how-h">
+          <div className="lg-sec-h">
+            <h2 id="how-h">How a booking moves money</h2>
+            <p>Three steps, and the owner’s tap is the only thing that ever charges.</p>
+          </div>
+          <ol className="lg-steps" aria-label="How it works">
             <li>
-              <span className="hw-n">1</span>
-              <span>
-                <strong>A client books and approves a hold.</strong> It reserves the fee on their own PayPal. Nothing is charged.
-              </span>
+              <span className="lg-n">1</span>
+              <h3>A client books and approves a hold.</h3>
+              <p>It reserves the fee on their own PayPal. Nothing is charged.</p>
+              <div className="lg-fig">
+                <span>Hold on their PayPal</span>
+                <output key={`a${hold}`}>{money(hold)}</output>
+              </div>
             </li>
             <li>
-              <span className="hw-n">2</span>
-              <span>
-                <strong>Life happens.</strong> A late cancel goes to your waitlist first. A sick child gets excused. You see every proposal before it acts.
-              </span>
+              <span className="lg-n">2</span>
+              <h3>Life happens.</h3>
+              <p>A late cancel goes to your waitlist first. A sick child gets excused. You see every proposal before it acts.</p>
+              <div className="lg-fig released">
+                <span>Released, nothing charged</span>
+                <output>$0.00</output>
+              </div>
             </li>
             <li>
-              <span className="hw-n">3</span>
-              <span>
-                <strong>You tap, or you don’t.</strong> A no-show is one tap to charge the hold you already have. A change of heart is one tap to refund.
-              </span>
+              <span className="lg-n">3</span>
+              <h3>You tap, or you don’t.</h3>
+              <p>A no-show is one tap to charge the hold you already have. A change of heart is one tap to refund.</p>
+              <div className="lg-fig captured">
+                <span>Charged only on your tap, up to</span>
+                <output key={`c${hold}`}>{money(hold)}</output>
+              </div>
             </li>
           </ol>
+        </section>
+
+        <section className="lg-dark" id="trust" aria-labelledby="trust-h">
+          <div className="lg-dark-in">
+            <h2 id="trust-h">Built so it can be trusted with money.</h2>
+            <div className="lg-cols3">
+              <div>
+                <h3>The AI only proposes.</h3>
+                <p>It labels a message and drafts a proposal. It has no tool that authorizes, captures, voids or refunds, so nothing it reads can move money.</p>
+              </div>
+              <div>
+                <h3>Rules, not guesses.</h3>
+                <p>A deterministic engine enforces your policy: a charge never exceeds the hold or your fee, never happens without your tap, and silence never charges.</p>
+              </div>
+              <div>
+                <h3>Every cent traced.</h3>
+                <p>Each booking’s PayPal authorization, capture and refund IDs sit in a ledger beside the exact request behind each step.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="lg-section lg-rulesec" id="rules" aria-labelledby="rules-h">
+          <div className="lg-sec-h">
+            <h2 id="rules-h">Your studio, your rules.</h2>
+            <p>An example studio. Choose a hold and every figure on this page follows it.</p>
+          </div>
+          <div className="lg-ledger">
+            <div className="lg-ledger-h">
+              <div className="lg-pick" role="group" aria-labelledby="hold-l">
+                <span className="lg-pick-l" id="hold-l">
+                  Hold per visit
+                </span>
+                {HOLD_CHOICES.map((c) => (
+                  <button key={c} type="button" aria-pressed={hold === c} className={hold === c ? 'on' : ''} onClick={() => setHold(c)}>
+                    ${c / 100}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="lg-cols" aria-hidden>
+              <span>You decide</span>
+              <span>Example</span>
+            </div>
+            <dl className="lg-rule-list">
+              <div>
+                <dt>The hold</dt>
+                <dd>{money(hold)} reserved on the client’s PayPal</dd>
+              </div>
+              <div>
+                <dt>The free-cancel window</dt>
+                <dd>Cancel in time and the hold is simply released</dd>
+              </div>
+              <div>
+                <dt>Late-cancel and no-show fees</dt>
+                <dd>Set separately, never above the hold</dd>
+              </div>
+              <div>
+                <dt>Which reasons are excused</dt>
+                <dd>Illness, for example, is released with no fee</dd>
+              </div>
+            </dl>
+            <div className="lg-net">
+              <span>Moved before you tap</span>
+              <output>$0.00</output>
+            </div>
+          </div>
+        </section>
+
+        <section className="lg-cta" aria-labelledby="cta-h">
+          <h2 id="cta-h">Open your studio in a minute.</h2>
+          <p>No password. Clients approve a hold; you decide whether it ever becomes a charge.</p>
+          <button type="button" className="primary" onClick={goStart}>
+            Create your studio
+          </button>
+        </section>
+      </main>
+
+      <footer className="lg-foot">
+        <div className="lg-foot-in">
+          <span className="lg-foot-brand">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden focusable="false">
+              <path d="M12 2l8.5 10L12 22 3.5 12z" fill="currentColor" />
+            </svg>
+            HoldMySpot <em>Fair, without the fight.</em>
+          </span>
           {cfg && (
             <p className="honesty" role="note">
               <Icon name="info" size={16} />
@@ -143,68 +343,62 @@ export function Welcome() {
               </span>
             </p>
           )}
-        </section>
-
-        <section className="welcome-card" aria-labelledby="create-h">
-          {signedIn && me!.studios.length > 0 && (
-            <div className="my-studios">
-              <h2>Welcome back, {me!.account!.name.split(' ')[0]}</h2>
-              <ul>
-                {me!.studios.map((st) => (
-                  <li key={st.id}>
-                    <a className="button primary" href={`/?ws=${encodeURIComponent(st.id)}`}>
-                      Open {st.business}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              <hr />
-            </div>
-          )}
-          {!signedIn && cfg?.google && (
-            <>
-              <h2>Sign in to get started</h2>
-              <a className="button google wide" href="/auth/google">
-                <GoogleMark /> Continue with Google
-              </a>
-              <p className="muted small">Your studios stay linked to your Google account, so you can open them from any device.</p>
-              <div className="or" role="separator">
-                <span>or</span>
-              </div>
-            </>
-          )}
-          <h2 id="create-h">{signedIn && me!.studios.length ? 'Create another studio' : signedIn || !cfg?.google ? 'Create your studio' : 'Start without an account'}</h2>
-          <form onSubmit={create}>
-            <label className="field">
-              <span>Studio name</span>
-              <input value={business} onChange={(e) => setBusiness(e.target.value)} placeholder="Polished by Priya" maxLength={60} autoComplete="organization" required />
-            </label>
-            <label className="field">
-              <span>Your first name</span>
-              <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Priya" maxLength={40} autoComplete="given-name" required />
-            </label>
-            {error && (
-              <div className="error" role="alert">
-                {error}
-              </div>
-            )}
-            <button className={signedIn || !cfg?.google ? 'primary wide' : 'wide'} type="submit" disabled={busy || !business.trim() || !owner.trim()}>
-              {busy ? 'Creating…' : 'Create studio'}
-            </button>
-          </form>
-          <p className="muted small">
-            {signedIn
-              ? 'This studio will be yours across devices.'
-              : 'No password. Your studio opens in this browser; later you can copy a private link to open it on another device.'}
-          </p>
-          {cfg?.payments === 'mock' && (
-            <p className="alt">
-              Just looking? <a href="/?ws=demo&demo=1">Play the 3-minute guided demo</a>
-            </p>
-          )}
-        </section>
-      </main>
+        </div>
+      </footer>
     </div>
+  );
+}
+
+/** The hero's product picture: one example booking replaying its hold lifecycle. Labelled as an example; never real data. */
+function BookingDemo({ hold, money }: { hold: number; money: (c: number) => string }) {
+  const TOTAL = 5;
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [step, setStep] = useState(reduced ? TOTAL : 1);
+  useEffect(() => {
+    if (reduced) return;
+    const t = setTimeout(() => setStep((s) => (s >= TOTAL ? 1 : s + 1)), step >= TOTAL ? 4200 : 1900);
+    return () => clearTimeout(t);
+  }, [step, reduced]);
+  const status = step >= 5 ? 'Slot refilled' : step >= 4 ? 'Hold released' : step >= 1 ? 'Hold authorized' : 'Booked';
+  const tone = step >= 4 ? 'green' : 'ink';
+  const rows: Array<{ who: string; text: string; fig?: string; tone?: string; msg?: boolean }> = [
+    { who: 'PayPal', text: 'Booked. Hold authorized on Maya’s PayPal', fig: money(hold) },
+    { who: 'Maya', text: '“Kiddo threw up, can’t make it today.”', msg: true },
+    { who: 'Read as', text: 'Sick child, excused by your policy. Proposal ready for you.' },
+    { who: 'You approved', text: 'Hold released, nothing charged', fig: '$0.00', tone: 'green' },
+    { who: 'Waitlist', text: 'Jordan took the slot and his hold authorized', fig: money(hold) },
+  ];
+  return (
+    <figure className="lg-demo" aria-label="Example booking, step by step">
+      <div className="lg-demo-card">
+        <div className="lg-demo-h">
+          <span className="lg-demo-av" aria-hidden>
+            M
+          </span>
+          <div>
+            <strong>Maya R.</strong>
+            <span>Gel fill · Fri 2:00 pm</span>
+          </div>
+          <span className={`lg-pill ${tone}`} key={status}>
+            {status}
+          </span>
+        </div>
+        <ol className="lg-demo-log">
+          {rows.map((r, i) => (
+            <li key={i} className={`${i < step ? 'in' : ''} ${r.msg ? 'msg' : ''}`} aria-hidden={i >= step && !reduced}>
+              <span className="lg-demo-who">{r.who}</span>
+              <span className="lg-demo-text">{r.text}</span>
+              {r.fig && <output className={r.tone ?? ''}>{r.fig}</output>}
+            </li>
+          ))}
+        </ol>
+        <div className="lg-demo-foot">
+          <span>Charged to Maya</span>
+          <output>$0.00</output>
+        </div>
+      </div>
+      <figcaption>Example booking. Amounts follow the hold you pick below.</figcaption>
+    </figure>
   );
 }
 
